@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { VISIT_STATUS_OPTIONS, type VisitStatus } from '../constants/enums';
-import { getLatestCmoScoreByPatient, type CmoScoreRecord } from '../services/cmoScoreService';
+import { getLatestCmoScoreByPatient, listCmoScoresByPatient, type CmoScoreHistoryEntry, type CmoScoreRecord } from '../services/cmoScoreService';
 import { listInterventionsByPatient } from '../services/interventionService';
 import { getPatientById, type Patient } from '../services/patientService';
 import { listVisitsByPatient, updateVisit, type Visit } from '../services/visitService';
@@ -20,22 +20,25 @@ export function PatientDetailPage() {
   const [patient, setPatient] = useState<Patient | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [latestCmoScore, setLatestCmoScore] = useState<CmoScoreRecord | null>(null);
+  const [cmoHistory, setCmoHistory] = useState<CmoScoreHistoryEntry[]>([]);
   const [interventions, setInterventions] = useState<Array<{ id: string; intervention_type: string; priority_level: number | null }>>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadData() {
-      const [patientResult, visitsResult, cmoResult, interventionsResult] = await Promise.all([
+      const [patientResult, visitsResult, cmoResult, cmoHistoryResult, interventionsResult] = await Promise.all([
         getPatientById(id),
         listVisitsByPatient(id),
         getLatestCmoScoreByPatient(id),
+        listCmoScoresByPatient(id),
         listInterventionsByPatient(id),
       ]);
 
       setPatient(patientResult.data);
       setVisits(visitsResult.data);
       setLatestCmoScore(cmoResult.data);
+      setCmoHistory(cmoHistoryResult.data);
       setInterventions(
         interventionsResult.data.map((x) => ({
           id: x.id,
@@ -162,6 +165,46 @@ export function PatientDetailPage() {
           <p className="help-text">Sin puntuación CMO registrada. Completa la estratificación basal.</p>
         )}
       </section>
+
+      {cmoHistory.length > 1 ? (
+        <section className="card">
+          <h2>Evolución CMO-RCV</h2>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Visita</th>
+                  <th>Fecha</th>
+                  <th style={{ textAlign: 'right' }}>Puntuación</th>
+                  <th>Nivel</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cmoHistory.map((entry, i) => {
+                  const m = LEVEL_META[entry.priority as 1 | 2 | 3];
+                  const prev = cmoHistory[i + 1];
+                  const delta = prev ? entry.score - prev.score : null;
+                  return (
+                    <tr key={entry.id}>
+                      <td>{entry.visit_number != null ? `V${entry.visit_number}` : '-'}</td>
+                      <td>{entry.visit_date ?? entry.scheduled_date ?? entry.updated_at?.slice(0, 10) ?? '-'}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: m.color }}>
+                        {entry.score}
+                        {delta !== null ? (
+                          <span style={{ fontSize: '0.75rem', fontWeight: 400, color: delta > 0 ? '#dc2626' : delta < 0 ? '#16a34a' : '#6b7280', marginLeft: '0.35rem' }}>
+                            {delta > 0 ? `+${delta}` : delta}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td style={{ color: m.color, fontWeight: 600, fontSize: '0.85rem' }}>{m.label}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       <section className="card">
         <h2>Resumen de intervenciones</h2>

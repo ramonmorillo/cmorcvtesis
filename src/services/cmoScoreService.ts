@@ -152,6 +152,46 @@ export async function getCmoScoreByVisit(
   return { data: (data as CmoScoreRecord | null) ?? null, errorMessage: null };
 }
 
+export type CmoScoreHistoryEntry = CmoScoreRecord & {
+  visit_date: string | null;
+  scheduled_date: string | null;
+  visit_number: number | null;
+};
+
+/** Returns all CMO scores for a patient ordered newest first, with visit date context. */
+export async function listCmoScoresByPatient(
+  patientId: string,
+): Promise<{ data: CmoScoreHistoryEntry[]; errorMessage: string | null }> {
+  if (!supabase) {
+    return { data: [], errorMessage: 'Supabase no está configurado.' };
+  }
+
+  const { data, error } = await supabase
+    .from('cmo_scores')
+    .select(`${SCORE_SELECT},visits!inner(patient_id,visit_date,scheduled_date,visit_number)`)
+    .eq('visits.patient_id', patientId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    return { data: [], errorMessage: extractError(error) };
+  }
+
+  const rows = ((data ?? []) as Array<CmoScoreRecord & {
+    visits: { patient_id: string; visit_date: string | null; scheduled_date: string | null; visit_number: number | null } |
+            Array<{ patient_id: string; visit_date: string | null; scheduled_date: string | null; visit_number: number | null }>;
+  }>).map((r) => {
+    const v = Array.isArray(r.visits) ? r.visits[0] : r.visits;
+    return {
+      ...r,
+      visit_date: v?.visit_date ?? null,
+      scheduled_date: v?.scheduled_date ?? null,
+      visit_number: v?.visit_number ?? null,
+    };
+  });
+
+  return { data: rows as CmoScoreHistoryEntry[], errorMessage: null };
+}
+
 /** Returns the most recent saved CMO score across all visits for a patient. */
 export async function getLatestCmoScoreByPatient(
   patientId: string,
