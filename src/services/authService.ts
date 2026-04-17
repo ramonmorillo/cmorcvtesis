@@ -1,6 +1,16 @@
-import type { AuthError, Session, User } from '@supabase/supabase-js';
-
 import { supabase } from '../lib/supabase';
+
+export type User = {
+  id: string;
+  email?: string;
+};
+
+export type Session = {
+  access_token: string;
+  refresh_token: string;
+};
+
+export type AuthError = Error;
 
 export type AuthResult = {
   user: User | null;
@@ -20,8 +30,8 @@ export async function signInWithPassword(email: string, password: string): Promi
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   return {
-    user: data.user,
-    session: data.session,
+    user: (data?.user as User | null) ?? null,
+    session: (data?.session as Session | null) ?? null,
     error,
   };
 }
@@ -31,5 +41,6 @@ export async function signOut(): Promise<{ error: AuthError | null }> {
     return { error: null };
   }
 
-  return supabase.auth.signOut();
+  const { error } = await supabase.auth.signOut();
+  return { error };
 }
