@@ -5,6 +5,8 @@ import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { VISIT_STATUS_OPTIONS, type VisitStatus } from '../constants/enums';
 import { getLatestCmoScoreByPatient, listCmoScoresByPatient, type CmoScoreHistoryEntry, type CmoScoreRecord } from '../services/cmoScoreService';
+import { getVisitStatusLabel, getVisitTypeLabel } from '../constants/enums';
+import { getLatestClinicalAssessmentByPatient } from '../services/assessmentService';
 import { listInterventionsByPatient } from '../services/interventionService';
 import { getPatientById, type Patient } from '../services/patientService';
 import { listVisitsByPatient, updateVisit, type Visit } from '../services/visitService';
@@ -119,7 +121,7 @@ export function PatientDetailPage() {
               <li key={visit.id}>
                 <div>
                   <strong>{visit.visit_date ?? visit.scheduled_date ?? '-'}</strong>
-                  <span>{visit.visit_type || 'Sin tipo'}</span>
+                  <span>{getVisitTypeLabel(visit.visit_type)}</span>
                 </div>
                 <div className="actions-inline" style={{ alignItems: 'center' }}>
                   <select
@@ -132,6 +134,8 @@ export function PatientDetailPage() {
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
                   </select>
+                <p>Estado: {getVisitStatusLabel(visit.visit_status)}</p>
+                <div className="actions-inline">
                   <Link to={`/visits/${visit.id}/stratification`}>Evaluación clínica</Link>
                   <Link to={`/visits/${visit.id}/interventions`}>Intervenciones</Link>
                 </div>

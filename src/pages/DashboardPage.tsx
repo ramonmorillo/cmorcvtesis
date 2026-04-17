@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
+import { getVisitTypeLabel } from '../constants/enums';
 import { loadDashboardData, type DashboardData } from '../services/dashboardService';
 
 export function DashboardPage() {
@@ -57,8 +58,8 @@ export function DashboardPage() {
             {data.upcomingVisits.map((visit) => (
               <li key={visit.id}>
                 <span>{visit.scheduled_date ?? '-'}</span>
-                <span>{visit.visit_type ?? '-'}</span>
-                <Link to={`/patients/${visit.patient_id}`}>{visit.study_code ?? 'Paciente'}</Link>
+                <span>{getVisitTypeLabel(visit.visit_type)}</span>
+                <Link to={`/patients/${visit.patient_id}`}>Paciente</Link>
               </li>
             ))}
           </ul>
@@ -80,6 +81,15 @@ export function DashboardPage() {
             ))}
           </ul>
         )}
+        <ul className="simple-list">
+          {data.recentVisits.map((visit) => (
+            <li key={visit.id}>
+              <span>{visit.visit_date ?? '-'}</span>
+              <span>{getVisitTypeLabel(visit.visit_type)}</span>
+              <Link to={`/patients/${visit.patient_id}`}>Paciente</Link>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section className="card">

@@ -8,22 +8,37 @@ export const SEX_TYPE_OPTIONS = [
 export type SexType = (typeof SEX_TYPE_OPTIONS)[number]['value'];
 
 export const VISIT_TYPE_OPTIONS = [
-  { value: 'basal', label: 'Basal' },
-  { value: 'seguimiento', label: 'Seguimiento' },
-  { value: 'extraordinaria', label: 'Extraordinaria' },
+  { value: 'baseline', label: 'Basal' },
+  { value: 'follow_up', label: 'Seguimiento' },
+  { value: 'extraordinary', label: 'Extraordinaria' },
 ] as const;
 
 export type VisitType = (typeof VISIT_TYPE_OPTIONS)[number]['value'];
 
-// Valores internos normalizados para visit_status_enum según el código existente en el proyecto.
+export function getVisitTypeLabel(visitType: VisitType | string | null): string {
+  if (!visitType) {
+    return '-';
+  }
+
+  return VISIT_TYPE_OPTIONS.find((option) => option.value === visitType)?.label ?? visitType;
+}
+
+// Valores del enum de BD (en inglés) con etiquetas de UI en español.
 export const VISIT_STATUS_OPTIONS = [
-  { value: 'programada',    label: 'Programada' },
-  { value: 'realizada',     label: 'Realizada' },
-  { value: 'cancelada',     label: 'Cancelada' },
-  { value: 'no_presentada', label: 'No presentada' },
+  { value: 'scheduled', label: 'Programada' },
+  { value: 'completed', label: 'Completada' },
+  { value: 'cancelled', label: 'Cancelada' },
 ] as const;
 
 export type VisitStatus = (typeof VISIT_STATUS_OPTIONS)[number]['value'];
+
+export function getVisitStatusLabel(status: VisitStatus | null): string {
+  if (!status) {
+    return '-';
+  }
+
+  return VISIT_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
+}
 
 export const SMOKER_STATUS_OPTIONS = [
   { value: 'si', label: 'Sí' },

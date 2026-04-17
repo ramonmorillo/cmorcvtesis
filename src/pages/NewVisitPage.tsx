@@ -18,11 +18,11 @@ export function NewVisitPage() {
     extraordinary_reason: string;
     notes: string;
   }>({
-    visit_type: 'seguimiento',
+    visit_type: 'follow_up',
     visit_number: '',
     scheduled_date: '',
     visit_date: '',
-    visit_status: 'programada',
+    visit_status: 'scheduled',
     extraordinary_reason: '',
     notes: '',
   });
@@ -41,7 +41,7 @@ export function NewVisitPage() {
       scheduled_date: form.scheduled_date || null,
       visit_date: form.visit_date || null,
       visit_status: form.visit_status || null,
-      extraordinary_reason: form.visit_type === 'extraordinaria' ? form.extraordinary_reason || null : null,
+      extraordinary_reason: form.visit_type === 'extraordinary' ? form.extraordinary_reason || null : null,
       notes: form.notes || null,
     });
 
@@ -102,7 +102,7 @@ export function NewVisitPage() {
               ))}
             </select>
           </label>
-          {form.visit_type === 'extraordinaria' ? (
+          {form.visit_type === 'extraordinary' ? (
             <label>
               Motivo extraordinaria
               <input
