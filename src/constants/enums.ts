@@ -8,12 +8,20 @@ export const SEX_TYPE_OPTIONS = [
 export type SexType = (typeof SEX_TYPE_OPTIONS)[number]['value'];
 
 export const VISIT_TYPE_OPTIONS = [
-  { value: 'basal', label: 'Basal' },
-  { value: 'seguimiento', label: 'Seguimiento' },
-  { value: 'extraordinaria', label: 'Extraordinaria' },
+  { value: 'baseline', label: 'Basal' },
+  { value: 'follow_up', label: 'Seguimiento' },
+  { value: 'extraordinary', label: 'Extraordinaria' },
 ] as const;
 
 export type VisitType = (typeof VISIT_TYPE_OPTIONS)[number]['value'];
+
+export function getVisitTypeLabel(type: string | null): string {
+  if (!type) {
+    return '-';
+  }
+
+  return VISIT_TYPE_OPTIONS.find((option) => option.value === type)?.label ?? type;
+}
 
 // Valores del enum de BD (en inglés) con etiquetas de UI en español.
 export const VISIT_STATUS_OPTIONS = [
