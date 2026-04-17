@@ -6,11 +6,17 @@ import { createPatient } from '../services/patientService';
 
 export function NewPatientPage() {
   const navigate = useNavigate();
-  const [patientCode, setPatientCode] = useState('');
-  const [sex, setSex] = useState('');
-  const [birthYear, setBirthYear] = useState('');
-  const [inclusionDate, setInclusionDate] = useState('');
-  const [notes, setNotes] = useState('');
+  const [form, setForm] = useState({
+    study_code: '',
+    pharmacy_site: '',
+    investigator_name: '',
+    inclusion_date: '',
+    screening_date: '',
+    birth_date: '',
+    age_at_inclusion: '',
+    sex: '',
+    consent_signed: false,
+  });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -20,11 +26,15 @@ export function NewPatientPage() {
     setErrorMessage(null);
 
     const result = await createPatient({
-      patient_code: patientCode,
-      sex: sex || null,
-      birth_year: birthYear ? Number(birthYear) : null,
-      inclusion_date: inclusionDate || null,
-      notes: notes || null,
+      study_code: form.study_code,
+      pharmacy_site: form.pharmacy_site || null,
+      investigator_name: form.investigator_name || null,
+      inclusion_date: form.inclusion_date || null,
+      screening_date: form.screening_date || null,
+      birth_date: form.birth_date || null,
+      age_at_inclusion: form.age_at_inclusion ? Number(form.age_at_inclusion) : null,
+      sex: form.sex || null,
+      consent_signed: form.consent_signed,
     });
 
     if (result.errorMessage) {
@@ -38,34 +48,66 @@ export function NewPatientPage() {
 
   return (
     <section className="card">
-      <h1>Nuevo paciente</h1>
-      <p className="help-text">Completa un registro mínimo del estudio. Ajusta columnas en el servicio si tu esquema difiere.</p>
+      <h1>Alta de paciente</h1>
       <form className="form-grid" onSubmit={handleSubmit}>
-        <label>
-          Código paciente
-          <input value={patientCode} onChange={(event) => setPatientCode(event.target.value)} required />
-        </label>
-        <label>
-          Sexo
-          <input value={sex} onChange={(event) => setSex(event.target.value)} placeholder="M/F/u otro" />
-        </label>
-        <label>
-          Año nacimiento
+        <div className="grid-2">
+          <label>
+            Study code
+            <input value={form.study_code} onChange={(e) => setForm((p) => ({ ...p, study_code: e.target.value }))} required />
+          </label>
+          <label>
+            Farmacia
+            <input value={form.pharmacy_site} onChange={(e) => setForm((p) => ({ ...p, pharmacy_site: e.target.value }))} />
+          </label>
+          <label>
+            Investigador/a
+            <input
+              value={form.investigator_name}
+              onChange={(e) => setForm((p) => ({ ...p, investigator_name: e.target.value }))}
+            />
+          </label>
+          <label>
+            Fecha inclusión
+            <input
+              type="date"
+              value={form.inclusion_date}
+              onChange={(e) => setForm((p) => ({ ...p, inclusion_date: e.target.value }))}
+            />
+          </label>
+          <label>
+            Fecha screening
+            <input
+              type="date"
+              value={form.screening_date}
+              onChange={(e) => setForm((p) => ({ ...p, screening_date: e.target.value }))}
+            />
+          </label>
+          <label>
+            Fecha nacimiento
+            <input type="date" value={form.birth_date} onChange={(e) => setForm((p) => ({ ...p, birth_date: e.target.value }))} />
+          </label>
+          <label>
+            Edad inclusión
+            <input
+              type="number"
+              value={form.age_at_inclusion}
+              onChange={(e) => setForm((p) => ({ ...p, age_at_inclusion: e.target.value }))}
+              min={18}
+              max={120}
+            />
+          </label>
+          <label>
+            Sexo
+            <input value={form.sex} onChange={(e) => setForm((p) => ({ ...p, sex: e.target.value }))} />
+          </label>
+        </div>
+        <label className="checkbox-row">
           <input
-            type="number"
-            value={birthYear}
-            onChange={(event) => setBirthYear(event.target.value)}
-            min={1900}
-            max={new Date().getFullYear()}
+            type="checkbox"
+            checked={form.consent_signed}
+            onChange={(e) => setForm((p) => ({ ...p, consent_signed: e.target.checked }))}
           />
-        </label>
-        <label>
-          Fecha inclusión
-          <input type="date" value={inclusionDate} onChange={(event) => setInclusionDate(event.target.value)} />
-        </label>
-        <label>
-          Notas
-          <textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} />
+          Consentimiento firmado
         </label>
         <button type="submit" disabled={saving}>
           {saving ? 'Guardando...' : 'Guardar paciente'}

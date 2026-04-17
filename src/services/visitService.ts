@@ -3,13 +3,19 @@ import { supabase } from '../lib/supabase';
 export type Visit = {
   id: string;
   patient_id: string;
-  visit_date: string;
-  visit_type: string | null;
+  visit_type: 'basal' | 'seguimiento' | 'extraordinaria' | string;
+  visit_number: number | null;
+  scheduled_date: string | null;
+  visit_date: string | null;
+  visit_status: string | null;
+  extraordinary_reason: string | null;
   notes: string | null;
+  created_by: string | null;
   created_at?: string;
+  updated_at?: string;
 };
 
-export type NewVisitInput = Omit<Visit, 'id' | 'created_at'>;
+export type NewVisitInput = Omit<Visit, 'id' | 'created_at' | 'updated_at'>;
 
 function extractErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
@@ -17,6 +23,9 @@ function extractErrorMessage(error: unknown): string {
   }
   return 'Error desconocido al procesar visitas.';
 }
+
+const VISIT_SELECT =
+  'id,patient_id,visit_type,visit_number,scheduled_date,visit_date,visit_status,extraordinary_reason,notes,created_by,created_at,updated_at';
 
 export async function listVisitsByPatient(patientId: string): Promise<{ data: Visit[]; errorMessage: string | null }> {
   if (!supabase) {
@@ -26,18 +35,35 @@ export async function listVisitsByPatient(patientId: string): Promise<{ data: Vi
     };
   }
 
-  // Ajustar columnas aquí si la tabla real de visitas difiere.
   const { data, error } = await supabase
     .from('visits')
-    .select('id,patient_id,visit_date,visit_type,notes,created_at')
+    .select(VISIT_SELECT)
     .eq('patient_id', patientId)
-    .order('visit_date', { ascending: false });
+    .order('visit_date', { ascending: false, nullsFirst: false });
 
   if (error) {
     return { data: [], errorMessage: extractErrorMessage(error) };
   }
 
   return { data: (data ?? []) as Visit[], errorMessage: null };
+}
+
+
+export async function getVisitById(visitId: string): Promise<{ data: Visit | null; errorMessage: string | null }> {
+  if (!supabase) {
+    return {
+      data: null,
+      errorMessage: 'Supabase no está configurado. No se puede cargar la visita.',
+    };
+  }
+
+  const { data, error } = await supabase.from('visits').select(VISIT_SELECT).eq('id', visitId).maybeSingle();
+
+  if (error) {
+    return { data: null, errorMessage: extractErrorMessage(error) };
+  }
+
+  return { data: (data as Visit | null) ?? null, errorMessage: null };
 }
 
 export async function createVisit(input: NewVisitInput): Promise<{ data: Visit | null; errorMessage: string | null }> {
@@ -48,8 +74,7 @@ export async function createVisit(input: NewVisitInput): Promise<{ data: Visit |
     };
   }
 
-  // Ajustar payload aquí si el esquema de visitas tiene restricciones adicionales.
-  const { data, error } = await supabase.from('visits').insert(input).select().maybeSingle();
+  const { data, error } = await supabase.from('visits').insert(input).select(VISIT_SELECT).maybeSingle();
 
   if (error) {
     return { data: null, errorMessage: extractErrorMessage(error) };

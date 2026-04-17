@@ -7,9 +7,15 @@ import { createVisit } from '../services/visitService';
 export function NewVisitPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
-  const [visitDate, setVisitDate] = useState('');
-  const [visitType, setVisitType] = useState('');
-  const [notes, setNotes] = useState('');
+  const [form, setForm] = useState({
+    visit_type: 'seguimiento',
+    visit_number: '',
+    scheduled_date: '',
+    visit_date: '',
+    visit_status: 'programada',
+    extraordinary_reason: '',
+    notes: '',
+  });
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -20,43 +26,79 @@ export function NewVisitPage() {
 
     const result = await createVisit({
       patient_id: id,
-      visit_date: visitDate,
-      visit_type: visitType || null,
-      notes: notes || null,
+      visit_type: form.visit_type,
+      visit_number: form.visit_number ? Number(form.visit_number) : null,
+      scheduled_date: form.scheduled_date || null,
+      visit_date: form.visit_date || null,
+      visit_status: form.visit_status || null,
+      extraordinary_reason: form.visit_type === 'extraordinaria' ? form.extraordinary_reason || null : null,
+      notes: form.notes || null,
+      created_by: null,
     });
 
-    if (result.errorMessage) {
-      setErrorMessage(result.errorMessage);
+    if (result.errorMessage || !result.data) {
+      setErrorMessage(result.errorMessage ?? 'No se recibió la visita creada.');
       setSaving(false);
       return;
     }
 
-    navigate(`/patients/${id}`);
+    navigate(`/visits/${result.data.id}/stratification`);
   };
 
   return (
     <section className="card">
       <h1>Nueva visita</h1>
-      <p className="help-text">
-        Registro mínimo de seguimiento. Si tu esquema usa otros campos obligatorios, adáptalo en{' '}
-        <code>src/services/visitService.ts</code>.
-      </p>
       <form className="form-grid" onSubmit={handleSubmit}>
-        <label>
-          Fecha visita
-          <input type="date" value={visitDate} onChange={(event) => setVisitDate(event.target.value)} required />
-        </label>
-        <label>
-          Tipo de visita
-          <input value={visitType} onChange={(event) => setVisitType(event.target.value)} placeholder="Inicial / Control" />
-        </label>
+        <div className="grid-2">
+          <label>
+            Tipo de visita
+            <select value={form.visit_type} onChange={(e) => setForm((p) => ({ ...p, visit_type: e.target.value }))}>
+              <option value="basal">basal</option>
+              <option value="seguimiento">seguimiento</option>
+              <option value="extraordinaria">extraordinaria</option>
+            </select>
+          </label>
+          <label>
+            Número de visita
+            <input
+              type="number"
+              value={form.visit_number}
+              onChange={(e) => setForm((p) => ({ ...p, visit_number: e.target.value }))}
+            />
+          </label>
+          <label>
+            Fecha programada
+            <input
+              type="date"
+              value={form.scheduled_date}
+              onChange={(e) => setForm((p) => ({ ...p, scheduled_date: e.target.value }))}
+            />
+          </label>
+          <label>
+            Fecha de visita
+            <input type="date" value={form.visit_date} onChange={(e) => setForm((p) => ({ ...p, visit_date: e.target.value }))} />
+          </label>
+          <label>
+            Estado visita
+            <input value={form.visit_status} onChange={(e) => setForm((p) => ({ ...p, visit_status: e.target.value }))} />
+          </label>
+          {form.visit_type === 'extraordinaria' ? (
+            <label>
+              Motivo extraordinaria
+              <input
+                value={form.extraordinary_reason}
+                onChange={(e) => setForm((p) => ({ ...p, extraordinary_reason: e.target.value }))}
+              />
+            </label>
+          ) : null}
+        </div>
         <label>
           Notas
-          <textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} />
+          <textarea rows={4} value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} />
         </label>
         <div className="actions-inline">
           <button type="submit" disabled={saving}>
-            {saving ? 'Guardando...' : 'Guardar visita'}
+            {saving ? 'Guardando...' : 'Guardar visita y continuar'}
           </button>
           <Link to={`/patients/${id}`}>Cancelar</Link>
         </div>

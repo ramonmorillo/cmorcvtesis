@@ -29,7 +29,7 @@ export function LoginPage() {
       }
 
       if (session) {
-        navigate('/patients', { replace: true });
+        navigate('/dashboard', { replace: true });
         return;
       }
 
@@ -42,7 +42,7 @@ export function LoginPage() {
       }
 
       if (event === 'SIGNED_IN' && session) {
-        navigate('/patients', { replace: true });
+        navigate('/dashboard', { replace: true });
       }
     });
 
@@ -67,7 +67,7 @@ export function LoginPage() {
       return;
     }
 
-    navigate('/patients', { replace: true });
+    navigate('/dashboard', { replace: true });
   };
 
   return (
