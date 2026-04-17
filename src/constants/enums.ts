@@ -15,12 +15,12 @@ export const VISIT_TYPE_OPTIONS = [
 
 export type VisitType = (typeof VISIT_TYPE_OPTIONS)[number]['value'];
 
-export function getVisitTypeLabel(type: string | null): string {
-  if (!type) {
+export function getVisitTypeLabel(visitType: VisitType | string | null): string {
+  if (!visitType) {
     return '-';
   }
 
-  return VISIT_TYPE_OPTIONS.find((option) => option.value === type)?.label ?? type;
+  return VISIT_TYPE_OPTIONS.find((option) => option.value === visitType)?.label ?? visitType;
 }
 
 // Valores del enum de BD (en inglés) con etiquetas de UI en español.
