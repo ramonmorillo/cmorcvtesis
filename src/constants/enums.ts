@@ -16,7 +16,12 @@ export const VISIT_TYPE_OPTIONS = [
 export type VisitType = (typeof VISIT_TYPE_OPTIONS)[number]['value'];
 
 // Valores internos normalizados para visit_status_enum según el código existente en el proyecto.
-export const VISIT_STATUS_OPTIONS = [{ value: 'programada', label: 'Programada' }] as const;
+export const VISIT_STATUS_OPTIONS = [
+  { value: 'programada',    label: 'Programada' },
+  { value: 'realizada',     label: 'Realizada' },
+  { value: 'cancelada',     label: 'Cancelada' },
+  { value: 'no_presentada', label: 'No presentada' },
+] as const;
 
 export type VisitStatus = (typeof VISIT_STATUS_OPTIONS)[number]['value'];
 

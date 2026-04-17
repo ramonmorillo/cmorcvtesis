@@ -75,7 +75,12 @@ export async function createPatient(input: NewPatientInput): Promise<{ data: Pat
     };
   }
 
-  const { data, error } = await supabase.from('patients').insert(input).select(PATIENT_SELECT).maybeSingle();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { data: null, errorMessage: 'Usuario no autenticado. Inicia sesión e inténtalo de nuevo.' };
+  }
+
+  const { data, error } = await supabase.from('patients').insert({ ...input, created_by: user.id }).select(PATIENT_SELECT).maybeSingle();
 
   if (error) {
     return { data: null, errorMessage: extractErrorMessage(error) };
