@@ -43,7 +43,6 @@ export function NewVisitPage() {
       visit_status: form.visit_status || null,
       extraordinary_reason: form.visit_type === 'extraordinaria' ? form.extraordinary_reason || null : null,
       notes: form.notes || null,
-      created_by: null,
     });
 
     if (result.errorMessage || !result.data) {

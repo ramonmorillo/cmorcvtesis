@@ -16,7 +16,7 @@ export type Visit = {
   updated_at?: string;
 };
 
-export type NewVisitInput = Omit<Visit, 'id' | 'created_at' | 'updated_at'>;
+export type NewVisitInput = Omit<Visit, 'id' | 'created_at' | 'updated_at' | 'created_by'>;
 
 function extractErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {

@@ -60,7 +60,12 @@ export async function listInterventionsByPatient(patientId: string) {
     return { data: [], errorMessage: extractErrorMessage(error) };
   }
 
-  const normalized = (data ?? []).map((item: any) => ({
+  type RawRow = Intervention & {
+    visits:
+      | { patient_id: string; visit_date: string | null }
+      | Array<{ patient_id: string; visit_date: string | null }>;
+  };
+  const normalized = ((data ?? []) as RawRow[]).map((item) => ({
     ...item,
     visits: Array.isArray(item.visits) ? item.visits[0] : item.visits,
   }));
