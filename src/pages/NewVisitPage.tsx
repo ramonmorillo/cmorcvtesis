@@ -22,7 +22,7 @@ export function NewVisitPage() {
     visit_number: '',
     scheduled_date: '',
     visit_date: '',
-    visit_status: 'programada',
+    visit_status: 'scheduled',
     extraordinary_reason: '',
     notes: '',
   });
