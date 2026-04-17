@@ -75,7 +75,16 @@ export async function createVisit(input: NewVisitInput): Promise<{ data: Visit |
     };
   }
 
-  const { data, error } = await supabase.from('visits').insert(input).select(VISIT_SELECT).maybeSingle();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { data: null, errorMessage: 'Usuario no autenticado. Inicia sesión e inténtalo de nuevo.' };
+  }
+
+  const { data, error } = await supabase
+    .from('visits')
+    .insert({ ...input, created_by: user.id })
+    .select(VISIT_SELECT)
+    .maybeSingle();
 
   if (error) {
     return { data: null, errorMessage: extractErrorMessage(error) };

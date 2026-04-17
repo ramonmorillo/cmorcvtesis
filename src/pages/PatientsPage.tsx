@@ -6,7 +6,14 @@ import { ErrorState } from '../components/common/ErrorState';
 import { listPatients, type Patient } from '../services/patientService';
 import { supabase } from '../lib/supabase';
 
-type PriorityMap = Record<string, string>;
+const LEVEL_META = {
+  1: { label: 'N1 · Prioridad',  color: '#dc2626' },
+  2: { label: 'N2 · Intermedio', color: '#d97706' },
+  3: { label: 'N3 · Basal',      color: '#16a34a' },
+} as const;
+
+type PriorityEntry = { score: number; priority: 1 | 2 | 3 };
+type PriorityMap = Record<string, PriorityEntry>;
 
 export function PatientsPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -24,16 +31,17 @@ export function PatientsPage() {
     if (supabase && result.data.length > 0) {
       const ids = result.data.map((p) => p.id);
       const { data } = await supabase
-        .from('clinical_assessments')
-        .select('cv_risk_level,visits!inner(patient_id,visit_date)')
+        .from('cmo_scores')
+        .select('score,priority,visits!inner(patient_id)')
         .in('visits.patient_id', ids)
         .order('created_at', { ascending: false });
 
       const map: PriorityMap = {};
-      for (const row of (data ?? []) as any[]) {
+      for (const row of (data ?? []) as Array<{ score: number; priority: number; visits: { patient_id: string } | Array<{ patient_id: string }> }>) {
         const patientId = Array.isArray(row.visits) ? row.visits[0]?.patient_id : row.visits?.patient_id;
-        if (patientId && !map[patientId]) {
-          map[patientId] = row.cv_risk_level ?? '-';
+        const p = Number(row.priority) as 1 | 2 | 3;
+        if (patientId && !map[patientId] && (p === 1 || p === 2 || p === 3)) {
+          map[patientId] = { score: row.score, priority: p };
         }
       }
       setPriorities(map);
@@ -98,7 +106,13 @@ export function PatientsPage() {
                 <td>{patient.sex || '-'}</td>
                 <td>{patient.age_at_inclusion ?? '-'}</td>
                 <td>{patient.inclusion_date || '-'}</td>
-                <td>{priorities[patient.id] || '-'}</td>
+                <td>
+                  {priorities[patient.id] ? (
+                    <span style={{ color: LEVEL_META[priorities[patient.id].priority].color, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      {priorities[patient.id].score} pts · {LEVEL_META[priorities[patient.id].priority].label}
+                    </span>
+                  ) : '-'}
+                </td>
                 <td>
                   <Link to={`/patients/${patient.id}`}>Abrir ficha</Link>
                 </td>
