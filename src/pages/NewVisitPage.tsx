@@ -1,13 +1,23 @@
 import { FormEvent, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
+import { VISIT_STATUS_OPTIONS, VISIT_TYPE_OPTIONS } from '../constants/enums';
+import type { VisitStatus, VisitType } from '../constants/enums';
 import { ErrorState } from '../components/common/ErrorState';
 import { createVisit } from '../services/visitService';
 
 export function NewVisitPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    visit_type: VisitType;
+    visit_number: string;
+    scheduled_date: string;
+    visit_date: string;
+    visit_status: VisitStatus;
+    extraordinary_reason: string;
+    notes: string;
+  }>({
     visit_type: 'seguimiento',
     visit_number: '',
     scheduled_date: '',
@@ -52,10 +62,12 @@ export function NewVisitPage() {
         <div className="grid-2">
           <label>
             Tipo de visita
-            <select value={form.visit_type} onChange={(e) => setForm((p) => ({ ...p, visit_type: e.target.value }))}>
-              <option value="basal">basal</option>
-              <option value="seguimiento">seguimiento</option>
-              <option value="extraordinaria">extraordinaria</option>
+            <select value={form.visit_type} onChange={(e) => setForm((p) => ({ ...p, visit_type: e.target.value as VisitType }))}>
+              {VISIT_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </label>
           <label>
@@ -80,7 +92,16 @@ export function NewVisitPage() {
           </label>
           <label>
             Estado visita
-            <input value={form.visit_status} onChange={(e) => setForm((p) => ({ ...p, visit_status: e.target.value }))} />
+            <select
+              value={form.visit_status}
+              onChange={(e) => setForm((p) => ({ ...p, visit_status: e.target.value as VisitStatus }))}
+            >
+              {VISIT_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
           {form.visit_type === 'extraordinaria' ? (
             <label>

@@ -1,12 +1,24 @@
 import { FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { SEX_TYPE_OPTIONS } from '../constants/enums';
+import type { SexType } from '../constants/enums';
 import { ErrorState } from '../components/common/ErrorState';
 import { createPatient } from '../services/patientService';
 
 export function NewPatientPage() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    study_code: string;
+    pharmacy_site: string;
+    investigator_name: string;
+    inclusion_date: string;
+    screening_date: string;
+    birth_date: string;
+    age_at_inclusion: string;
+    sex: SexType | '';
+    consent_signed: boolean;
+  }>({
     study_code: '',
     pharmacy_site: '',
     investigator_name: '',
@@ -98,14 +110,15 @@ export function NewPatientPage() {
           </label>
           <label>
             Sexo
-            <select value={form.sex} onChange={(e) => setForm((p) => ({ ...p, sex: e.target.value }))} required>
+            <select value={form.sex} onChange={(e) => setForm((p) => ({ ...p, sex: e.target.value as SexType }))} required>
               <option value="" disabled>
                 Selecciona una opción
               </option>
-              <option value="male">Varón</option>
-              <option value="female">Mujer</option>
-              <option value="other">Otro</option>
-              <option value="unknown">Desconocido</option>
+              {SEX_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </label>
         </div>

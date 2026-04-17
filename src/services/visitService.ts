@@ -1,13 +1,14 @@
 import { supabase } from '../lib/supabase';
+import type { VisitStatus, VisitType } from '../constants/enums';
 
 export type Visit = {
   id: string;
   patient_id: string;
-  visit_type: 'basal' | 'seguimiento' | 'extraordinaria' | string;
+  visit_type: VisitType;
   visit_number: number | null;
   scheduled_date: string | null;
   visit_date: string | null;
-  visit_status: string | null;
+  visit_status: VisitStatus | null;
   extraordinary_reason: string | null;
   notes: string | null;
   created_by: string | null;

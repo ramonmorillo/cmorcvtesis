@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import type { SmokerStatus } from '../constants/enums';
 
 export type ClinicalAssessment = {
   id: string;
@@ -18,7 +19,7 @@ export type ClinicalAssessment = {
   score2_value: number | null;
   framingham_value: number | null;
   cv_risk_level: string | null;
-  smoker_status: string | null;
+  smoker_status: SmokerStatus | null;
   alcohol_use: string | null;
   physical_activity_level: string | null;
   diet_score: number | null;
