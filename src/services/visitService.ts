@@ -92,3 +92,24 @@ export async function createVisit(input: NewVisitInput): Promise<{ data: Visit |
 
   return { data: (data as Visit | null) ?? null, errorMessage: null };
 }
+
+export type VisitUpdateInput = Partial<Pick<Visit, 'visit_date' | 'visit_status' | 'notes' | 'scheduled_date' | 'visit_number' | 'extraordinary_reason'>>;
+
+export async function updateVisit(visitId: string, updates: VisitUpdateInput): Promise<{ data: Visit | null; errorMessage: string | null }> {
+  if (!supabase) {
+    return { data: null, errorMessage: 'Supabase no está configurado. No se puede actualizar la visita.' };
+  }
+
+  const { data, error } = await supabase
+    .from('visits')
+    .update(updates)
+    .eq('id', visitId)
+    .select(VISIT_SELECT)
+    .maybeSingle();
+
+  if (error) {
+    return { data: null, errorMessage: extractErrorMessage(error) };
+  }
+
+  return { data: (data as Visit | null) ?? null, errorMessage: null };
+}

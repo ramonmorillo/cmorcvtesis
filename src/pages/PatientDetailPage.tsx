@@ -3,10 +3,11 @@ import { Link, useParams } from 'react-router-dom';
 
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
+import { VISIT_STATUS_OPTIONS, type VisitStatus } from '../constants/enums';
 import { getLatestCmoScoreByPatient, type CmoScoreRecord } from '../services/cmoScoreService';
 import { listInterventionsByPatient } from '../services/interventionService';
 import { getPatientById, type Patient } from '../services/patientService';
-import { listVisitsByPatient, type Visit } from '../services/visitService';
+import { listVisitsByPatient, updateVisit, type Visit } from '../services/visitService';
 
 const LEVEL_META = {
   1: { label: 'Nivel 1 · Prioridad',  color: '#dc2626', bg: '#fef2f2', border: '#fca5a5' },
@@ -51,6 +52,16 @@ export function PatientDetailPage() {
 
     void loadData();
   }, [id]);
+
+  const handleStatusChange = async (visitId: string, status: VisitStatus) => {
+    const updates = status === 'realizada'
+      ? { visit_status: status, visit_date: new Date().toISOString().slice(0, 10) }
+      : { visit_status: status };
+    const { data, errorMessage: err } = await updateVisit(visitId, updates);
+    if (!err && data) {
+      setVisits((prev) => prev.map((v) => v.id === visitId ? { ...v, ...data } : v));
+    }
+  };
 
   const latestVisitId = useMemo(() => visits[0]?.id, [visits]);
   const cmoMeta = latestCmoScore ? LEVEL_META[latestCmoScore.priority as 1 | 2 | 3] : null;
@@ -107,8 +118,17 @@ export function PatientDetailPage() {
                   <strong>{visit.visit_date ?? visit.scheduled_date ?? '-'}</strong>
                   <span>{visit.visit_type || 'Sin tipo'}</span>
                 </div>
-                <p>Estado: {visit.visit_status || '-'}</p>
-                <div className="actions-inline">
+                <div className="actions-inline" style={{ alignItems: 'center' }}>
+                  <select
+                    value={visit.visit_status ?? ''}
+                    onChange={(e) => void handleStatusChange(visit.id, e.target.value as VisitStatus)}
+                    style={{ fontSize: '0.85rem' }}
+                  >
+                    <option value="" disabled>Estado</option>
+                    {VISIT_STATUS_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
                   <Link to={`/visits/${visit.id}/stratification`}>Evaluación clínica</Link>
                   <Link to={`/visits/${visit.id}/interventions`}>Intervenciones</Link>
                 </div>

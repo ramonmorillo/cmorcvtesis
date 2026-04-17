@@ -76,41 +76,56 @@ before update on public.clinical_assessments
 for each row execute function public.set_updated_at();
 
 alter table public.clinical_assessments enable row level security;
+alter table public.clinical_assessments force row level security;
 
-create policy "clinical_assessments_select_own_visit"
+create policy clinical_assessments_select_scope
 on public.clinical_assessments for select
+to authenticated
 using (
   exists (
     select 1 from public.visits v
     where v.id = clinical_assessments.visit_id
-      and app_private.patient_is_owner(v.patient_id)
+      and app_private.can_read_patient(v.patient_id)
   )
 );
 
-create policy "clinical_assessments_insert_own_visit"
+create policy clinical_assessments_insert_scope
 on public.clinical_assessments for insert
+to authenticated
 with check (
   exists (
     select 1 from public.visits v
     where v.id = clinical_assessments.visit_id
-      and app_private.patient_is_owner(v.patient_id)
+      and app_private.can_write_patient(v.patient_id)
   )
 );
 
-create policy "clinical_assessments_update_own_visit"
+create policy clinical_assessments_update_scope
 on public.clinical_assessments for update
+to authenticated
 using (
   exists (
     select 1 from public.visits v
     where v.id = clinical_assessments.visit_id
-      and app_private.patient_is_owner(v.patient_id)
+      and app_private.can_write_patient(v.patient_id)
   )
 )
 with check (
   exists (
     select 1 from public.visits v
     where v.id = clinical_assessments.visit_id
-      and app_private.patient_is_owner(v.patient_id)
+      and app_private.can_write_patient(v.patient_id)
+  )
+);
+
+create policy clinical_assessments_delete_scope
+on public.clinical_assessments for delete
+to authenticated
+using (
+  exists (
+    select 1 from public.visits v
+    where v.id = clinical_assessments.visit_id
+      and app_private.can_write_patient(v.patient_id)
   )
 );
 
