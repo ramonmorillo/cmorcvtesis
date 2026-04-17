@@ -98,7 +98,15 @@ export function NewPatientPage() {
           </label>
           <label>
             Sexo
-            <input value={form.sex} onChange={(e) => setForm((p) => ({ ...p, sex: e.target.value }))} />
+            <select value={form.sex} onChange={(e) => setForm((p) => ({ ...p, sex: e.target.value }))} required>
+              <option value="" disabled>
+                Selecciona una opción
+              </option>
+              <option value="male">Varón</option>
+              <option value="female">Mujer</option>
+              <option value="other">Otro</option>
+              <option value="unknown">Desconocido</option>
+            </select>
           </label>
         </div>
         <label className="checkbox-row">
