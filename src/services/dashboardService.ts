@@ -15,9 +15,9 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
 
   const now = new Date().toISOString().slice(0, 10);
 
-  const [patientsRes, assessmentsRes, upcomingRes, visitsRes, interventionsRes] = await Promise.all([
+  const [patientsRes, scoresRes, upcomingRes, visitsRes, interventionsRes] = await Promise.all([
     supabase.from('patients').select('id', { count: 'exact', head: true }),
-    supabase.from('clinical_assessments').select('cv_risk_level'),
+    supabase.from('cmo_scores').select('priority'),
     supabase
       .from('visits')
       .select('id,patient_id,visit_type,scheduled_date')
@@ -37,17 +37,17 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
       .limit(8),
   ]);
 
-  const errors = [patientsRes.error, assessmentsRes.error, upcomingRes.error, visitsRes.error, interventionsRes.error].filter(Boolean);
+  const errors = [patientsRes.error, scoresRes.error, upcomingRes.error, visitsRes.error, interventionsRes.error].filter(Boolean);
 
   if (errors.length > 0) {
     return { data: null, errorMessage: errors[0]?.message ?? 'No se pudo cargar dashboard.' };
   }
 
   const priorities = { 1: 0, 2: 0, 3: 0 } as { 1: number; 2: number; 3: number };
-  for (const row of assessmentsRes.data ?? []) {
-    const raw = (row.cv_risk_level ?? '').toString().replace('prioridad_', '').trim();
-    if (raw === '1' || raw === '2' || raw === '3') {
-      priorities[Number(raw) as 1 | 2 | 3] += 1;
+  for (const row of scoresRes.data ?? []) {
+    const p = Number(row.priority) as 1 | 2 | 3;
+    if (p === 1 || p === 2 || p === 3) {
+      priorities[p] += 1;
     }
   }
 

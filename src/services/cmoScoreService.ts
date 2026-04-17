@@ -127,3 +127,50 @@ export async function upsertCmoScore(
 
   return { data: scoreData as CmoScoreRecord, errorMessage: null };
 }
+
+const SCORE_SELECT =
+  'id,visit_id,score,priority,factors,recommendations,calculated_by,created_at,updated_at';
+
+/** Returns the saved CMO score for a specific visit, or null if none exists yet. */
+export async function getCmoScoreByVisit(
+  visitId: string,
+): Promise<{ data: CmoScoreRecord | null; errorMessage: string | null }> {
+  if (!supabase) {
+    return { data: null, errorMessage: 'Supabase no está configurado.' };
+  }
+
+  const { data, error } = await supabase
+    .from('cmo_scores')
+    .select(SCORE_SELECT)
+    .eq('visit_id', visitId)
+    .maybeSingle();
+
+  if (error) {
+    return { data: null, errorMessage: extractError(error) };
+  }
+
+  return { data: (data as CmoScoreRecord | null) ?? null, errorMessage: null };
+}
+
+/** Returns the most recent saved CMO score across all visits for a patient. */
+export async function getLatestCmoScoreByPatient(
+  patientId: string,
+): Promise<{ data: CmoScoreRecord | null; errorMessage: string | null }> {
+  if (!supabase) {
+    return { data: null, errorMessage: 'Supabase no está configurado.' };
+  }
+
+  const { data, error } = await supabase
+    .from('cmo_scores')
+    .select(`${SCORE_SELECT},visits!inner(patient_id)`)
+    .eq('visits.patient_id', patientId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    return { data: null, errorMessage: extractError(error) };
+  }
+
+  return { data: (data as CmoScoreRecord | null) ?? null, errorMessage: null };
+}
