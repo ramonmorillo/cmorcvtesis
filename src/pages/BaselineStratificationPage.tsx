@@ -1,11 +1,15 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { SMOKER_STATUS_OPTIONS } from '../constants/enums';
 import type { SmokerStatus } from '../constants/enums';
 import { ErrorState } from '../components/common/ErrorState';
-import { getClinicalAssessmentByVisit, upsertClinicalAssessment, type NewClinicalAssessmentInput } from '../services/assessmentService';
-import { calculateStratification, getActiveCmoConfig, type StratificationResult } from '../services/stratificationService';
+import {
+  getClinicalAssessmentByVisit,
+  upsertClinicalAssessment,
+  type NewClinicalAssessmentInput,
+} from '../services/assessmentService';
+import { scoreCmo, type CmoLevel, type CmoScoringInput, type CmoScoringResult } from '../services/cmoScoringEngine';
 import { getVisitById } from '../services/visitService';
 
 function toNumber(value: string): number | null {
@@ -18,6 +22,36 @@ function toSmokerStatus(value: string): SmokerStatus | null {
   return value === 'si' || value === 'no' ? value : null;
 }
 
+function toSex(value: string): CmoScoringInput['sex'] {
+  if (value === 'male' || value === 'female' || value === 'other') return value;
+  return null;
+}
+
+const LEVEL_META: Record<CmoLevel, { label: string; color: string; bg: string; border: string }> = {
+  1: { label: 'Nivel 1 · Prioridad',  color: '#dc2626', bg: '#fef2f2', border: '#fca5a5' },
+  2: { label: 'Nivel 2 · Intermedio', color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+  3: { label: 'Nivel 3 · Basal',      color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
+};
+
+const NUMERIC_FIELDS: [string, string][] = [
+  ['systolic_bp',          'TA sistólica (mmHg)'],
+  ['diastolic_bp',         'TA diastólica (mmHg)'],
+  ['heart_rate',           'FC (lpm)'],
+  ['weight_kg',            'Peso (kg)'],
+  ['height_cm',            'Talla (cm)'],
+  ['bmi',                  'IMC (kg/m²)'],
+  ['waist_cm',             'Cintura (cm)'],
+  ['ldl_mg_dl',            'LDL (mg/dL)'],
+  ['hdl_mg_dl',            'HDL (mg/dL)'],
+  ['non_hdl_mg_dl',        'No-HDL (mg/dL)'],
+  ['fasting_glucose_mg_dl','Glucosa (mg/dL)'],
+  ['hba1c_pct',            'HbA1c (%)'],
+  ['score2_value',         'SCORE2 (%)'],
+  ['framingham_value',     'Framingham (%)'],
+  ['diet_score',           'Dieta (0–10)'],
+  ['adverse_events_count', 'Eventos adversos'],
+];
+
 export function BaselineStratificationPage() {
   const { visitId = '' } = useParams();
   const [visitPatientId, setVisitPatientId] = useState<string>('');
@@ -25,180 +59,213 @@ export function BaselineStratificationPage() {
   const [highRiskMedicationPresent, setHighRiskMedicationPresent] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [result, setResult] = useState<StratificationResult | null>(null);
-  const [configSource, setConfigSource] = useState('');
 
   useEffect(() => {
     async function loadCurrent() {
-      const [visitRes, assessmentRes, configRes] = await Promise.all([
+      const [visitRes, assessmentRes] = await Promise.all([
         getVisitById(visitId),
         getClinicalAssessmentByVisit(visitId),
-        getActiveCmoConfig(),
       ]);
 
       if (visitRes.data?.patient_id) setVisitPatientId(visitRes.data.patient_id);
-
-      if (assessmentRes.errorMessage) {
-        setErrorMessage(assessmentRes.errorMessage);
-      }
+      if (assessmentRes.errorMessage) setErrorMessage(assessmentRes.errorMessage);
 
       if (assessmentRes.data) {
-        const values = assessmentRes.data;
+        const v = assessmentRes.data;
         setForm({
-          systolic_bp: String(values.systolic_bp ?? ''),
-          diastolic_bp: String(values.diastolic_bp ?? ''),
-          heart_rate: String(values.heart_rate ?? ''),
-          weight_kg: String(values.weight_kg ?? ''),
-          height_cm: String(values.height_cm ?? ''),
-          bmi: String(values.bmi ?? ''),
-          waist_cm: String(values.waist_cm ?? ''),
-          ldl_mg_dl: String(values.ldl_mg_dl ?? ''),
-          hdl_mg_dl: String(values.hdl_mg_dl ?? ''),
-          non_hdl_mg_dl: String(values.non_hdl_mg_dl ?? ''),
-          fasting_glucose_mg_dl: String(values.fasting_glucose_mg_dl ?? ''),
-          hba1c_pct: String(values.hba1c_pct ?? ''),
-          score2_value: String(values.score2_value ?? ''),
-          framingham_value: String(values.framingham_value ?? ''),
-          smoker_status: values.smoker_status ?? '',
-          alcohol_use: values.alcohol_use ?? '',
-          physical_activity_level: values.physical_activity_level ?? '',
-          diet_score: String(values.diet_score ?? ''),
-          safety_incidents: values.safety_incidents ?? '',
-          adverse_events_count: String(values.adverse_events_count ?? ''),
+          systolic_bp:           String(v.systolic_bp ?? ''),
+          diastolic_bp:          String(v.diastolic_bp ?? ''),
+          heart_rate:            String(v.heart_rate ?? ''),
+          weight_kg:             String(v.weight_kg ?? ''),
+          height_cm:             String(v.height_cm ?? ''),
+          bmi:                   String(v.bmi ?? ''),
+          waist_cm:              String(v.waist_cm ?? ''),
+          ldl_mg_dl:             String(v.ldl_mg_dl ?? ''),
+          hdl_mg_dl:             String(v.hdl_mg_dl ?? ''),
+          non_hdl_mg_dl:         String(v.non_hdl_mg_dl ?? ''),
+          fasting_glucose_mg_dl: String(v.fasting_glucose_mg_dl ?? ''),
+          hba1c_pct:             String(v.hba1c_pct ?? ''),
+          score2_value:          String(v.score2_value ?? ''),
+          framingham_value:      String(v.framingham_value ?? ''),
+          smoker_status:         v.smoker_status ?? '',
+          sex:                   '',
+          physical_activity_level: v.physical_activity_level ?? '',
+          alcohol_use:           v.alcohol_use ?? '',
+          diet_score:            String(v.diet_score ?? ''),
+          safety_incidents:      v.safety_incidents ?? '',
+          adverse_events_count:  String(v.adverse_events_count ?? ''),
         });
-        setHighRiskMedicationPresent(Boolean(values.high_risk_medication_present));
-      }
-
-      setConfigSource(configRes.source);
-      if (assessmentRes.data) {
-        setResult(calculateStratification(assessmentRes.data, configRes.data));
+        setHighRiskMedicationPresent(Boolean(v.high_risk_medication_present));
       }
     }
-
     void loadCurrent();
   }, [visitId]);
 
-  const assessmentPayload = useMemo<NewClinicalAssessmentInput>(() => {
-    const weight = toNumber(form.weight_kg ?? '');
-    const heightCm = toNumber(form.height_cm ?? '');
-    const bmiValue = toNumber(form.bmi ?? '');
-    const computedBmi = !bmiValue && weight && heightCm ? Number((weight / (heightCm / 100) ** 2).toFixed(1)) : bmiValue;
+  const field = (name: string) => ({
+    value: form[name] ?? '',
+    onChange: (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+      setForm((prev: Record<string, string>) => ({ ...prev, [name]: e.target.value })),
+  });
 
-    return {
-      visit_id: visitId,
-      systolic_bp: toNumber(form.systolic_bp ?? ''),
-      diastolic_bp: toNumber(form.diastolic_bp ?? ''),
-      heart_rate: toNumber(form.heart_rate ?? ''),
-      weight_kg: weight,
-      height_cm: heightCm,
-      bmi: computedBmi,
-      waist_cm: toNumber(form.waist_cm ?? ''),
-      ldl_mg_dl: toNumber(form.ldl_mg_dl ?? ''),
-      hdl_mg_dl: toNumber(form.hdl_mg_dl ?? ''),
-      non_hdl_mg_dl: toNumber(form.non_hdl_mg_dl ?? ''),
-      fasting_glucose_mg_dl: toNumber(form.fasting_glucose_mg_dl ?? ''),
-      hba1c_pct: toNumber(form.hba1c_pct ?? ''),
-      score2_value: toNumber(form.score2_value ?? ''),
-      framingham_value: toNumber(form.framingham_value ?? ''),
-      cv_risk_level: result ? String(result.priorityLevel) : null,
-      smoker_status: toSmokerStatus(form.smoker_status ?? ''),
-      alcohol_use: form.alcohol_use || null,
-      physical_activity_level: form.physical_activity_level || null,
-      diet_score: toNumber(form.diet_score ?? ''),
-      safety_incidents: form.safety_incidents || null,
-      adverse_events_count: toNumber(form.adverse_events_count ?? ''),
-      high_risk_medication_present: highRiskMedicationPresent,
-    };
-  }, [form, highRiskMedicationPresent, result, visitId]);
+  // Derived BMI (when weight + height given but BMI not manually entered).
+  const computedBmi = useMemo<number | null>(() => {
+    const bmiVal = toNumber(form.bmi ?? '');
+    if (bmiVal) return bmiVal;
+    const w = toNumber(form.weight_kg ?? '');
+    const h = toNumber(form.height_cm ?? '');
+    return w && h ? Number((w / (h / 100) ** 2).toFixed(1)) : null;
+  }, [form.bmi, form.weight_kg, form.height_cm]);
+
+  // Build scoring input from live form state — used for every render.
+  const cmoInput = useMemo<CmoScoringInput>(() => ({
+    score2:               toNumber(form.score2_value ?? ''),
+    framingham:           toNumber(form.framingham_value ?? ''),
+    systolicBp:           toNumber(form.systolic_bp ?? ''),
+    ldl:                  toNumber(form.ldl_mg_dl ?? ''),
+    hba1c:                toNumber(form.hba1c_pct ?? ''),
+    bmi:                  computedBmi,
+    waistCm:              toNumber(form.waist_cm ?? ''),
+    sex:                  toSex(form.sex ?? ''),
+    smoker:               form.smoker_status === 'si' ? true : form.smoker_status === 'no' ? false : null,
+    physicalActivityLevel: form.physical_activity_level || null,
+    dietScore:            toNumber(form.diet_score ?? ''),
+    highRiskMedication:   highRiskMedicationPresent,
+    adverseEventsCount:   toNumber(form.adverse_events_count ?? ''),
+  }), [form, computedBmi, highRiskMedicationPresent]);
+
+  const cmoResult: CmoScoringResult = useMemo(() => scoreCmo(cmoInput), [cmoInput]);
+  const meta = LEVEL_META[cmoResult.level];
+
+  // Payload for DB persistence — cv_risk_level always reflects the live score.
+  const assessmentPayload = useMemo<NewClinicalAssessmentInput>(() => ({
+    visit_id:                  visitId,
+    systolic_bp:               toNumber(form.systolic_bp ?? ''),
+    diastolic_bp:              toNumber(form.diastolic_bp ?? ''),
+    heart_rate:                toNumber(form.heart_rate ?? ''),
+    weight_kg:                 toNumber(form.weight_kg ?? ''),
+    height_cm:                 toNumber(form.height_cm ?? ''),
+    bmi:                       computedBmi,
+    waist_cm:                  toNumber(form.waist_cm ?? ''),
+    ldl_mg_dl:                 toNumber(form.ldl_mg_dl ?? ''),
+    hdl_mg_dl:                 toNumber(form.hdl_mg_dl ?? ''),
+    non_hdl_mg_dl:             toNumber(form.non_hdl_mg_dl ?? ''),
+    fasting_glucose_mg_dl:     toNumber(form.fasting_glucose_mg_dl ?? ''),
+    hba1c_pct:                 toNumber(form.hba1c_pct ?? ''),
+    score2_value:              toNumber(form.score2_value ?? ''),
+    framingham_value:          toNumber(form.framingham_value ?? ''),
+    cv_risk_level:             String(cmoResult.level),
+    smoker_status:             toSmokerStatus(form.smoker_status ?? ''),
+    alcohol_use:               form.alcohol_use || null,
+    physical_activity_level:   form.physical_activity_level || null,
+    diet_score:                toNumber(form.diet_score ?? ''),
+    safety_incidents:          form.safety_incidents || null,
+    adverse_events_count:      toNumber(form.adverse_events_count ?? ''),
+    high_risk_medication_present: highRiskMedicationPresent,
+  }), [form, computedBmi, cmoResult.level, highRiskMedicationPresent, visitId]);
 
   const handleSave = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
     setErrorMessage(null);
-
-    const configResult = await getActiveCmoConfig();
-    const calculated = calculateStratification(assessmentPayload, configResult.data);
-    const finalPayload = { ...assessmentPayload, cv_risk_level: String(calculated.priorityLevel) };
-
-    const saveResult = await upsertClinicalAssessment(finalPayload);
-    if (saveResult.errorMessage) {
-      setErrorMessage(saveResult.errorMessage);
-      setSaving(false);
-      return;
-    }
-
-    setResult(calculated);
+    const { errorMessage: err } = await upsertClinicalAssessment(assessmentPayload);
+    if (err) setErrorMessage(err);
     setSaving(false);
   };
+
+  const hasFormData =
+    (Object.values(form) as string[]).some((v) => v.trim() !== '') || highRiskMedicationPresent;
 
   return (
     <div className="page-stack">
       <section className="card">
         <h1>Estratificación basal</h1>
-        <p className="help-text">Config fuente: {configSource || 'cargando...'} · cálculo transparente basado en cmo_config.config_json.</p>
+
+        {/* ── Live score banner ─────────────────────────────────────── */}
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', gap: '1rem',
+            padding: '0.65rem 1rem', borderRadius: '8px', marginBottom: '1rem',
+            background: meta.bg, border: `1px solid ${meta.border}`,
+          }}
+        >
+          <span
+            style={{
+              fontSize: '2rem', fontWeight: 700, lineHeight: 1,
+              minWidth: '2.5ch', textAlign: 'center', color: meta.color,
+            }}
+          >
+            {cmoResult.totalScore}
+          </span>
+          <div>
+            <div style={{ fontWeight: 700, color: meta.color }}>{meta.label}</div>
+            <div className="help-text" style={{ fontSize: '0.8rem', marginTop: '0.1rem' }}>
+              puntos CMO-RCV · actualizado en tiempo real
+            </div>
+          </div>
+        </div>
+
         <form className="form-grid" onSubmit={handleSave}>
-          <div className="grid-2">
-            {[
-              ['systolic_bp', 'TA sistólica'],
-              ['diastolic_bp', 'TA diastólica'],
-              ['heart_rate', 'FC'],
-              ['weight_kg', 'Peso (kg)'],
-              ['height_cm', 'Talla (cm)'],
-              ['bmi', 'IMC'],
-              ['waist_cm', 'Cintura (cm)'],
-              ['ldl_mg_dl', 'LDL'],
-              ['hdl_mg_dl', 'HDL'],
-              ['non_hdl_mg_dl', 'No-HDL'],
-              ['fasting_glucose_mg_dl', 'Glucosa'],
-              ['hba1c_pct', 'HbA1c'],
-              ['score2_value', 'SCORE2'],
-              ['framingham_value', 'Framingham'],
-              ['diet_score', 'Diet score'],
-              ['adverse_events_count', 'Eventos adversos'],
-            ].map(([name, label]) => (
-              <label key={name}>
-                {label}
-                <input
-                  value={form[name] ?? ''}
-                  onChange={(event) => setForm((prev) => ({ ...prev, [name]: event.target.value }))}
-                  inputMode="decimal"
-                />
-              </label>
-            ))}
+          {/* ── Clinical parameters ──────────────────────────────────── */}
+          <div>
+            <p className="help-text" style={{ fontSize: '0.8rem', marginBottom: '0.5rem', fontWeight: 600 }}>
+              PARÁMETROS CLÍNICOS
+            </p>
+            <div className="grid-2">
+              {NUMERIC_FIELDS.map(([name, label]) => (
+                <label key={name}>
+                  {label}
+                  <input {...field(name)} inputMode="decimal" />
+                </label>
+              ))}
+            </div>
           </div>
 
-          <div className="grid-2">
-            <label>
-              Tabaquismo
-              <select value={form.smoker_status ?? ''} onChange={(e) => setForm((p) => ({ ...p, smoker_status: e.target.value }))}>
-                <option value="">Seleccionar</option>
-                {SMOKER_STATUS_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Alcohol
-              <input value={form.alcohol_use ?? ''} onChange={(e) => setForm((p) => ({ ...p, alcohol_use: e.target.value }))} />
-            </label>
-            <label>
-              Actividad física
-              <input
-                value={form.physical_activity_level ?? ''}
-                onChange={(e) => setForm((p) => ({ ...p, physical_activity_level: e.target.value }))}
-                placeholder="alta/media/baja"
-              />
-            </label>
-            <label>
-              Incidentes de seguridad
-              <textarea
-                rows={3}
-                value={form.safety_incidents ?? ''}
-                onChange={(e) => setForm((p) => ({ ...p, safety_incidents: e.target.value }))}
-              />
-            </label>
+          {/* ── Contextual / behavioural factors ────────────────────── */}
+          <div>
+            <p className="help-text" style={{ fontSize: '0.8rem', marginBottom: '0.5rem', fontWeight: 600 }}>
+              FACTORES CONTEXTUALES
+            </p>
+            <div className="grid-2">
+              <label>
+                Sexo biológico
+                <select {...field('sex')}>
+                  <option value="">Sin especificar</option>
+                  <option value="male">Varón</option>
+                  <option value="female">Mujer</option>
+                  <option value="other">Otro</option>
+                </select>
+              </label>
+
+              <label>
+                Tabaquismo
+                <select {...field('smoker_status')}>
+                  <option value="">Seleccionar</option>
+                  {SMOKER_STATUS_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Actividad física
+                <select {...field('physical_activity_level')}>
+                  <option value="">Sin especificar</option>
+                  <option value="alta">Alta</option>
+                  <option value="moderada">Moderada</option>
+                  <option value="baja">Baja</option>
+                </select>
+              </label>
+
+              <label>
+                Alcohol
+                <input {...field('alcohol_use')} />
+              </label>
+
+              <label>
+                Incidentes de seguridad
+                <textarea rows={3} {...field('safety_incidents')} />
+              </label>
+            </div>
           </div>
 
           <label className="checkbox-row">
@@ -210,36 +277,41 @@ export function BaselineStratificationPage() {
             Medicación de alto riesgo presente
           </label>
 
-          <button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Guardar evaluación y recalcular prioridad'}</button>
+          <button type="submit" disabled={saving}>
+            {saving ? 'Guardando...' : 'Guardar evaluación'}
+          </button>
         </form>
-        {errorMessage ? <ErrorState title="No se pudo guardar evaluación" message={errorMessage} /> : null}
+
+        {errorMessage ? (
+          <ErrorState title="No se pudo guardar evaluación" message={errorMessage} />
+        ) : null}
       </section>
 
-      {result ? (
+      {/* ── Scoring breakdown ─────────────────────────────────────────── */}
+      {hasFormData ? (
         <section className="card">
-          <h2>Resultado de estratificación</h2>
-          <p>
-            <strong>Puntuación total:</strong> {result.totalScore} · <strong>Prioridad:</strong> {result.priorityLevel}
-          </p>
-          <ul className="simple-list">
-            {result.contributions.map((item) => (
-              <li key={item.key}>
-                <span>{item.reason}</span>
-                <strong>+{item.value}</strong>
-              </li>
-            ))}
-          </ul>
-          <h3>Intervenciones recomendadas (prioridad {result.priorityLevel})</h3>
-          <ul>
-            {result.recommendedInterventions.map((it) => (
-              <li key={it}>{it}</li>
-            ))}
-          </ul>
-          <div className="actions-inline">
+          <h2 style={{ marginBottom: '0.75rem' }}>Factores contribuyentes</h2>
+
+          {cmoResult.triggeredVariables.length === 0 ? (
+            <p className="help-text">Ningún factor activo con los datos introducidos.</p>
+          ) : (
+            <ul className="simple-list">
+              {cmoResult.triggeredVariables.map((v) => (
+                <li key={v.code}>
+                  <span>{v.rationale}</span>
+                  <strong style={{ color: meta.color }}>+{v.points}</strong>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="actions-inline" style={{ marginTop: '1rem' }}>
             <Link className="button-link" to={`/visits/${visitId}/interventions`}>
               Registrar intervenciones
             </Link>
-            {visitPatientId ? <Link to={`/patients/${visitPatientId}`}>Volver a paciente</Link> : null}
+            {visitPatientId ? (
+              <Link to={`/patients/${visitPatientId}`}>Volver a paciente</Link>
+            ) : null}
           </div>
         </section>
       ) : null}
