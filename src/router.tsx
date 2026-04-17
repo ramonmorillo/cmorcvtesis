@@ -9,6 +9,10 @@ import { PatientsPage } from './pages/PatientsPage';
 
 export const router = createBrowserRouter([
   {
+    path: '/',
+    element: <Navigate to="/login" replace />,
+  },
+  {
     path: '/login',
     element: <LoginPage />,
   },
@@ -16,11 +20,14 @@ export const router = createBrowserRouter([
     path: '/',
     element: <AppShell />,
     children: [
-      { index: true, element: <Navigate to="/patients" replace /> },
       { path: '/patients', element: <PatientsPage /> },
       { path: '/patients/new', element: <NewPatientPage /> },
       { path: '/patients/:id', element: <PatientDetailPage /> },
       { path: '/patients/:id/visits/new', element: <NewVisitPage /> },
     ],
+  },
+  {
+    path: '*',
+    element: <Navigate to="/login" replace />,
   },
 ]);
