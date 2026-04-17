@@ -6,7 +6,6 @@ import { ErrorState } from '../components/common/ErrorState';
 import { VISIT_STATUS_OPTIONS, type VisitStatus } from '../constants/enums';
 import { getLatestCmoScoreByPatient, listCmoScoresByPatient, type CmoScoreHistoryEntry, type CmoScoreRecord } from '../services/cmoScoreService';
 import { getVisitStatusLabel, getVisitTypeLabel } from '../constants/enums';
-import { getLatestClinicalAssessmentByPatient } from '../services/assessmentService';
 import { listInterventionsByPatient } from '../services/interventionService';
 import { getPatientById, type Patient } from '../services/patientService';
 import { listVisitsByPatient, updateVisit, type Visit } from '../services/visitService';
@@ -59,7 +58,7 @@ export function PatientDetailPage() {
   }, [id]);
 
   const handleStatusChange = async (visitId: string, status: VisitStatus) => {
-    const updates = status === 'realizada'
+    const updates = status === 'completed'
       ? { visit_status: status, visit_date: new Date().toISOString().slice(0, 10) }
       : { visit_status: status };
     const { data, errorMessage: err } = await updateVisit(visitId, updates);
@@ -134,10 +133,11 @@ export function PatientDetailPage() {
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
                   </select>
-                <p>Estado: {getVisitStatusLabel(visit.visit_status)}</p>
-                <div className="actions-inline">
-                  <Link to={`/visits/${visit.id}/stratification`}>Evaluación clínica</Link>
-                  <Link to={`/visits/${visit.id}/interventions`}>Intervenciones</Link>
+                  <p>Estado: {getVisitStatusLabel(visit.visit_status)}</p>
+                  <div className="actions-inline">
+                    <Link to={`/visits/${visit.id}/stratification`}>Evaluación clínica</Link>
+                    <Link to={`/visits/${visit.id}/interventions`}>Intervenciones</Link>
+                  </div>
                 </div>
               </li>
             ))}
