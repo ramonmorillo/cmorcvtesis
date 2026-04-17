@@ -10,6 +10,7 @@ import {
   type NewClinicalAssessmentInput,
 } from '../services/assessmentService';
 import { scoreCmo, type CmoLevel, type CmoScoringInput, type CmoScoringResult } from '../services/cmoScoringEngine';
+import { upsertCmoScore } from '../services/cmoScoreService';
 import { getVisitById } from '../services/visitService';
 
 function toNumber(value: string): number | null {
@@ -59,6 +60,7 @@ export function BaselineStratificationPage() {
   const [highRiskMedicationPresent, setHighRiskMedicationPresent] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
     async function loadCurrent() {
@@ -167,8 +169,23 @@ export function BaselineStratificationPage() {
     event.preventDefault();
     setSaving(true);
     setErrorMessage(null);
-    const { errorMessage: err } = await upsertClinicalAssessment(assessmentPayload);
-    if (err) setErrorMessage(err);
+    setSaveSuccess(false);
+
+    const { errorMessage: assessErr } = await upsertClinicalAssessment(assessmentPayload);
+    if (assessErr) {
+      setErrorMessage(assessErr);
+      setSaving(false);
+      return;
+    }
+
+    const { errorMessage: scoreErr } = await upsertCmoScore(visitId, cmoResult);
+    if (scoreErr) {
+      setErrorMessage(scoreErr);
+      setSaving(false);
+      return;
+    }
+
+    setSaveSuccess(true);
     setSaving(false);
   };
 
@@ -282,6 +299,17 @@ export function BaselineStratificationPage() {
           </button>
         </form>
 
+        {saveSuccess ? (
+          <div
+            style={{
+              marginTop: '0.75rem', padding: '0.65rem 1rem', borderRadius: '8px',
+              background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d',
+              fontWeight: 600, fontSize: '0.9rem',
+            }}
+          >
+            Evaluación y puntuación CMO guardadas correctamente.
+          </div>
+        ) : null}
         {errorMessage ? (
           <ErrorState title="No se pudo guardar evaluación" message={errorMessage} />
         ) : null}
