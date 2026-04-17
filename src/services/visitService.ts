@@ -40,7 +40,8 @@ export async function listVisitsByPatient(patientId: string): Promise<{ data: Vi
     .from('visits')
     .select(VISIT_SELECT)
     .eq('patient_id', patientId)
-    .order('visit_date', { ascending: false, nullsFirst: false });
+    .order('visit_date', { ascending: false, nullsFirst: true })
+    .order('scheduled_date', { ascending: false, nullsFirst: false });
 
   if (error) {
     return { data: [], errorMessage: extractErrorMessage(error) };

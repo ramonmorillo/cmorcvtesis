@@ -58,7 +58,7 @@ export function DashboardPage() {
               <li key={visit.id}>
                 <span>{visit.scheduled_date ?? '-'}</span>
                 <span>{visit.visit_type ?? '-'}</span>
-                <Link to={`/patients/${visit.patient_id}`}>Paciente</Link>
+                <Link to={`/patients/${visit.patient_id}`}>{visit.study_code ?? 'Paciente'}</Link>
               </li>
             ))}
           </ul>
@@ -75,7 +75,7 @@ export function DashboardPage() {
               <li key={visit.id}>
                 <span>{visit.visit_date ?? '-'}</span>
                 <span>{visit.visit_type ?? '-'}</span>
-                <Link to={`/patients/${visit.patient_id}`}>Paciente</Link>
+                <Link to={`/patients/${visit.patient_id}`}>{visit.study_code ?? 'Paciente'}</Link>
               </li>
             ))}
           </ul>

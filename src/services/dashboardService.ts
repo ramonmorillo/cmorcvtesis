@@ -3,8 +3,8 @@ import { supabase } from '../lib/supabase';
 export type DashboardData = {
   totalPatients: number;
   patientsByPriority: { 1: number; 2: number; 3: number };
-  upcomingVisits: Array<{ id: string; patient_id: string; visit_type: string | null; scheduled_date: string | null }>;
-  recentVisits: Array<{ id: string; patient_id: string; visit_type: string | null; visit_date: string | null }>;
+  upcomingVisits: Array<{ id: string; patient_id: string; study_code: string | null; visit_type: string | null; scheduled_date: string | null }>;
+  recentVisits: Array<{ id: string; patient_id: string; study_code: string | null; visit_type: string | null; visit_date: string | null }>;
   recentInterventions: Array<{ id: string; visit_id: string; patient_id: string; intervention_type: string; created_at: string | null }>;
 };
 
@@ -23,13 +23,13 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
       .order('created_at', { ascending: false }),
     supabase
       .from('visits')
-      .select('id,patient_id,visit_type,scheduled_date')
+      .select('id,patient_id,visit_type,scheduled_date,patients!inner(study_code)')
       .gte('scheduled_date', now)
       .order('scheduled_date', { ascending: true })
       .limit(8),
     supabase
       .from('visits')
-      .select('id,patient_id,visit_type,visit_date')
+      .select('id,patient_id,visit_type,visit_date,patients!inner(study_code)')
       .not('visit_date', 'is', null)
       .order('visit_date', { ascending: false })
       .limit(8),
@@ -64,8 +64,20 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
     data: {
       totalPatients: patientsRes.count ?? 0,
       patientsByPriority: priorities,
-      upcomingVisits: (upcomingRes.data ?? []) as DashboardData['upcomingVisits'],
-      recentVisits: (visitsRes.data ?? []) as DashboardData['recentVisits'],
+      upcomingVisits: ((upcomingRes.data ?? []) as Array<{
+        id: string; patient_id: string; visit_type: string | null; scheduled_date: string | null;
+        patients: { study_code: string | null } | Array<{ study_code: string | null }>;
+      }>).map((r) => ({
+        id: r.id, patient_id: r.patient_id, visit_type: r.visit_type, scheduled_date: r.scheduled_date,
+        study_code: (Array.isArray(r.patients) ? r.patients[0]?.study_code : r.patients?.study_code) ?? null,
+      })),
+      recentVisits: ((visitsRes.data ?? []) as Array<{
+        id: string; patient_id: string; visit_type: string | null; visit_date: string | null;
+        patients: { study_code: string | null } | Array<{ study_code: string | null }>;
+      }>).map((r) => ({
+        id: r.id, patient_id: r.patient_id, visit_type: r.visit_type, visit_date: r.visit_date,
+        study_code: (Array.isArray(r.patients) ? r.patients[0]?.study_code : r.patients?.study_code) ?? null,
+      })),
       recentInterventions: ((interventionsRes.data ?? []) as Array<{
         id: string; visit_id: string; intervention_type: string; created_at: string | null;
         visits: { patient_id: string } | Array<{ patient_id: string }>;
