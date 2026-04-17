@@ -48,6 +48,25 @@ export async function upsertCmoScore(
     return { data: null, errorMessage: 'Usuario no autenticado. Inicia sesión e inténtalo de nuevo.' };
   }
 
+  // Ensure profile exists for the authenticated user before persisting rows
+  // that reference profiles(id) through calculated_by/scored_by.
+  const { error: profileError } = await supabase
+    .from('profiles')
+    .upsert(
+      {
+        id: user.id,
+        full_name: (typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name : null),
+      },
+      { onConflict: 'id' },
+    );
+
+  if (profileError) {
+    return {
+      data: null,
+      errorMessage: 'No se pudo preparar el perfil del usuario para registrar la puntuación CMO.',
+    };
+  }
+
   // ── 1. Upsert cmo_scores ─────────────────────────────────────────────────
   // factors stores the full triggered-variable snapshot for traceability even
   // when cmo_variable_catalog has no entries for the variable codes.
