@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import type { SexType } from '../constants/enums';
 
 export type Patient = {
   id: string;
@@ -9,7 +10,7 @@ export type Patient = {
   screening_date: string | null;
   birth_date: string | null;
   age_at_inclusion: number | null;
-  sex: string | null;
+  sex: SexType | null;
   consent_signed: boolean | null;
   created_at?: string;
 };

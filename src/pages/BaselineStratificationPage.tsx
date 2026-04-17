@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
+import { SMOKER_STATUS_OPTIONS } from '../constants/enums';
+import type { SmokerStatus } from '../constants/enums';
 import { ErrorState } from '../components/common/ErrorState';
 import { getClinicalAssessmentByVisit, upsertClinicalAssessment, type NewClinicalAssessmentInput } from '../services/assessmentService';
 import { calculateStratification, getActiveCmoConfig, type StratificationResult } from '../services/stratificationService';
@@ -10,6 +12,10 @@ function toNumber(value: string): number | null {
   if (!value.trim()) return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function toSmokerStatus(value: string): SmokerStatus | null {
+  return value === 'si' || value === 'no' ? value : null;
 }
 
 export function BaselineStratificationPage() {
@@ -95,7 +101,7 @@ export function BaselineStratificationPage() {
       score2_value: toNumber(form.score2_value ?? ''),
       framingham_value: toNumber(form.framingham_value ?? ''),
       cv_risk_level: result ? String(result.priorityLevel) : null,
-      smoker_status: form.smoker_status || null,
+      smoker_status: toSmokerStatus(form.smoker_status ?? ''),
       alcohol_use: form.alcohol_use || null,
       physical_activity_level: form.physical_activity_level || null,
       diet_score: toNumber(form.diet_score ?? ''),
@@ -166,8 +172,11 @@ export function BaselineStratificationPage() {
               Tabaquismo
               <select value={form.smoker_status ?? ''} onChange={(e) => setForm((p) => ({ ...p, smoker_status: e.target.value }))}>
                 <option value="">Seleccionar</option>
-                <option value="si">Sí</option>
-                <option value="no">No</option>
+                {SMOKER_STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </label>
             <label>
