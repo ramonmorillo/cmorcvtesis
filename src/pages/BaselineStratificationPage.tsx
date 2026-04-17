@@ -11,6 +11,7 @@ import {
 } from '../services/assessmentService';
 import { scoreCmo, type CmoLevel, type CmoScoringInput, type CmoScoringResult } from '../services/cmoScoringEngine';
 import { upsertCmoScore } from '../services/cmoScoreService';
+import { getPatientById } from '../services/patientService';
 import { getVisitById } from '../services/visitService';
 
 function toNumber(value: string): number | null {
@@ -69,8 +70,13 @@ export function BaselineStratificationPage() {
         getClinicalAssessmentByVisit(visitId),
       ]);
 
-      if (visitRes.data?.patient_id) setVisitPatientId(visitRes.data.patient_id);
+      const patientId = visitRes.data?.patient_id ?? '';
+      if (patientId) setVisitPatientId(patientId);
       if (assessmentRes.errorMessage) setErrorMessage(assessmentRes.errorMessage);
+
+      const patientRes = patientId ? await getPatientById(patientId) : { data: null };
+      const rawSex = patientRes.data?.sex ?? '';
+      const defaultSex = (rawSex === 'male' || rawSex === 'female' || rawSex === 'other') ? rawSex : '';
 
       if (assessmentRes.data) {
         const v = assessmentRes.data;
@@ -90,7 +96,7 @@ export function BaselineStratificationPage() {
           score2_value:          String(v.score2_value ?? ''),
           framingham_value:      String(v.framingham_value ?? ''),
           smoker_status:         v.smoker_status ?? '',
-          sex:                   '',
+          sex:                   defaultSex,
           physical_activity_level: v.physical_activity_level ?? '',
           alcohol_use:           v.alcohol_use ?? '',
           diet_score:            String(v.diet_score ?? ''),
@@ -98,6 +104,8 @@ export function BaselineStratificationPage() {
           adverse_events_count:  String(v.adverse_events_count ?? ''),
         });
         setHighRiskMedicationPresent(Boolean(v.high_risk_medication_present));
+      } else if (defaultSex) {
+        setForm((prev: Record<string, string>) => ({ ...prev, sex: defaultSex }));
       }
     }
     void loadCurrent();
