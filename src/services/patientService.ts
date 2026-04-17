@@ -2,11 +2,15 @@ import { supabase } from '../lib/supabase';
 
 export type Patient = {
   id: string;
-  patient_code: string;
-  sex: string | null;
-  birth_year: number | null;
+  study_code: string;
+  pharmacy_site: string | null;
+  investigator_name: string | null;
   inclusion_date: string | null;
-  notes: string | null;
+  screening_date: string | null;
+  birth_date: string | null;
+  age_at_inclusion: number | null;
+  sex: string | null;
+  consent_signed: boolean | null;
   created_at?: string;
 };
 
@@ -19,7 +23,10 @@ function extractErrorMessage(error: unknown): string {
   return 'Error desconocido al procesar pacientes.';
 }
 
-export async function listPatients(): Promise<{ data: Patient[]; errorMessage: string | null }> {
+const PATIENT_SELECT =
+  'id,study_code,pharmacy_site,investigator_name,inclusion_date,screening_date,birth_date,age_at_inclusion,sex,consent_signed,created_at';
+
+export async function listPatients(searchStudyCode?: string): Promise<{ data: Patient[]; errorMessage: string | null }> {
   if (!supabase) {
     return {
       data: [],
@@ -27,11 +34,13 @@ export async function listPatients(): Promise<{ data: Patient[]; errorMessage: s
     };
   }
 
-  // Ajustar nombres de columnas aquí si el esquema real usa otros campos.
-  const { data, error } = await supabase
-    .from('patients')
-    .select('id,patient_code,sex,birth_year,inclusion_date,notes,created_at')
-    .order('created_at', { ascending: false });
+  let query = supabase.from('patients').select(PATIENT_SELECT).order('created_at', { ascending: false });
+
+  if (searchStudyCode?.trim()) {
+    query = query.ilike('study_code', `%${searchStudyCode.trim()}%`);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     return { data: [], errorMessage: extractErrorMessage(error) };
@@ -48,11 +57,7 @@ export async function getPatientById(id: string): Promise<{ data: Patient | null
     };
   }
 
-  const { data, error } = await supabase
-    .from('patients')
-    .select('id,patient_code,sex,birth_year,inclusion_date,notes,created_at')
-    .eq('id', id)
-    .maybeSingle();
+  const { data, error } = await supabase.from('patients').select(PATIENT_SELECT).eq('id', id).maybeSingle();
 
   if (error) {
     return { data: null, errorMessage: extractErrorMessage(error) };
@@ -69,8 +74,7 @@ export async function createPatient(input: NewPatientInput): Promise<{ data: Pat
     };
   }
 
-  // Ajustar payload aquí si el esquema real requiere más columnas obligatorias.
-  const { data, error } = await supabase.from('patients').insert(input).select().maybeSingle();
+  const { data, error } = await supabase.from('patients').insert(input).select(PATIENT_SELECT).maybeSingle();
 
   if (error) {
     return { data: null, errorMessage: extractErrorMessage(error) };
