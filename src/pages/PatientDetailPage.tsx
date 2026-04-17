@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
+import { getVisitStatusLabel } from '../constants/enums';
 import { getLatestClinicalAssessmentByPatient } from '../services/assessmentService';
 import { listInterventionsByPatient } from '../services/interventionService';
 import { getPatientById, type Patient } from '../services/patientService';
@@ -92,7 +93,7 @@ export function PatientDetailPage() {
                   <strong>{visit.visit_date ?? visit.scheduled_date ?? '-'}</strong>
                   <span>{visit.visit_type || 'Sin tipo'}</span>
                 </div>
-                <p>Estado: {visit.visit_status || '-'}</p>
+                <p>Estado: {getVisitStatusLabel(visit.visit_status)}</p>
                 <div className="actions-inline">
                   <Link to={`/visits/${visit.id}/stratification`}>Evaluación clínica</Link>
                   <Link to={`/visits/${visit.id}/interventions`}>Intervenciones</Link>

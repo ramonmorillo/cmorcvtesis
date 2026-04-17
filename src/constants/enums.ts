@@ -15,10 +15,22 @@ export const VISIT_TYPE_OPTIONS = [
 
 export type VisitType = (typeof VISIT_TYPE_OPTIONS)[number]['value'];
 
-// Valores internos normalizados para visit_status_enum según el código existente en el proyecto.
-export const VISIT_STATUS_OPTIONS = [{ value: 'programada', label: 'Programada' }] as const;
+// Valores del enum de BD (en inglés) con etiquetas de UI en español.
+export const VISIT_STATUS_OPTIONS = [
+  { value: 'scheduled', label: 'Programada' },
+  { value: 'completed', label: 'Completada' },
+  { value: 'cancelled', label: 'Cancelada' },
+] as const;
 
 export type VisitStatus = (typeof VISIT_STATUS_OPTIONS)[number]['value'];
+
+export function getVisitStatusLabel(status: VisitStatus | null): string {
+  if (!status) {
+    return '-';
+  }
+
+  return VISIT_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
+}
 
 export const SMOKER_STATUS_OPTIONS = [
   { value: 'si', label: 'Sí' },
