@@ -67,28 +67,36 @@ export function DashboardPage() {
 
       <section className="card">
         <h2>Últimas visitas registradas</h2>
-        <ul className="simple-list">
-          {data.recentVisits.map((visit) => (
-            <li key={visit.id}>
-              <span>{visit.visit_date ?? '-'}</span>
-              <span>{visit.visit_type ?? '-'}</span>
-              <Link to={`/patients/${visit.patient_id}`}>Paciente</Link>
-            </li>
-          ))}
-        </ul>
+        {data.recentVisits.length === 0 ? (
+          <EmptyState title="Sin visitas recientes" description="Aún no se han registrado visitas con fecha de realización." />
+        ) : (
+          <ul className="simple-list">
+            {data.recentVisits.map((visit) => (
+              <li key={visit.id}>
+                <span>{visit.visit_date ?? '-'}</span>
+                <span>{visit.visit_type ?? '-'}</span>
+                <Link to={`/patients/${visit.patient_id}`}>Paciente</Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="card">
         <h2>Intervenciones recientes</h2>
-        <ul className="simple-list">
-          {data.recentInterventions.map((item) => (
-            <li key={item.id}>
-              <span>{item.created_at?.slice(0, 10) ?? '-'}</span>
-              <span>{item.intervention_type}</span>
-              <span>Visita {item.visit_id.slice(0, 8)}</span>
-            </li>
-          ))}
-        </ul>
+        {data.recentInterventions.length === 0 ? (
+          <EmptyState title="Sin intervenciones recientes" description="Registra intervenciones desde la ficha de visita." />
+        ) : (
+          <ul className="simple-list">
+            {data.recentInterventions.map((item) => (
+              <li key={item.id}>
+                <span>{item.created_at?.slice(0, 10) ?? '-'}</span>
+                <span>{item.intervention_type}</span>
+                <Link to={`/patients/${item.patient_id}`}>Paciente</Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   );
