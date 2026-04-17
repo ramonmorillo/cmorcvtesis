@@ -16,7 +16,7 @@ export type Visit = {
   updated_at?: string;
 };
 
-export type NewVisitInput = Omit<Visit, 'id' | 'created_at' | 'updated_at'>;
+export type NewVisitInput = Omit<Visit, 'id' | 'created_at' | 'updated_at' | 'created_by'>;
 
 function extractErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
@@ -40,7 +40,8 @@ export async function listVisitsByPatient(patientId: string): Promise<{ data: Vi
     .from('visits')
     .select(VISIT_SELECT)
     .eq('patient_id', patientId)
-    .order('visit_date', { ascending: false, nullsFirst: false });
+    .order('visit_date', { ascending: false, nullsFirst: true })
+    .order('scheduled_date', { ascending: false, nullsFirst: false });
 
   if (error) {
     return { data: [], errorMessage: extractErrorMessage(error) };
@@ -75,7 +76,37 @@ export async function createVisit(input: NewVisitInput): Promise<{ data: Visit |
     };
   }
 
-  const { data, error } = await supabase.from('visits').insert(input).select(VISIT_SELECT).maybeSingle();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { data: null, errorMessage: 'Usuario no autenticado. Inicia sesión e inténtalo de nuevo.' };
+  }
+
+  const { data, error } = await supabase
+    .from('visits')
+    .insert({ ...input, created_by: user.id })
+    .select(VISIT_SELECT)
+    .maybeSingle();
+
+  if (error) {
+    return { data: null, errorMessage: extractErrorMessage(error) };
+  }
+
+  return { data: (data as Visit | null) ?? null, errorMessage: null };
+}
+
+export type VisitUpdateInput = Partial<Pick<Visit, 'visit_date' | 'visit_status' | 'notes' | 'scheduled_date' | 'visit_number' | 'extraordinary_reason'>>;
+
+export async function updateVisit(visitId: string, updates: VisitUpdateInput): Promise<{ data: Visit | null; errorMessage: string | null }> {
+  if (!supabase) {
+    return { data: null, errorMessage: 'Supabase no está configurado. No se puede actualizar la visita.' };
+  }
+
+  const { data, error } = await supabase
+    .from('visits')
+    .update(updates)
+    .eq('id', visitId)
+    .select(VISIT_SELECT)
+    .maybeSingle();
 
   if (error) {
     return { data: null, errorMessage: extractErrorMessage(error) };

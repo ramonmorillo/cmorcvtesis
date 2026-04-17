@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { SEX_TYPE_OPTIONS } from '../constants/enums';
@@ -31,6 +31,18 @@ export function NewPatientPage() {
   });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!form.birth_date || !form.inclusion_date) return;
+    const birth = new Date(form.birth_date);
+    const inclusion = new Date(form.inclusion_date);
+    let age = inclusion.getFullYear() - birth.getFullYear();
+    const m = inclusion.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && inclusion.getDate() < birth.getDate())) age--;
+    if (age >= 0 && age <= 120) {
+      setForm((p) => ({ ...p, age_at_inclusion: String(age) }));
+    }
+  }, [form.birth_date, form.inclusion_date]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 
-import { ErrorState } from '../common/ErrorState';
 import { getCurrentSession, signOut, subscribeToAuthChanges } from '../../services/authService';
 
 export function AppShell() {
@@ -75,7 +74,13 @@ export function AppShell() {
     return (
       <div className="app-shell">
         <main className="main-content">
-          <ErrorState title="Error de autenticación" message={sessionError} />
+          <section className="card error-state" role="alert">
+            <h2>Error de autenticación</h2>
+            <p>{sessionError}</p>
+            <Link to="/login" className="button-link" style={{ display: 'inline-block', marginTop: '1rem' }}>
+              Ir al inicio de sesión
+            </Link>
+          </section>
         </main>
       </div>
     );

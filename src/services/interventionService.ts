@@ -60,7 +60,12 @@ export async function listInterventionsByPatient(patientId: string) {
     return { data: [], errorMessage: extractErrorMessage(error) };
   }
 
-  const normalized = (data ?? []).map((item: any) => ({
+  type RawRow = Intervention & {
+    visits:
+      | { patient_id: string; visit_date: string | null }
+      | Array<{ patient_id: string; visit_date: string | null }>;
+  };
+  const normalized = ((data ?? []) as RawRow[]).map((item) => ({
     ...item,
     visits: Array.isArray(item.visits) ? item.visits[0] : item.visits,
   }));
@@ -76,7 +81,12 @@ export async function createIntervention(input: NewInterventionInput) {
     return { data: null, errorMessage: 'Supabase no está configurado. No se puede guardar la intervención.' };
   }
 
-  const { data, error } = await supabase.from('interventions').insert(input).select(INTERVENTION_SELECT).maybeSingle();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { data: null, errorMessage: 'Usuario no autenticado. Inicia sesión e inténtalo de nuevo.' };
+  }
+
+  const { data, error } = await supabase.from('interventions').insert({ ...input, delivered_by: user.id }).select(INTERVENTION_SELECT).maybeSingle();
 
   if (error) {
     return { data: null, errorMessage: extractErrorMessage(error) };
