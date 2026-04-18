@@ -5,11 +5,15 @@ import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { getVisitTypeLabel } from '../constants/enums';
 import { loadDashboardData, type DashboardData } from '../services/dashboardService';
+import { exportThesisDataCsvBundle } from '../services/exportService';
 
 export function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadData() {
@@ -27,6 +31,23 @@ export function DashboardPage() {
 
   const pct = (value: number) => `${value.toFixed(1)}%`;
 
+  const handleExportData = async () => {
+    setExporting(true);
+    setExportMessage(null);
+    setExportError(null);
+
+    const result = await exportThesisDataCsvBundle();
+
+    if (!result.success) {
+      setExportError(result.errorMessage ?? 'No se pudieron exportar los datos.');
+      setExporting(false);
+      return;
+    }
+
+    setExportMessage(`Exportación completada: ${result.generatedFiles.join(', ')}`);
+    setExporting(false);
+  };
+
   return (
     <div className="page-stack">
       <section className="card">
@@ -36,6 +57,20 @@ export function DashboardPage() {
             <p className="help-text">Vista operacional actual + bloque estratégico Dashboard PRO.</p>
           </div>
         </div>
+      </section>
+
+      <section className="card">
+        <div className="section-header">
+          <div>
+            <h2>Administración · Exportación de datos para tesis</h2>
+            <p className="help-text">Genera archivos CSV anonimizados (UTF-8) compatibles con Excel, SPSS y R.</p>
+          </div>
+          <button type="button" onClick={handleExportData} disabled={exporting}>
+            {exporting ? 'Exportando...' : 'Exportar datos'}
+          </button>
+        </div>
+        {exportMessage ? <p className="success-state">{exportMessage}</p> : null}
+        {exportError ? <p className="error-state">{exportError}</p> : null}
       </section>
 
       <section className="card">
