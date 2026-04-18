@@ -39,6 +39,25 @@ export function normalizeVisitTypeValue(visitType: string | null): VisitType | s
   return LEGACY_VISIT_TYPE_MAP[visitType] ?? visitType;
 }
 
+const VISIT_NUMBER_BY_TYPE: Record<VisitType, number | null> = {
+  baseline: 1,
+  month_3: 2,
+  month_6: 3,
+  month_9: 4,
+  month_12: 5,
+  extra: null,
+};
+
+export function getVisitNumberByType(visitType: VisitType | string | null): number | null {
+  const normalizedVisitType = normalizeVisitTypeValue(visitType);
+
+  if (!normalizedVisitType || !(normalizedVisitType in VISIT_NUMBER_BY_TYPE)) {
+    return null;
+  }
+
+  return VISIT_NUMBER_BY_TYPE[normalizedVisitType as VisitType];
+}
+
 // Valores del enum de BD (en inglés) con etiquetas de UI en español.
 export const VISIT_STATUS_OPTIONS = [
   { value: 'scheduled', label: 'Programada' },

@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { VisitStatus, VisitType } from '../constants/enums';
+import { getVisitNumberByType } from '../constants/enums';
 
 export type Visit = {
   id: string;
@@ -83,7 +84,11 @@ export async function createVisit(input: NewVisitInput): Promise<{ data: Visit |
 
   const { data, error } = await supabase
     .from('visits')
-    .insert({ ...input, created_by: user.id })
+    .insert({
+      ...input,
+      visit_number: getVisitNumberByType(input.visit_type),
+      created_by: user.id,
+    })
     .select(VISIT_SELECT)
     .maybeSingle();
 
@@ -94,7 +99,7 @@ export async function createVisit(input: NewVisitInput): Promise<{ data: Visit |
   return { data: (data as Visit | null) ?? null, errorMessage: null };
 }
 
-export type VisitUpdateInput = Partial<Pick<Visit, 'visit_date' | 'visit_status' | 'notes' | 'scheduled_date' | 'visit_number' | 'extraordinary_reason'>>;
+export type VisitUpdateInput = Partial<Pick<Visit, 'visit_date' | 'visit_status' | 'notes' | 'scheduled_date' | 'extraordinary_reason'>>;
 
 export async function updateVisit(visitId: string, updates: VisitUpdateInput): Promise<{ data: Visit | null; errorMessage: string | null }> {
   if (!supabase) {
