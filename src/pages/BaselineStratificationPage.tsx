@@ -9,6 +9,7 @@ import {
   upsertClinicalAssessment,
   type NewClinicalAssessmentInput,
 } from '../services/assessmentService';
+import { getPatientById } from '../services/patientService';
 import {
   scoreCmo,
   type BiologicalSex,
@@ -79,7 +80,6 @@ const LEVEL_META: Record<CmoLevel, { label: string; color: string; bg: string; b
 };
 
 const NUMERIC_FIELDS: [string, string][] = [
-  ['age_years', 'Edad (años)'],
   ['non_hdl_mg_dl', 'No-HDL (mg/dL)'],
   ['chronic_med_count', 'Nº medicamentos crónicos'],
   ['systolic_bp', 'TA sistólica (mmHg)'],
@@ -105,9 +105,23 @@ const YES_NO_UNKNOWN_OPTIONS: Array<{ value: YesNoUnknown; label: string }> = [
   { value: 'unknown', label: 'No registrado' },
 ];
 
+function ageFromBirthAndInclusionDate(birthDate: string | null, inclusionDate: string | null): number | null {
+  if (!birthDate || !inclusionDate) return null;
+  const birth = new Date(birthDate);
+  const inclusion = new Date(inclusionDate);
+  if (Number.isNaN(birth.getTime()) || Number.isNaN(inclusion.getTime())) return null;
+
+  let age = inclusion.getFullYear() - birth.getFullYear();
+  const monthDiff = inclusion.getMonth() - birth.getMonth();
+  const hasNotHadBirthday = monthDiff < 0 || (monthDiff === 0 && inclusion.getDate() < birth.getDate());
+  if (hasNotHadBirthday) age -= 1;
+  return age >= 0 ? age : null;
+}
+
 export function BaselineStratificationPage() {
   const { visitId = '' } = useParams();
   const [visitPatientId, setVisitPatientId] = useState<string>('');
+  const [resolvedAge, setResolvedAge] = useState<number | null>(null);
   const [form, setForm] = useState<Record<string, string>>({
     smoker_status: 'unknown',
     education_level: 'unknown',
@@ -142,11 +156,23 @@ export function BaselineStratificationPage() {
       if (patientId) setVisitPatientId(patientId);
       if (assessmentRes.errorMessage) setErrorMessage(assessmentRes.errorMessage);
 
+      if (patientId) {
+        const patientRes = await getPatientById(patientId);
+        if (patientRes.errorMessage) {
+          setErrorMessage(patientRes.errorMessage);
+        } else {
+          const patient = patientRes.data;
+          const derivedAge = patient?.age_at_inclusion ?? ageFromBirthAndInclusionDate(patient?.birth_date ?? null, patient?.inclusion_date ?? null);
+          setResolvedAge(derivedAge);
+        }
+      } else {
+        setResolvedAge(null);
+      }
+
       if (assessmentRes.data) {
         const v = assessmentRes.data;
         setForm((prev) => ({
           ...prev,
-          age_years: String(v.age_years ?? ''),
           education_level: v.education_level ?? 'unknown',
           pregnancy_postpartum: v.pregnancy_postpartum ?? 'unknown',
           biological_sex: v.biological_sex ?? 'unknown',
@@ -204,7 +230,7 @@ export function BaselineStratificationPage() {
 
   const cmoInput = useMemo<CmoScoringInput>(() => ({
     educationLevel: toEducationLevel(form.education_level ?? ''),
-    age: toNumber(form.age_years ?? ''),
+    age: resolvedAge,
     pregnancyPostpartum: yesNoUnknown(form.pregnancy_postpartum ?? ''),
     biologicalSex: toBiologicalSex(form.biological_sex ?? ''),
     raceEthnicityRisk: toRaceEthnicityRisk(form.race_ethnicity_risk ?? ''),
@@ -223,14 +249,13 @@ export function BaselineStratificationPage() {
     recentRegimenChange: yesNoUnknown(form.recent_regimen_change ?? ''),
     regimenComplexityPresent: yesNoUnknown(form.regimen_complexity_present ?? ''),
     adherenceProblem: yesNoUnknown(form.adherence_problem ?? ''),
-  }), [form]);
+  }), [form, resolvedAge]);
 
   const cmoResult: CmoScoringResult = useMemo(() => scoreCmo(cmoInput), [cmoInput]);
   const meta = LEVEL_META[cmoResult.level];
 
   const assessmentPayload = useMemo<NewClinicalAssessmentInput>(() => ({
     visit_id: visitId,
-    age_years: toNumber(form.age_years ?? ''),
     education_level: toEducationLevel(form.education_level ?? ''),
     pregnancy_postpartum: yesNoUnknown(form.pregnancy_postpartum ?? ''),
     biological_sex: toBiologicalSex(form.biological_sex ?? ''),
@@ -331,7 +356,10 @@ export function BaselineStratificationPage() {
               DEMOGRÁFICAS
             </p>
             <div className="grid-2">
-              <label>Edad (años)<input {...field('age_years')} inputMode="decimal" /></label>
+              <label>
+                Edad (años)
+                <input value={resolvedAge ?? ''} readOnly disabled />
+              </label>
               <label>
                 Nivel educativo
                 <select {...field('education_level')}>

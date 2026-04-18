@@ -3,12 +3,9 @@
 -- categorical values and scoring engine only adds points on explicit matches.
 
 alter table public.clinical_assessments
-  add column if not exists age_years integer,
   add column if not exists education_level text,
   add column if not exists pregnancy_postpartum text,
-  add column if not exists biological_sex text,
   add column if not exists race_ethnicity_risk text,
-  add column if not exists hypertension_present text,
   add column if not exists cv_pathology_present text,
   add column if not exists comorbidities_present text,
   add column if not exists recent_cvd_12m text,
@@ -33,12 +30,8 @@ alter table public.clinical_assessments
   check (education_level is null or education_level in ('low', 'medium', 'high', 'unknown')),
   add constraint clinical_assessments_pregnancy_postpartum_check
   check (pregnancy_postpartum is null or pregnancy_postpartum in ('yes', 'no', 'unknown')),
-  add constraint clinical_assessments_biological_sex_check
-  check (biological_sex is null or biological_sex in ('female', 'male', 'other', 'unknown')),
   add constraint clinical_assessments_race_ethnicity_risk_check
   check (race_ethnicity_risk is null or race_ethnicity_risk in ('asian_non_chinese', 'afro_caribbean', 'afro_descendant_or_chinese', 'other', 'unknown')),
-  add constraint clinical_assessments_hypertension_present_check
-  check (hypertension_present is null or hypertension_present in ('yes', 'no', 'unknown')),
   add constraint clinical_assessments_cv_pathology_present_check
   check (cv_pathology_present is null or cv_pathology_present in ('yes', 'no', 'unknown')),
   add constraint clinical_assessments_comorbidities_present_check
