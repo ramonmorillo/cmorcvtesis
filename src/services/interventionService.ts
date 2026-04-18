@@ -1,11 +1,13 @@
 import { supabase } from '../lib/supabase';
 
+export type PriorityLevel = 'low' | 'medium' | 'high';
+
 export type Intervention = {
   id: string;
   visit_id: string;
   intervention_type: string;
   intervention_domain: string | null;
-  priority_level: number | null;
+  priority_level: PriorityLevel | null;
   delivered: boolean | null;
   linked_to_cmo_level: number | null;
   outcome: string | null;
