@@ -22,7 +22,6 @@ type QuestionnaireResponseRow = {
   id: string;
   visit_id: string;
   user_id: string | null;
-  questionnaire_type?: string | null;
   measurement_id?: string | null;
   responses: Record<string, unknown>;
   created_at: string;
@@ -188,9 +187,7 @@ function normalizeQuestionnaireRows(
   questionnaireTypeByMeasurementId: Map<string, QuestionnaireType>,
 ): QuestionnaireResponseRecord[] {
   return rows.flatMap((row) => {
-    const normalizedType = normalizeQuestionnaireCode(row.questionnaire_type);
-    const resolvedByMeasurement = row.measurement_id ? (questionnaireTypeByMeasurementId.get(row.measurement_id) ?? null) : null;
-    const questionnaireType = normalizedType ?? resolvedByMeasurement;
+    const questionnaireType = row.measurement_id ? (questionnaireTypeByMeasurementId.get(row.measurement_id) ?? null) : null;
 
     if (!questionnaireType) {
       return [];
@@ -220,7 +217,7 @@ export function isQuestionnaireVisitType(visitType: string | null | undefined): 
   return visitType === 'baseline' || visitType === 'final' || visitType === 'month_12';
 }
 
-const QUESTIONNAIRE_BASE_SELECT = 'id,visit_id,user_id,questionnaire_type,measurement_id,responses,created_at,updated_at,visits(patient_id,visit_type)';
+const QUESTIONNAIRE_BASE_SELECT = 'id,visit_id,user_id,measurement_id,responses,created_at,updated_at,visits(patient_id,visit_type)';
 
 export async function listQuestionnairesByVisit(visitId: string): Promise<{ data: QuestionnaireResponseRecord[]; errorMessage: string | null }> {
   if (!supabase) {
@@ -300,14 +297,13 @@ export async function saveQuestionnaireBundle(input: QuestionnaireResponseUpsert
   const payload = input.map(({ visit_id, user_id, questionnaire_type, responses }) => ({
     visit_id,
     user_id,
-    questionnaire_type,
     measurement_id: measurementMapResult.measurementIdByType.get(questionnaire_type) ?? null,
     responses,
   }));
 
   const { data, error } = await supabase
     .from('questionnaire_responses')
-    .upsert(payload, { onConflict: 'visit_id,questionnaire_type' })
+    .upsert(payload, { onConflict: 'visit_id,measurement_id' })
     .select(QUESTIONNAIRE_BASE_SELECT);
 
   if (error) {
