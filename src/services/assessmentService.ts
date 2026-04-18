@@ -10,6 +10,13 @@ import type {
 
 type TriState = Exclude<YesNoUnknown, null>;
 
+type AssessmentFieldType = 'uuid' | 'enum' | 'numeric' | 'integer' | 'boolean' | 'text';
+
+type AssessmentFieldSchema = {
+  type: AssessmentFieldType;
+  values?: readonly string[];
+};
+
 export type ClinicalAssessment = {
   id: string;
   visit_id: string;
@@ -62,17 +69,21 @@ function extractErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
     return error.message;
   }
+
   return 'Error desconocido al procesar evaluación clínica.';
 }
 
 const NULL_LIKE_VALUES = new Set(['', 'unknown', 'not_recorded', 'no registrado', 'desconocido']);
 
-const CLINICAL_ASSESSMENT_SCHEMA: Record<string, { type: 'uuid' | 'enum' | 'numeric' | 'integer' | 'boolean' | 'text'; values?: readonly string[] }> = {
+const CLINICAL_ASSESSMENT_SCHEMA: Record<keyof NewClinicalAssessmentInput, AssessmentFieldSchema> = {
   visit_id: { type: 'uuid' },
   education_level: { type: 'enum', values: ['low', 'medium', 'high', 'unknown'] },
   pregnancy_postpartum: { type: 'enum', values: ['yes', 'no', 'unknown'] },
   biological_sex: { type: 'enum', values: ['female', 'male', 'other', 'unknown'] },
-  race_ethnicity_risk: { type: 'enum', values: ['asian_non_chinese', 'afro_caribbean', 'afro_descendant_or_chinese', 'other', 'unknown'] },
+  race_ethnicity_risk: {
+    type: 'enum',
+    values: ['asian_non_chinese', 'afro_caribbean', 'afro_descendant_or_chinese', 'other', 'unknown'],
+  },
   hypertension_present: { type: 'enum', values: ['yes', 'no', 'unknown'] },
   cv_pathology_present: { type: 'enum', values: ['yes', 'no', 'unknown'] },
   comorbidities_present: { type: 'enum', values: ['yes', 'no', 'unknown'] },
@@ -110,77 +121,92 @@ const CLINICAL_ASSESSMENT_SCHEMA: Record<string, { type: 'uuid' | 'enum' | 'nume
 function normalizeNullLike(value: unknown): unknown {
   if (value === undefined || value === null) return null;
   if (typeof value !== 'string') return value;
-  const normalized = value.trim().toLowerCase();
-  if (normalized === 'yes' || normalized === 'sí' || normalized === 'si' || normalized === 'true') return 'yes';
-  if (normalized === 'no' || normalized === 'false') return 'no';
-  if (normalized === 'unknown' || normalized === 'desconocido' || normalized === 'no registrado' || normalized === 'not_recorded') return null;
-  if (normalized === '') return null;
+
+  const normalized = value.trim();
+  if (NULL_LIKE_VALUES.has(normalized.toLowerCase())) return null;
+
+  return normalized;
+}
+
+function normalizeBoolean(value: unknown): boolean | null {
+  const normalizedValue = normalizeNullLike(value);
+  if (normalizedValue === null) return null;
+
+  if (typeof normalizedValue === 'boolean') return normalizedValue;
+  if (typeof normalizedValue === 'number') {
+    if (normalizedValue === 1) return true;
+    if (normalizedValue === 0) return false;
+    return null;
+  }
+  if (typeof normalizedValue !== 'string') return null;
 
   const normalized = normalizedValue.toLowerCase();
-  if (normalized === 'yes' || normalized === 'sí' || normalized === 'si' || normalized === 'true') return true;
+  if (normalized === 'yes' || normalized === 'si' || normalized === 'sí' || normalized === 'true') return true;
   if (normalized === 'no' || normalized === 'false') return false;
+
   return null;
 }
 
 function normalizeNumber(value: unknown, integer = false): number | null {
   const normalizedValue = normalizeNullLike(value);
   if (normalizedValue === null) return null;
+
   if (typeof normalizedValue === 'number' && Number.isFinite(normalizedValue)) {
     return integer ? Math.trunc(normalizedValue) : normalizedValue;
   }
+
   if (typeof normalizedValue !== 'string') return null;
 
-  const n = Number(normalizedValue);
-  if (!Number.isFinite(n)) return null;
-  return integer ? Math.trunc(n) : n;
+  const numericValue = Number(normalizedValue);
+  if (!Number.isFinite(numericValue)) return null;
+
+  return integer ? Math.trunc(numericValue) : numericValue;
 }
 
 function normalizeEnum(value: unknown, allowedValues: readonly string[]): string | null {
   const normalizedValue = normalizeNullLike(value);
-  if (normalizedValue === null || typeof normalizedValue !== 'string') return null;
+  if (normalizedValue === null) return null;
+  if (typeof normalizedValue !== 'string') return null;
 
-  const mappedBoolean =
-    normalizedValue.toLowerCase() === 'yes' || normalizedValue.toLowerCase() === 'sí' || normalizedValue.toLowerCase() === 'si'
-      ? 'yes'
-      : normalizedValue.toLowerCase() === 'no'
-        ? 'no'
-        : normalizedValue;
+  const lower = normalizedValue.toLowerCase();
+  const mappedValue = lower === 'si' || lower === 'sí' || lower === 'true'
+    ? 'yes'
+    : lower === 'false'
+      ? 'no'
+      : lower;
 
-  return allowedValues.includes(mappedBoolean) ? mappedBoolean : null;
+  return allowedValues.includes(mappedValue) ? mappedValue : null;
 }
 
 export function normalizeAssessmentPayload(payload: Partial<NewClinicalAssessmentInput>): NewClinicalAssessmentInput {
-  const normalizedPayload: Record<string, unknown> = {};
+  const normalizedPayload: Partial<Record<keyof NewClinicalAssessmentInput, unknown>> = {};
 
-  for (const key of Object.keys(CLINICAL_ASSESSMENT_SCHEMA)) {
+  for (const key of Object.keys(CLINICAL_ASSESSMENT_SCHEMA) as Array<keyof NewClinicalAssessmentInput>) {
     const schema = CLINICAL_ASSESSMENT_SCHEMA[key];
-    const rawValue = payload[key as keyof NewClinicalAssessmentInput];
+    const rawValue = payload[key];
 
-    if (schema.type === 'boolean') {
-      normalizedPayload[key] = normalizeBoolean(rawValue);
-      continue;
+    switch (schema.type) {
+      case 'boolean':
+        normalizedPayload[key] = normalizeBoolean(rawValue);
+        break;
+      case 'numeric':
+        normalizedPayload[key] = normalizeNumber(rawValue);
+        break;
+      case 'integer':
+        normalizedPayload[key] = normalizeNumber(rawValue, true);
+        break;
+      case 'enum':
+        normalizedPayload[key] = normalizeEnum(rawValue, schema.values ?? []);
+        break;
+      case 'uuid':
+      case 'text': {
+        const normalizedValue = normalizeNullLike(rawValue);
+        normalizedPayload[key] = typeof normalizedValue === 'string' ? normalizedValue : null;
+        break;
+      }
+      default:
+        normalizedPayload[key] = null;
     }
-
-    if (schema.type === 'numeric') {
-      normalizedPayload[key] = normalizeNumber(rawValue, false);
-      continue;
-    }
-
-    if (schema.type === 'integer') {
-      normalizedPayload[key] = normalizeNumber(rawValue, true);
-      continue;
-    }
-
-    if (schema.type === 'enum') {
-      normalizedPayload[key] = normalizeEnum(rawValue, schema.values ?? []);
-      continue;
-    }
-
-    const normalizedValue = normalizeNullLike(rawValue);
-    normalizedPayload[key] =
-      normalizedValue === null || typeof normalizedValue === 'string'
-        ? normalizedValue
-        : null;
   }
 
   return normalizedPayload as NewClinicalAssessmentInput;
@@ -192,7 +218,6 @@ export async function upsertClinicalAssessment(input: NewClinicalAssessmentInput
   }
 
   const normalizedInput = normalizeAssessmentPayload(input);
-  console.log('normalized payload', normalizedInput);
 
   const { data, error } = await supabase
     .from('clinical_assessments')
@@ -242,5 +267,8 @@ export async function getLatestClinicalAssessmentByPatient(patientId: string) {
     return { data: null, errorMessage: extractErrorMessage(error) };
   }
 
-  return { data: (data as (ClinicalAssessment & { visits: { patient_id: string; visit_date: string | null } }) | null) ?? null, errorMessage: null };
+  return {
+    data: (data as (ClinicalAssessment & { visits: { patient_id: string; visit_date: string | null } }) | null) ?? null,
+    errorMessage: null,
+  };
 }
