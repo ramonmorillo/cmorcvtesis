@@ -4,6 +4,23 @@ import type { SmokerStatus } from '../constants/enums';
 export type ClinicalAssessment = {
   id: string;
   visit_id: string;
+  age_years: number | null;
+  education_level: string | null;
+  pregnancy_postpartum: string | null;
+  biological_sex: string | null;
+  race_ethnicity_risk: string | null;
+  hypertension_present: string | null;
+  cv_pathology_present: string | null;
+  comorbidities_present: string | null;
+  recent_cvd_12m: string | null;
+  hospital_er_use_12m: string | null;
+  physical_activity_pattern: string | null;
+  social_support_absent: string | null;
+  psychosocial_stress: string | null;
+  chronic_med_count: number | null;
+  recent_regimen_change: string | null;
+  regimen_complexity_present: string | null;
+  adherence_problem: string | null;
   systolic_bp: number | null;
   diastolic_bp: number | null;
   heart_rate: number | null;
@@ -33,7 +50,7 @@ export type ClinicalAssessment = {
 export type NewClinicalAssessmentInput = Omit<ClinicalAssessment, 'id' | 'created_at' | 'updated_at'>;
 
 const ASSESSMENT_SELECT =
-  'id,visit_id,systolic_bp,diastolic_bp,heart_rate,weight_kg,height_cm,bmi,waist_cm,ldl_mg_dl,hdl_mg_dl,non_hdl_mg_dl,fasting_glucose_mg_dl,hba1c_pct,score2_value,framingham_value,cv_risk_level,smoker_status,alcohol_use,physical_activity_level,diet_score,safety_incidents,adverse_events_count,high_risk_medication_present,created_at,updated_at';
+  'id,visit_id,age_years,education_level,pregnancy_postpartum,biological_sex,race_ethnicity_risk,hypertension_present,cv_pathology_present,comorbidities_present,recent_cvd_12m,hospital_er_use_12m,physical_activity_pattern,social_support_absent,psychosocial_stress,chronic_med_count,recent_regimen_change,regimen_complexity_present,adherence_problem,systolic_bp,diastolic_bp,heart_rate,weight_kg,height_cm,bmi,waist_cm,ldl_mg_dl,hdl_mg_dl,non_hdl_mg_dl,fasting_glucose_mg_dl,hba1c_pct,score2_value,framingham_value,cv_risk_level,smoker_status,alcohol_use,physical_activity_level,diet_score,safety_incidents,adverse_events_count,high_risk_medication_present,created_at,updated_at';
 
 function extractErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
