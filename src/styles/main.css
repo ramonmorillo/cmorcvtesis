@@ -74,6 +74,8 @@ th,td { text-align: left; padding: 0.6rem; border-bottom: 1px solid #e5e7eb; }
 .kpi-card { border: 1px solid #dbe4f3; border-radius: 8px; padding: 0.75rem; background: #f8fbff; }
 .kpi-card p { margin-bottom: 0.3rem; color: #475569; }
 .kpi-card strong { font-size: 1.4rem; }
+.kpi-card-positive { background: #f0fdf4; border-color: #bbf7d0; }
+.kpi-card-warning { background: #fffbeb; border-color: #fde68a; }
 .simple-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.45rem; }
 .simple-list li { display: flex; justify-content: space-between; gap: 0.8rem; border-bottom: 1px solid #eef2f7; padding: 0.35rem 0; }
 .search-row { display: flex; gap: 0.6rem; margin-bottom: 0.9rem; }
