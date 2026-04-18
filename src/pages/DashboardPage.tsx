@@ -115,7 +115,7 @@ export function DashboardPage() {
             {data.recentVisits.map((visit) => (
               <li key={visit.id}>
                 <span>{visit.visit_date ?? '-'}</span>
-                <span>{visit.visit_type ?? '-'}</span>
+                <span>{getVisitTypeLabel(visit.visit_type)}</span>
                 <Link to={`/patients/${visit.patient_id}`}>{visit.study_code ?? 'Paciente'}</Link>
               </li>
             ))}

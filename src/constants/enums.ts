@@ -9,8 +9,11 @@ export type SexType = (typeof SEX_TYPE_OPTIONS)[number]['value'];
 
 export const VISIT_TYPE_OPTIONS = [
   { value: 'baseline', label: 'Basal' },
-  { value: 'follow_up', label: 'Seguimiento' },
-  { value: 'extraordinary', label: 'Extraordinaria' },
+  { value: 'month_3', label: 'Mes 3' },
+  { value: 'month_6', label: 'Mes 6' },
+  { value: 'month_9', label: 'Mes 9' },
+  { value: 'month_12', label: 'Mes 12' },
+  { value: 'extra', label: 'Extraordinaria' },
 ] as const;
 
 export type VisitType = (typeof VISIT_TYPE_OPTIONS)[number]['value'];
@@ -20,7 +23,20 @@ export function getVisitTypeLabel(visitType: VisitType | string | null): string 
     return '-';
   }
 
-  return VISIT_TYPE_OPTIONS.find((option) => option.value === visitType)?.label ?? visitType;
+  const normalizedVisitType = normalizeVisitTypeValue(visitType);
+  return VISIT_TYPE_OPTIONS.find((option) => option.value === normalizedVisitType)?.label ?? visitType;
+}
+
+const LEGACY_VISIT_TYPE_MAP: Record<string, VisitType> = {
+  extraordinary: 'extra',
+};
+
+export function normalizeVisitTypeValue(visitType: string | null): VisitType | string | null {
+  if (!visitType) {
+    return visitType;
+  }
+
+  return LEGACY_VISIT_TYPE_MAP[visitType] ?? visitType;
 }
 
 // Valores del enum de BD (en inglés) con etiquetas de UI en español.

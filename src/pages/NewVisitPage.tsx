@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { VISIT_STATUS_OPTIONS, VISIT_TYPE_OPTIONS } from '../constants/enums';
 import type { VisitStatus, VisitType } from '../constants/enums';
+import { normalizeVisitTypeValue } from '../constants/enums';
 import { ErrorState } from '../components/common/ErrorState';
 import { createVisit } from '../services/visitService';
 
@@ -18,7 +19,7 @@ export function NewVisitPage() {
     extraordinary_reason: string;
     notes: string;
   }>({
-    visit_type: 'follow_up',
+    visit_type: 'baseline',
     visit_number: '',
     scheduled_date: '',
     visit_date: '',
@@ -41,7 +42,7 @@ export function NewVisitPage() {
       scheduled_date: form.scheduled_date || null,
       visit_date: form.visit_date || null,
       visit_status: form.visit_status || null,
-      extraordinary_reason: form.visit_type === 'extraordinary' ? form.extraordinary_reason || null : null,
+      extraordinary_reason: normalizeVisitTypeValue(form.visit_type) === 'extra' ? form.extraordinary_reason || null : null,
       notes: form.notes || null,
     });
 
@@ -102,7 +103,7 @@ export function NewVisitPage() {
               ))}
             </select>
           </label>
-          {form.visit_type === 'extraordinary' ? (
+          {normalizeVisitTypeValue(form.visit_type) === 'extra' ? (
             <label>
               Motivo extraordinaria
               <input
