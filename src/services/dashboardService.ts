@@ -1,12 +1,41 @@
 import { supabase } from '../lib/supabase';
+import { INTERVENTION_CATALOG, type CmoPillar } from '../constants/interventionCatalog';
 
 export type DashboardData = {
   totalPatients: number;
   patientsByPriority: { 1: number; 2: number; 3: number };
+  totalInterventions: number;
+  interventionsByPillar: Record<CmoPillar, number>;
+  interventionsByLevel: { 1: number; 2: number; 3: number };
   upcomingVisits: Array<{ id: string; patient_id: string; study_code: string | null; visit_type: string | null; scheduled_date: string | null }>;
   recentVisits: Array<{ id: string; patient_id: string; study_code: string | null; visit_type: string | null; visit_date: string | null }>;
   recentInterventions: Array<{ id: string; visit_id: string; patient_id: string; intervention_type: string; created_at: string | null }>;
 };
+
+const DOMAIN_TO_PILLAR: Record<string, CmoPillar> = {
+  monitoring: 'oportunidad',
+  coordination: 'oportunidad',
+  medication: 'capacidad',
+  education: 'capacidad',
+  safety: 'oportunidad',
+  lifestyle: 'motivacion',
+  adherence: 'motivacion',
+};
+
+function normalizeDomain(domain: string | null): string {
+  return (domain ?? '').trim().toLowerCase();
+}
+
+function getPillarFromIntervention(row: { intervention_type: string | null; intervention_domain: string | null }): CmoPillar | null {
+  const normalizedDomain = normalizeDomain(row.intervention_domain);
+
+  if (normalizedDomain in DOMAIN_TO_PILLAR) {
+    return DOMAIN_TO_PILLAR[normalizedDomain];
+  }
+
+  const fromCatalog = INTERVENTION_CATALOG.find((item) => item.label === (row.intervention_type ?? ''));
+  return fromCatalog?.cmo_pillar ?? null;
+}
 
 export async function loadDashboardData(): Promise<{ data: DashboardData | null; errorMessage: string | null }> {
   if (!supabase) {
@@ -15,7 +44,7 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
 
   const now = new Date().toISOString().slice(0, 10);
 
-  const [patientsRes, scoresRes, upcomingRes, visitsRes, interventionsRes] = await Promise.all([
+  const [patientsRes, scoresRes, upcomingRes, visitsRes, interventionsRes, interventionsAggRes] = await Promise.all([
     supabase.from('patients').select('id', { count: 'exact', head: true }),
     supabase
       .from('cmo_scores')
@@ -38,9 +67,17 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
       .select('id,visit_id,intervention_type,created_at,visits!inner(patient_id)')
       .order('created_at', { ascending: false })
       .limit(8),
+    supabase.from('interventions').select('linked_to_cmo_level,intervention_type,intervention_domain', { count: 'exact' }),
   ]);
 
-  const errors = [patientsRes.error, scoresRes.error, upcomingRes.error, visitsRes.error, interventionsRes.error].filter(Boolean);
+  const errors = [
+    patientsRes.error,
+    scoresRes.error,
+    upcomingRes.error,
+    visitsRes.error,
+    interventionsRes.error,
+    interventionsAggRes.error,
+  ].filter(Boolean);
 
   if (errors.length > 0) {
     return { data: null, errorMessage: errors[0]?.message ?? 'No se pudo cargar dashboard.' };
@@ -60,10 +97,34 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
     priorities[p] += 1;
   }
 
+  const byPillar: Record<CmoPillar, number> = {
+    capacidad: 0,
+    motivacion: 0,
+    oportunidad: 0,
+  };
+  const byLevel = { 1: 0, 2: 0, 3: 0 } as { 1: number; 2: number; 3: number };
+
+  type InterventionAggRow = {
+    linked_to_cmo_level: number | null;
+    intervention_type: string | null;
+    intervention_domain: string | null;
+  };
+
+  for (const item of (interventionsAggRes.data ?? []) as InterventionAggRow[]) {
+    const level = Number(item.linked_to_cmo_level) as 1 | 2 | 3;
+    if (level === 1 || level === 2 || level === 3) byLevel[level] += 1;
+
+    const pillar = getPillarFromIntervention(item);
+    if (pillar) byPillar[pillar] += 1;
+  }
+
   return {
     data: {
       totalPatients: patientsRes.count ?? 0,
       patientsByPriority: priorities,
+      totalInterventions: interventionsAggRes.count ?? 0,
+      interventionsByPillar: byPillar,
+      interventionsByLevel: byLevel,
       upcomingVisits: ((upcomingRes.data ?? []) as Array<{
         id: string; patient_id: string; visit_type: string | null; scheduled_date: string | null;
         patients: { study_code: string | null } | Array<{ study_code: string | null }>;

@@ -35,16 +35,56 @@ export function DashboardPage() {
             <strong>{data.totalPatients}</strong>
           </article>
           <article className="kpi-card">
-            <p>Prioridad 1</p>
+            <p>Pacientes nivel 1</p>
             <strong>{data.patientsByPriority[1]}</strong>
           </article>
           <article className="kpi-card">
-            <p>Prioridad 2</p>
+            <p>Pacientes nivel 2</p>
             <strong>{data.patientsByPriority[2]}</strong>
           </article>
           <article className="kpi-card">
-            <p>Prioridad 3</p>
+            <p>Pacientes nivel 3</p>
             <strong>{data.patientsByPriority[3]}</strong>
+          </article>
+          <article className="kpi-card">
+            <p>Intervenciones totales</p>
+            <strong>{data.totalInterventions}</strong>
+          </article>
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>Intervenciones por pilar CMO</h2>
+        <div className="kpi-grid">
+          <article className="kpi-card">
+            <p>Capacidad</p>
+            <strong>{data.interventionsByPillar.capacidad}</strong>
+          </article>
+          <article className="kpi-card">
+            <p>Motivación</p>
+            <strong>{data.interventionsByPillar.motivacion}</strong>
+          </article>
+          <article className="kpi-card">
+            <p>Oportunidad</p>
+            <strong>{data.interventionsByPillar.oportunidad}</strong>
+          </article>
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>Intervenciones por nivel</h2>
+        <div className="kpi-grid">
+          <article className="kpi-card">
+            <p>Nivel 1</p>
+            <strong>{data.interventionsByLevel[1]}</strong>
+          </article>
+          <article className="kpi-card">
+            <p>Nivel 2</p>
+            <strong>{data.interventionsByLevel[2]}</strong>
+          </article>
+          <article className="kpi-card">
+            <p>Nivel 3</p>
+            <strong>{data.interventionsByLevel[3]}</strong>
           </article>
         </div>
       </section>
@@ -81,15 +121,6 @@ export function DashboardPage() {
             ))}
           </ul>
         )}
-        <ul className="simple-list">
-          {data.recentVisits.map((visit) => (
-            <li key={visit.id}>
-              <span>{visit.visit_date ?? '-'}</span>
-              <span>{getVisitTypeLabel(visit.visit_type)}</span>
-              <Link to={`/patients/${visit.patient_id}`}>Paciente</Link>
-            </li>
-          ))}
-        </ul>
       </section>
 
       <section className="card">
