@@ -83,6 +83,16 @@ type AssessmentRow = {
   high_risk_medication_present: boolean | null;
 };
 
+type QuestionnaireRow = {
+  visit_id: string;
+  patient_id: string;
+  visit_type: string;
+  questionnaire_type: 'iexpac' | 'morisky' | 'eq5d';
+  responses: Record<string, unknown>;
+  total_score: number | null;
+  secondary_score: number | null;
+};
+
 function toCsvValue(value: unknown): string {
   if (value === null || value === undefined) return '';
   const stringValue = String(value);
@@ -143,6 +153,26 @@ function getVisitOutcome(interventions: InterventionRow[]): string {
   return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
 }
 
+function isBaselineVisitType(visitType: string | null): boolean {
+  return visitType === 'baseline';
+}
+
+function isFinalVisitType(visitType: string | null): boolean {
+  return visitType === 'final' || visitType === 'month_12';
+}
+
+function compareVisitDate(a: VisitRow, b: VisitRow): number {
+  const tsA = new Date(a.visit_date ?? a.scheduled_date ?? '9999-12-31').getTime();
+  const tsB = new Date(b.visit_date ?? b.scheduled_date ?? '9999-12-31').getTime();
+  if (tsA !== tsB) return tsA - tsB;
+  return (a.created_at ?? '').localeCompare(b.created_at ?? '');
+}
+
+function getLatestVisitIdByType(visits: VisitRow[], selector: (visitType: string | null) => boolean): string | null {
+  const filtered = [...visits].filter((visit) => selector(visit.visit_type)).sort(compareVisitDate);
+  return filtered.length > 0 ? filtered[filtered.length - 1].id : null;
+}
+
 export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
   if (!supabase) {
     return { success: false, errorMessage: 'Supabase no está configurado. No se puede exportar.', generatedFiles: [] };
@@ -154,12 +184,14 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
     scoresResult,
     interventionsResult,
     assessmentsResult,
+    questionnairesResult,
   ] = await Promise.all([
     supabase.from('patients').select('id,study_code,inclusion_date,age_at_inclusion,sex,created_at').order('created_at', { ascending: true }),
     supabase.from('visits').select('id,patient_id,visit_type,visit_number,visit_date,scheduled_date,created_at').order('created_at', { ascending: true }),
     supabase.from('cmo_scores').select('visit_id,score,priority'),
     supabase.from('interventions').select('id,visit_id,intervention_type,intervention_domain,priority_level,delivered,linked_to_cmo_level,outcome,created_at').order('created_at', { ascending: true }),
     supabase.from('clinical_assessments').select('visit_id,education_level,pregnancy_postpartum,biological_sex,race_ethnicity_risk,hypertension_present,cv_pathology_present,comorbidities_present,recent_cvd_12m,hospital_er_use_12m,physical_activity_pattern,social_support_absent,psychosocial_stress,chronic_med_count,recent_regimen_change,regimen_complexity_present,adherence_problem,systolic_bp,diastolic_bp,heart_rate,weight_kg,height_cm,bmi,waist_cm,ldl_mg_dl,hdl_mg_dl,non_hdl_mg_dl,fasting_glucose_mg_dl,hba1c_pct,score2_value,framingham_value,cv_risk_level,smoker_status,diet_score,adverse_events_count,high_risk_medication_present'),
+    supabase.from('questionnaire_responses').select('visit_id,patient_id,visit_type,questionnaire_type,responses,total_score,secondary_score'),
   ]);
 
   const firstError = [
@@ -168,6 +200,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
     scoresResult.error,
     interventionsResult.error,
     assessmentsResult.error,
+    questionnairesResult.error,
   ].find(Boolean);
 
   if (firstError) {
@@ -179,6 +212,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
   const scores = (scoresResult.data ?? []) as ScoreRow[];
   const interventions = (interventionsResult.data ?? []) as InterventionRow[];
   const assessments = (assessmentsResult.data ?? []) as AssessmentRow[];
+  const questionnaires = (questionnairesResult.data ?? []) as QuestionnaireRow[];
 
   const anonymizedPatientIdByRawId = buildAnonymousPatientIds(patients);
   const anonymizedVisitIdByRawId = new Map(visits.map((visit, index) => [visit.id, `V${String(index + 1).padStart(5, '0')}`]));
@@ -192,13 +226,45 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
     return acc;
   }, new Map());
 
-  const patientsCsvRows = patients.map((patient) => ({
-    patient_id: anonymizedPatientIdByRawId.get(patient.id) ?? '',
-    study_code: patient.study_code,
-    inclusion_date: patient.inclusion_date,
-    age_at_inclusion: patient.age_at_inclusion,
-    sex: patient.sex,
-  }));
+  const questionnaireByVisitAndType = questionnaires.reduce<Map<string, Map<string, QuestionnaireRow>>>((acc, item) => {
+    if (!acc.has(item.visit_id)) acc.set(item.visit_id, new Map());
+    acc.get(item.visit_id)?.set(item.questionnaire_type, item);
+    return acc;
+  }, new Map());
+
+  const patientsCsvRows = patients.map((patient) => {
+    const patientVisits = visits.filter((v) => v.patient_id === patient.id);
+    const baselineVisitId = getLatestVisitIdByType(patientVisits, isBaselineVisitType);
+    const finalVisitId = getLatestVisitIdByType(patientVisits, isFinalVisitType);
+
+    const baselineIexpac = baselineVisitId ? questionnaireByVisitAndType.get(baselineVisitId)?.get('iexpac') : null;
+    const finalIexpac = finalVisitId ? questionnaireByVisitAndType.get(finalVisitId)?.get('iexpac') : null;
+    const baselineMorisky = baselineVisitId ? questionnaireByVisitAndType.get(baselineVisitId)?.get('morisky') : null;
+    const finalMorisky = finalVisitId ? questionnaireByVisitAndType.get(finalVisitId)?.get('morisky') : null;
+    const baselineEq5d = baselineVisitId ? questionnaireByVisitAndType.get(baselineVisitId)?.get('eq5d') : null;
+    const finalEq5d = finalVisitId ? questionnaireByVisitAndType.get(finalVisitId)?.get('eq5d') : null;
+
+    const iexpacBasal = baselineIexpac?.total_score ?? null;
+    const iexpacFinal = finalIexpac?.total_score ?? null;
+    const eq5dVasBasal = baselineEq5d?.secondary_score ?? null;
+    const eq5dVasFinal = finalEq5d?.secondary_score ?? null;
+
+    return {
+      patient_id: anonymizedPatientIdByRawId.get(patient.id) ?? '',
+      study_code: patient.study_code,
+      inclusion_date: patient.inclusion_date,
+      age_at_inclusion: patient.age_at_inclusion,
+      sex: patient.sex,
+      IEXPAC_basal: iexpacBasal,
+      IEXPAC_final: iexpacFinal,
+      delta_IEXPAC: iexpacBasal !== null && iexpacFinal !== null ? Number((iexpacFinal - iexpacBasal).toFixed(2)) : null,
+      Morisky_basal: baselineMorisky?.total_score ?? null,
+      Morisky_final: finalMorisky?.total_score ?? null,
+      EQ5Dvas_basal: eq5dVasBasal,
+      EQ5Dvas_final: eq5dVasFinal,
+      delta_EQ5Dvas: eq5dVasBasal !== null && eq5dVasFinal !== null ? Number((eq5dVasFinal - eq5dVasBasal).toFixed(2)) : null,
+    };
+  });
 
   const visitsCsvRows = visits.map((visit) => ({
     visit_id: anonymizedVisitIdByRawId.get(visit.id) ?? '',
@@ -212,12 +278,16 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
   const stratificationCsvRows = visits.map((visit) => {
     const score = scoreByVisitId.get(visit.id);
     const assessment = assessmentByVisitId.get(visit.id);
+    const q = questionnaireByVisitAndType.get(visit.id);
 
     return {
       visit_id: anonymizedVisitIdByRawId.get(visit.id) ?? '',
       patient_id: anonymizedPatientIdByRawId.get(visit.patient_id) ?? '',
       score_cmo: score?.score ?? null,
       nivel_cmo: score?.priority ?? null,
+      IEXPAC: q?.get('iexpac')?.total_score ?? null,
+      Morisky: q?.get('morisky')?.total_score ?? null,
+      EQ5D_vas: q?.get('eq5d')?.secondary_score ?? null,
       education_level: assessment?.education_level ?? '',
       pregnancy_postpartum: assessment?.pregnancy_postpartum ?? '',
       biological_sex: assessment?.biological_sex ?? '',
@@ -267,11 +337,22 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
     outcome: intervention.outcome,
   }));
 
+  const questionnairesCsvRows = questionnaires.map((q) => ({
+    patient_id: anonymizedPatientIdByRawId.get(q.patient_id) ?? '',
+    visit_id: anonymizedVisitIdByRawId.get(q.visit_id) ?? '',
+    visit_type: q.visit_type,
+    questionnaire_type: q.questionnaire_type,
+    total_score: q.total_score,
+    secondary_score: q.secondary_score,
+    responses_raw: JSON.stringify(q.responses ?? {}),
+  }));
+
   const datasetMaestroRows = visits.map((visit) => {
     const patient = patients.find((row) => row.id === visit.patient_id);
     const score = scoreByVisitId.get(visit.id);
     const assessment = assessmentByVisitId.get(visit.id);
     const visitInterventions = interventionsByVisitId.get(visit.id) ?? [];
+    const qByType = questionnaireByVisitAndType.get(visit.id);
 
     return {
       study_code: patient?.study_code ?? '',
@@ -283,6 +364,10 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
       sexo: patient?.sex ?? assessment?.biological_sex ?? '',
       score_cmo: score?.score ?? null,
       nivel_cmo: score?.priority ?? null,
+      IEXPAC: qByType?.get('iexpac')?.total_score ?? null,
+      Morisky: qByType?.get('morisky')?.total_score ?? null,
+      EQ5D_vas: qByType?.get('eq5d')?.secondary_score ?? null,
+      EQ5D_profile: String(qByType?.get('eq5d')?.responses?.profile ?? ''),
       education_level: assessment?.education_level ?? '',
       pregnancy_postpartum: assessment?.pregnancy_postpartum ?? '',
       biological_sex: assessment?.biological_sex ?? '',
@@ -325,21 +410,23 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
     };
   });
 
-  const patientsCsv = toCsv(['patient_id', 'study_code', 'inclusion_date', 'age_at_inclusion', 'sex'], patientsCsvRows);
+  const patientsCsv = toCsv(Object.keys(patientsCsvRows[0] ?? { patient_id: '' }), patientsCsvRows);
   const visitsCsv = toCsv(['visit_id', 'patient_id', 'visit_type', 'visit_number', 'visit_date', 'scheduled_date'], visitsCsvRows);
   const stratificationCsv = toCsv(Object.keys(stratificationCsvRows[0] ?? { visit_id: '', patient_id: '' }), stratificationCsvRows);
   const interventionsCsv = toCsv(['intervention_id', 'visit_id', 'intervention_type', 'intervention_domain', 'priority_level', 'delivered', 'linked_to_cmo_level', 'outcome'], interventionsCsvRows);
+  const questionnairesCsv = toCsv(Object.keys(questionnairesCsvRows[0] ?? { patient_id: '' }), questionnairesCsvRows);
   const datasetMaestroCsv = toCsv(Object.keys(datasetMaestroRows[0] ?? {}), datasetMaestroRows);
 
   downloadCsv('pacientes.csv', patientsCsv);
   downloadCsv('visitas.csv', visitsCsv);
   downloadCsv('estratificaciones.csv', stratificationCsv);
   downloadCsv('intervenciones.csv', interventionsCsv);
+  downloadCsv('cuestionarios.csv', questionnairesCsv);
   downloadCsv('dataset_maestro.csv', datasetMaestroCsv);
 
   return {
     success: true,
     errorMessage: null,
-    generatedFiles: ['pacientes.csv', 'visitas.csv', 'estratificaciones.csv', 'intervenciones.csv', 'dataset_maestro.csv'],
+    generatedFiles: ['pacientes.csv', 'visitas.csv', 'estratificaciones.csv', 'intervenciones.csv', 'cuestionarios.csv', 'dataset_maestro.csv'],
   };
 }

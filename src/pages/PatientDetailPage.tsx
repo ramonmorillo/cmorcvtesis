@@ -13,6 +13,7 @@ import {
 import { getLatestCmoScoreByPatient, listCmoScoresByPatient, type CmoScoreHistoryEntry, type CmoScoreRecord } from '../services/cmoScoreService';
 import { listInterventionsByPatient, type PriorityLevel } from '../services/interventionService';
 import { getPatientById, type Patient } from '../services/patientService';
+import { isQuestionnaireVisitType, listQuestionnairesByPatient, type QuestionnaireResponseRecord } from '../services/questionnaireService';
 import { listVisitsByPatient, updateVisit, type Visit } from '../services/visitService';
 
 const LEVEL_META = {
@@ -20,6 +21,8 @@ const LEVEL_META = {
   2: { label: 'Nivel 2 · Intermedio', color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
   3: { label: 'Nivel 3 · Basal', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
 } as const;
+
+const REQUIRED_QUESTIONNAIRES = ['iexpac', 'morisky', 'eq5d'] as const;
 
 const PRIORITY_LEVEL_LABEL: Record<PriorityLevel, string> = {
   high: '1 · Prioridad',
@@ -54,6 +57,47 @@ function compareCmoDesc(a: CmoScoreHistoryEntry, b: CmoScoreHistoryEntry): numbe
   return (b.updated_at ?? '').localeCompare(a.updated_at ?? '');
 }
 
+function formatDelta(value: number | null): string {
+  if (value === null) return 'N/A';
+  if (value > 0) return `+${value.toFixed(2)}`;
+  return value.toFixed(2);
+}
+
+function isBaselineVisit(visitType: string | null): boolean {
+  return visitType === 'baseline';
+}
+
+function isFinalVisit(visitType: string | null): boolean {
+  return visitType === 'final' || visitType === 'month_12';
+}
+
+function isVisitQuestionnaireComplete(visitId: string, responseSetByVisitId: Map<string, Set<string>>): boolean {
+  const completed = responseSetByVisitId.get(visitId) ?? new Set<string>();
+  return REQUIRED_QUESTIONNAIRES.every((questionnaire) => completed.has(questionnaire));
+}
+
+function getLatestVisitByType(visits: Visit[], selector: (visitType: string | null) => boolean): Visit | null {
+  const filtered = [...visits]
+    .filter((visit) => selector(visit.visit_type))
+    .sort(compareVisitsTimeline);
+
+  return filtered.length > 0 ? filtered[filtered.length - 1] : null;
+}
+
+function getQuestionnaireByVisit(
+  responsesByVisitId: Map<string, Map<string, QuestionnaireResponseRecord>>,
+  visitId: string | null,
+  questionnaireType: string,
+): QuestionnaireResponseRecord | null {
+  if (!visitId) return null;
+  return responsesByVisitId.get(visitId)?.get(questionnaireType) ?? null;
+}
+
+function toNullableNumber(value: number | null | undefined): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  return null;
+}
+
 export function PatientDetailPage() {
   const { id = '' } = useParams();
   const [patient, setPatient] = useState<Patient | null>(null);
@@ -61,23 +105,26 @@ export function PatientDetailPage() {
   const [latestCmoScore, setLatestCmoScore] = useState<CmoScoreRecord | null>(null);
   const [cmoHistory, setCmoHistory] = useState<CmoScoreHistoryEntry[]>([]);
   const [interventions, setInterventions] = useState<Array<{ id: string; visit_id: string; intervention_type: string; priority_level: PriorityLevel | null }>>([]);
+  const [questionnaires, setQuestionnaires] = useState<QuestionnaireResponseRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadData() {
-      const [patientResult, visitsResult, cmoResult, cmoHistoryResult, interventionsResult] = await Promise.all([
+      const [patientResult, visitsResult, cmoResult, cmoHistoryResult, interventionsResult, questionnairesResult] = await Promise.all([
         getPatientById(id),
         listVisitsByPatient(id),
         getLatestCmoScoreByPatient(id),
         listCmoScoresByPatient(id),
         listInterventionsByPatient(id),
+        listQuestionnairesByPatient(id),
       ]);
 
       setPatient(patientResult.data);
       setVisits(visitsResult.data);
       setLatestCmoScore(cmoResult.data);
       setCmoHistory(cmoHistoryResult.data);
+      setQuestionnaires(questionnairesResult.data);
       setInterventions(
         interventionsResult.data.map((x) => ({
           id: x.id,
@@ -88,7 +135,10 @@ export function PatientDetailPage() {
       );
 
       setErrorMessage(
-        patientResult.errorMessage ?? visitsResult.errorMessage ?? interventionsResult.errorMessage,
+        patientResult.errorMessage
+          ?? visitsResult.errorMessage
+          ?? interventionsResult.errorMessage
+          ?? questionnairesResult.errorMessage,
       );
       setLoading(false);
     }
@@ -130,6 +180,66 @@ export function PatientDetailPage() {
     return map;
   }, [interventions]);
 
+  const questionnaireByVisitId = useMemo(() => {
+    const map = new Map<string, Map<string, QuestionnaireResponseRecord>>();
+    questionnaires.forEach((item) => {
+      if (!map.has(item.visit_id)) map.set(item.visit_id, new Map());
+      map.get(item.visit_id)?.set(item.questionnaire_type, item);
+    });
+    return map;
+  }, [questionnaires]);
+
+  const questionnaireCompletionByVisitId = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    questionnaires.forEach((item) => {
+      if (!map.has(item.visit_id)) map.set(item.visit_id, new Set());
+      map.get(item.visit_id)?.add(item.questionnaire_type);
+    });
+    return map;
+  }, [questionnaires]);
+
+  const questionnaireVisits = useMemo(
+    () => visitsTimeline.filter((visit) => isQuestionnaireVisitType(visit.visit_type)),
+    [visitsTimeline],
+  );
+
+  const missingQuestionnaireVisits = useMemo(
+    () => questionnaireVisits.filter((visit) => !isVisitQuestionnaireComplete(visit.id, questionnaireCompletionByVisitId)),
+    [questionnaireVisits, questionnaireCompletionByVisitId],
+  );
+
+  const baselineVisit = useMemo(() => getLatestVisitByType(visitsTimeline, isBaselineVisit), [visitsTimeline]);
+  const finalVisit = useMemo(() => getLatestVisitByType(visitsTimeline, isFinalVisit), [visitsTimeline]);
+
+  const baselineIexpac = getQuestionnaireByVisit(questionnaireByVisitId, baselineVisit?.id ?? null, 'iexpac');
+  const finalIexpac = getQuestionnaireByVisit(questionnaireByVisitId, finalVisit?.id ?? null, 'iexpac');
+  const baselineMorisky = getQuestionnaireByVisit(questionnaireByVisitId, baselineVisit?.id ?? null, 'morisky');
+  const finalMorisky = getQuestionnaireByVisit(questionnaireByVisitId, finalVisit?.id ?? null, 'morisky');
+  const baselineEq5d = getQuestionnaireByVisit(questionnaireByVisitId, baselineVisit?.id ?? null, 'eq5d');
+  const finalEq5d = getQuestionnaireByVisit(questionnaireByVisitId, finalVisit?.id ?? null, 'eq5d');
+
+  const deltaIexpac = (() => {
+    const basal = toNullableNumber(baselineIexpac?.total_score);
+    const fin = toNullableNumber(finalIexpac?.total_score);
+    if (basal === null || fin === null) return null;
+    return Number((fin - basal).toFixed(2));
+  })();
+
+  const deltaEq5dVas = (() => {
+    const basal = toNullableNumber(baselineEq5d?.secondary_score);
+    const fin = toNullableNumber(finalEq5d?.secondary_score);
+    if (basal === null || fin === null) return null;
+    return Number((fin - basal).toFixed(2));
+  })();
+
+  const adherenceChange = (() => {
+    const basal = toNullableNumber(baselineMorisky?.total_score);
+    const fin = toNullableNumber(finalMorisky?.total_score);
+    if (basal === null || fin === null) return 'N/A';
+    if (basal === fin) return fin === 1 ? 'Sin cambios (Alta)' : 'Sin cambios (Baja)';
+    return fin === 1 ? 'Mejora a Alta adherencia' : 'Empeora a Baja adherencia';
+  })();
+
   const latestHistory = cmoHistoryDesc[0] ?? null;
   const previousHistory = cmoHistoryDesc[1] ?? null;
   const cmoDelta = latestHistory && previousHistory ? latestHistory.score - previousHistory.score : null;
@@ -168,6 +278,12 @@ export function PatientDetailPage() {
             </dd>
           </div>
         </dl>
+
+        {missingQuestionnaireVisits.length > 0 ? (
+          <div className="error-state" style={{ marginTop: '0.8rem' }}>
+            Faltan cuestionarios obligatorios en {missingQuestionnaireVisits.length} visita(s) basal/final.
+          </div>
+        ) : null}
       </section>
 
       <section className="card">
@@ -188,6 +304,7 @@ export function PatientDetailPage() {
                   <th>Estado</th>
                   <th style={{ textAlign: 'right' }}>Score CMO</th>
                   <th>Nivel CMO</th>
+                  <th>Cuestionarios</th>
                   <th style={{ textAlign: 'right' }}>Intervenciones</th>
                   <th>Acciones</th>
                 </tr>
@@ -197,6 +314,7 @@ export function PatientDetailPage() {
                   const scoreEntry = scoreByVisitId.get(visit.id) ?? null;
                   const levelMeta = scoreEntry ? LEVEL_META[scoreEntry.priority as 1 | 2 | 3] : null;
                   const interventionsCount = interventionsByVisitId.get(visit.id) ?? 0;
+                  const questionnairesReady = !isQuestionnaireVisitType(visit.visit_type) || isVisitQuestionnaireComplete(visit.id, questionnaireCompletionByVisitId);
 
                   return (
                     <tr key={visit.id}>
@@ -221,11 +339,19 @@ export function PatientDetailPage() {
                       <td style={{ color: levelMeta?.color ?? 'inherit', fontWeight: levelMeta ? 600 : 400 }}>
                         {levelMeta ? levelMeta.label : '-'}
                       </td>
+                      <td>
+                        {!isQuestionnaireVisitType(visit.visit_type) ? '-' : (
+                          <span className={questionnairesReady ? 'badge-success' : 'badge-danger'}>
+                            {questionnairesReady ? 'Completos' : 'Pendientes'}
+                          </span>
+                        )}
+                      </td>
                       <td style={{ textAlign: 'right' }}>{interventionsCount}</td>
                       <td>
                         <div className="actions-inline">
                           <Link to={`/visits/${visit.id}/stratification`}>Evaluación clínica</Link>
                           <Link to={`/visits/${visit.id}/interventions`}>Intervenciones</Link>
+                          {isQuestionnaireVisitType(visit.visit_type) ? <Link to={`/visits/${visit.id}/questionnaires`}>Cuestionarios</Link> : null}
                         </div>
                       </td>
                     </tr>
@@ -235,6 +361,48 @@ export function PatientDetailPage() {
             </table>
           </div>
         )}
+      </section>
+
+      <section className="card">
+        <h2>Resumen de cuestionarios (tesis)</h2>
+        <ul className="simple-list">
+          <li>
+            <span>Basal: IEXPAC</span>
+            <strong>{baselineIexpac ? '✓' : '✗'}</strong>
+          </li>
+          <li>
+            <span>Basal: Morisky</span>
+            <strong>{baselineMorisky ? '✓' : '✗'}</strong>
+          </li>
+          <li>
+            <span>Basal: EQ-5D</span>
+            <strong>{baselineEq5d ? '✓' : '✗'}</strong>
+          </li>
+          <li>
+            <span>Final: IEXPAC</span>
+            <strong>{finalIexpac ? '✓' : '✗'}</strong>
+          </li>
+          <li>
+            <span>Final: Morisky</span>
+            <strong>{finalMorisky ? '✓' : '✗'}</strong>
+          </li>
+          <li>
+            <span>Final: EQ-5D</span>
+            <strong>{finalEq5d ? '✓' : '✗'}</strong>
+          </li>
+          <li>
+            <span>Δ IEXPAC</span>
+            <strong>{formatDelta(deltaIexpac)}</strong>
+          </li>
+          <li>
+            <span>Δ EQ5D VAS</span>
+            <strong>{formatDelta(deltaEq5dVas)}</strong>
+          </li>
+          <li>
+            <span>Cambio adherencia</span>
+            <strong>{adherenceChange}</strong>
+          </li>
+        </ul>
       </section>
 
       <section className="card">

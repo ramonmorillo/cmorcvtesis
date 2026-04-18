@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 
 import { SMOKER_STATUS_OPTIONS } from '../constants/enums';
 import { ErrorState } from '../components/common/ErrorState';
+import { VisitTabs } from '../components/common/VisitTabs';
 import {
   getClinicalAssessmentByVisit,
   upsertClinicalAssessment,
@@ -342,6 +343,7 @@ export function BaselineStratificationPage() {
     <div className="page-stack">
       <section className="card">
         <h1>Estratificación basal</h1>
+        <VisitTabs visitId={visitId} active="clinical" />
 
         <div
           style={{

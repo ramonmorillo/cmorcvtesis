@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { ErrorState } from '../components/common/ErrorState';
+import { VisitTabs } from '../components/common/VisitTabs';
 import { getCmoScoreByVisit, type CmoScoreRecord } from '../services/cmoScoreService';
 import {
   createIntervention,
@@ -202,6 +203,7 @@ export function VisitInterventionsPage() {
     <div className="page-stack">
       <section className="card">
         <h1>Registro de intervenciones</h1>
+        <VisitTabs visitId={visitId} active="interventions" />
 
         {cmoScore && cmoMeta ? (
           <div
