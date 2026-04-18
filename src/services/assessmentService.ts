@@ -79,33 +79,100 @@ const TRISTATE_FIELDS = [
   'adherence_problem',
 ] as const;
 
+const BOOLEAN_FIELDS = [
+  'high_risk_medication_present',
+] as const;
+
+const ALLOWED_INPUT_FIELDS = [
+  'visit_id',
+  'education_level',
+  'pregnancy_postpartum',
+  'biological_sex',
+  'race_ethnicity_risk',
+  'hypertension_present',
+  'cv_pathology_present',
+  'comorbidities_present',
+  'recent_cvd_12m',
+  'hospital_er_use_12m',
+  'physical_activity_pattern',
+  'social_support_absent',
+  'psychosocial_stress',
+  'chronic_med_count',
+  'recent_regimen_change',
+  'regimen_complexity_present',
+  'adherence_problem',
+  'systolic_bp',
+  'diastolic_bp',
+  'heart_rate',
+  'weight_kg',
+  'height_cm',
+  'bmi',
+  'waist_cm',
+  'ldl_mg_dl',
+  'hdl_mg_dl',
+  'non_hdl_mg_dl',
+  'fasting_glucose_mg_dl',
+  'hba1c_pct',
+  'score2_value',
+  'framingham_value',
+  'cv_risk_level',
+  'smoker_status',
+  'diet_score',
+  'safety_incidents',
+  'adverse_events_count',
+  'high_risk_medication_present',
+] as const;
+
 function mapTriState(value: unknown): TriState | null {
-  if (value === 'yes' || value === 'no' || value === 'unknown' || value === null) return value;
+  if (value === 'yes' || value === 'no' || value === null) return value;
   if (typeof value !== 'string') return null;
 
   const normalized = value.trim().toLowerCase();
   if (normalized === 'yes' || normalized === 'sí' || normalized === 'si' || normalized === 'true') return 'yes';
   if (normalized === 'no' || normalized === 'false') return 'no';
-  if (normalized === 'unknown' || normalized === 'desconocido' || normalized === 'no registrado') return 'unknown';
+  if (normalized === 'unknown' || normalized === 'desconocido' || normalized === 'no registrado' || normalized === 'not_recorded') return null;
   if (normalized === '') return null;
 
   return null;
 }
 
-function normalizeAssessmentInput(input: NewClinicalAssessmentInput): NewClinicalAssessmentInput {
-  const normalizedInput: NewClinicalAssessmentInput = { ...input };
+function mapNullableBoolean(value: unknown): boolean | null {
+  if (value === true || value === false) return value;
+  if (typeof value !== 'string') return null;
 
-  for (const field of TRISTATE_FIELDS) {
-    normalizedInput[field] = mapTriState(input[field]);
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'yes' || normalized === 'sí' || normalized === 'si' || normalized === 'true') return true;
+  if (normalized === 'no' || normalized === 'false') return false;
+  if (normalized === 'unknown' || normalized === 'not_recorded' || normalized === '' || normalized === 'no registrado') return null;
+  return null;
+}
+
+function normalizeAssessmentInput(input: NewClinicalAssessmentInput): NewClinicalAssessmentInput {
+  const rawInput = input as Partial<Record<string, unknown>>;
+  const normalizedRecord: Record<string, unknown> = {};
+  const unknownKeys = Object.keys(rawInput).filter((key) => !ALLOWED_INPUT_FIELDS.includes(key as (typeof ALLOWED_INPUT_FIELDS)[number]));
+
+  if (unknownKeys.length > 0) {
+    console.warn('[upsertClinicalAssessment] Ignoring legacy/unexpected fields:', unknownKeys);
   }
 
-  normalizedInput.high_risk_medication_present =
-    input.high_risk_medication_present === true
-    || input.high_risk_medication_present === false
-      ? input.high_risk_medication_present
-      : null;
+  for (const field of ALLOWED_INPUT_FIELDS) {
+    normalizedRecord[field] = rawInput[field] ?? null;
+  }
 
-  return normalizedInput;
+  if (typeof normalizedRecord.visit_id !== 'string') {
+    normalizedRecord.visit_id = input.visit_id;
+  }
+
+  for (const field of TRISTATE_FIELDS) {
+    normalizedRecord[field] = mapTriState(rawInput[field]);
+  }
+
+  for (const field of BOOLEAN_FIELDS) {
+    normalizedRecord[field] = mapNullableBoolean(rawInput[field]);
+  }
+
+  return normalizedRecord as NewClinicalAssessmentInput;
 }
 
 export async function upsertClinicalAssessment(input: NewClinicalAssessmentInput) {
@@ -114,6 +181,7 @@ export async function upsertClinicalAssessment(input: NewClinicalAssessmentInput
   }
 
   const normalizedInput = normalizeAssessmentInput(input);
+  console.log('[upsertClinicalAssessment] payload:', JSON.stringify(normalizedInput, null, 2));
 
   const { data, error } = await supabase
     .from('clinical_assessments')
