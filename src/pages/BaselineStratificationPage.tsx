@@ -49,15 +49,15 @@ function toTriStatePayloadValue(value: unknown): 'yes' | 'no' | null {
   return null;
 }
 
-function fromNullableBoolean(value: boolean | null | undefined): YesNoUnknown {
+function fromNullableBoolean(value: boolean | null | undefined): string {
   if (value === true) return 'yes';
   if (value === false) return 'no';
-  return 'unknown';
+  return '';
 }
 
-function fromTriState(value: string | null | undefined): YesNoUnknown {
+function fromTriState(value: string | null | undefined): string {
   if (value === 'yes' || value === 'no' || value === 'unknown') return value;
-  return 'unknown';
+  return '';
 }
 
 function yesNoUnknown(value: string): YesNoUnknown {
@@ -117,10 +117,10 @@ const NUMERIC_FIELDS: [string, string][] = [
   ['adverse_events_count', 'Eventos adversos'],
 ];
 
-const YES_NO_UNKNOWN_OPTIONS: Array<{ value: YesNoUnknown; label: string }> = [
+const YES_NO_UNKNOWN_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'yes', label: 'Sí' },
   { value: 'no', label: 'No' },
-  { value: 'unknown', label: 'No registrado' },
+  { value: '', label: 'No registrado' },
 ];
 
 function ageFromBirthAndInclusionDate(birthDate: string | null, inclusionDate: string | null): number | null {
@@ -141,23 +141,23 @@ export function BaselineStratificationPage() {
   const [visitPatientId, setVisitPatientId] = useState<string>('');
   const [resolvedAge, setResolvedAge] = useState<number | null>(null);
   const [form, setForm] = useState<Record<string, string>>({
-    smoker_status: 'unknown',
-    education_level: 'unknown',
-    pregnancy_postpartum: 'unknown',
-    biological_sex: 'unknown',
-    race_ethnicity_risk: 'unknown',
-    hypertension_present: 'unknown',
-    cv_pathology_present: 'unknown',
-    comorbidities_present: 'unknown',
-    recent_cvd_12m: 'unknown',
-    hospital_er_use_12m: 'unknown',
-    physical_activity_pattern: 'unknown',
-    social_support_absent: 'unknown',
-    psychosocial_stress: 'unknown',
-    high_risk_medication_present_status: 'unknown',
-    recent_regimen_change: 'unknown',
-    regimen_complexity_present: 'unknown',
-    adherence_problem: 'unknown',
+    smoker_status: '',
+    education_level: '',
+    pregnancy_postpartum: '',
+    biological_sex: '',
+    race_ethnicity_risk: '',
+    hypertension_present: '',
+    cv_pathology_present: '',
+    comorbidities_present: '',
+    recent_cvd_12m: '',
+    hospital_er_use_12m: '',
+    physical_activity_pattern: '',
+    social_support_absent: '',
+    psychosocial_stress: '',
+    high_risk_medication_present_status: '',
+    recent_regimen_change: '',
+    regimen_complexity_present: '',
+    adherence_problem: '',
   });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -191,18 +191,18 @@ export function BaselineStratificationPage() {
         const v = assessmentRes.data;
         setForm((prev) => ({
           ...prev,
-          education_level: v.education_level ?? 'unknown',
+          education_level: v.education_level ?? '',
           pregnancy_postpartum: fromTriState(v.pregnancy_postpartum),
-          biological_sex: v.biological_sex ?? 'unknown',
-          race_ethnicity_risk: v.race_ethnicity_risk ?? 'unknown',
+          biological_sex: v.biological_sex ?? '',
+          race_ethnicity_risk: v.race_ethnicity_risk ?? '',
           hypertension_present: fromTriState(v.hypertension_present),
           non_hdl_mg_dl: String(v.non_hdl_mg_dl ?? ''),
           cv_pathology_present: fromTriState(v.cv_pathology_present),
           comorbidities_present: fromTriState(v.comorbidities_present),
           recent_cvd_12m: fromTriState(v.recent_cvd_12m),
           hospital_er_use_12m: fromTriState(v.hospital_er_use_12m),
-          smoker_status: v.smoker_status ?? 'unknown',
-          physical_activity_pattern: v.physical_activity_pattern ?? 'unknown',
+          smoker_status: v.smoker_status ?? '',
+          physical_activity_pattern: v.physical_activity_pattern ?? '',
           social_support_absent: fromTriState(v.social_support_absent),
           psychosocial_stress: fromTriState(v.psychosocial_stress),
           chronic_med_count: String(v.chronic_med_count ?? ''),
@@ -382,7 +382,7 @@ export function BaselineStratificationPage() {
                   <option value="low">Bajo</option>
                   <option value="medium">Medio</option>
                   <option value="high">Alto</option>
-                  <option value="unknown">No registrado</option>
+                  <option value="">No registrado</option>
                 </select>
               </label>
               <label>
@@ -397,7 +397,7 @@ export function BaselineStratificationPage() {
                   <option value="female">Mujer</option>
                   <option value="male">Varón</option>
                   <option value="other">Otro</option>
-                  <option value="unknown">No registrado</option>
+                  <option value="">No registrado</option>
                 </select>
               </label>
               <label>
@@ -407,7 +407,7 @@ export function BaselineStratificationPage() {
                   <option value="afro_caribbean">Afrocaribeño</option>
                   <option value="afro_descendant_or_chinese">Afrodescendiente o chino</option>
                   <option value="other">Otra</option>
-                  <option value="unknown">No registrado</option>
+                  <option value="">No registrado</option>
                 </select>
               </label>
             </div>
@@ -474,7 +474,7 @@ export function BaselineStratificationPage() {
                   <option value="sedentary">Sedentario</option>
                   <option value="intense">Intenso</option>
                   <option value="normal">Normal</option>
-                  <option value="unknown">No registrado</option>
+                  <option value="">No registrado</option>
                 </select>
               </label>
               <label>

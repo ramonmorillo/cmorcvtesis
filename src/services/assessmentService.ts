@@ -65,114 +65,125 @@ function extractErrorMessage(error: unknown): string {
   return 'Error desconocido al procesar evaluación clínica.';
 }
 
-const TRISTATE_FIELDS = [
-  'pregnancy_postpartum',
-  'hypertension_present',
-  'cv_pathology_present',
-  'comorbidities_present',
-  'recent_cvd_12m',
-  'hospital_er_use_12m',
-  'social_support_absent',
-  'psychosocial_stress',
-  'recent_regimen_change',
-  'regimen_complexity_present',
-  'adherence_problem',
-] as const;
+const NULL_LIKE_VALUES = new Set(['', 'unknown', 'not_recorded', 'no registrado', 'desconocido']);
 
-const BOOLEAN_FIELDS = [
-  'high_risk_medication_present',
-] as const;
+const CLINICAL_ASSESSMENT_SCHEMA: Record<string, { type: 'uuid' | 'enum' | 'numeric' | 'integer' | 'boolean' | 'text'; values?: readonly string[] }> = {
+  visit_id: { type: 'uuid' },
+  education_level: { type: 'enum', values: ['low', 'medium', 'high', 'unknown'] },
+  pregnancy_postpartum: { type: 'enum', values: ['yes', 'no', 'unknown'] },
+  biological_sex: { type: 'enum', values: ['female', 'male', 'other', 'unknown'] },
+  race_ethnicity_risk: { type: 'enum', values: ['asian_non_chinese', 'afro_caribbean', 'afro_descendant_or_chinese', 'other', 'unknown'] },
+  hypertension_present: { type: 'enum', values: ['yes', 'no', 'unknown'] },
+  cv_pathology_present: { type: 'enum', values: ['yes', 'no', 'unknown'] },
+  comorbidities_present: { type: 'enum', values: ['yes', 'no', 'unknown'] },
+  recent_cvd_12m: { type: 'enum', values: ['yes', 'no', 'unknown'] },
+  hospital_er_use_12m: { type: 'enum', values: ['yes', 'no', 'unknown'] },
+  physical_activity_pattern: { type: 'enum', values: ['sedentary', 'intense', 'normal', 'unknown'] },
+  social_support_absent: { type: 'enum', values: ['yes', 'no', 'unknown'] },
+  psychosocial_stress: { type: 'enum', values: ['yes', 'no', 'unknown'] },
+  chronic_med_count: { type: 'integer' },
+  recent_regimen_change: { type: 'enum', values: ['yes', 'no', 'unknown'] },
+  regimen_complexity_present: { type: 'enum', values: ['yes', 'no', 'unknown'] },
+  adherence_problem: { type: 'enum', values: ['yes', 'no', 'unknown'] },
+  systolic_bp: { type: 'numeric' },
+  diastolic_bp: { type: 'numeric' },
+  heart_rate: { type: 'numeric' },
+  weight_kg: { type: 'numeric' },
+  height_cm: { type: 'numeric' },
+  bmi: { type: 'numeric' },
+  waist_cm: { type: 'numeric' },
+  ldl_mg_dl: { type: 'numeric' },
+  hdl_mg_dl: { type: 'numeric' },
+  non_hdl_mg_dl: { type: 'numeric' },
+  fasting_glucose_mg_dl: { type: 'numeric' },
+  hba1c_pct: { type: 'numeric' },
+  score2_value: { type: 'numeric' },
+  framingham_value: { type: 'numeric' },
+  cv_risk_level: { type: 'text' },
+  smoker_status: { type: 'enum', values: ['never', 'former_recent', 'current', 'unknown'] },
+  diet_score: { type: 'numeric' },
+  safety_incidents: { type: 'text' },
+  adverse_events_count: { type: 'integer' },
+  high_risk_medication_present: { type: 'boolean' },
+};
 
-const ALLOWED_INPUT_FIELDS = [
-  'visit_id',
-  'education_level',
-  'pregnancy_postpartum',
-  'biological_sex',
-  'race_ethnicity_risk',
-  'hypertension_present',
-  'cv_pathology_present',
-  'comorbidities_present',
-  'recent_cvd_12m',
-  'hospital_er_use_12m',
-  'physical_activity_pattern',
-  'social_support_absent',
-  'psychosocial_stress',
-  'chronic_med_count',
-  'recent_regimen_change',
-  'regimen_complexity_present',
-  'adherence_problem',
-  'systolic_bp',
-  'diastolic_bp',
-  'heart_rate',
-  'weight_kg',
-  'height_cm',
-  'bmi',
-  'waist_cm',
-  'ldl_mg_dl',
-  'hdl_mg_dl',
-  'non_hdl_mg_dl',
-  'fasting_glucose_mg_dl',
-  'hba1c_pct',
-  'score2_value',
-  'framingham_value',
-  'cv_risk_level',
-  'smoker_status',
-  'diet_score',
-  'safety_incidents',
-  'adverse_events_count',
-  'high_risk_medication_present',
-] as const;
-
-function mapTriState(value: unknown): TriState | null {
-  if (value === 'yes' || value === 'no' || value === null) return value;
-  if (typeof value !== 'string') return null;
-
+function normalizeNullLike(value: unknown): unknown {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') return value;
   const normalized = value.trim().toLowerCase();
   if (normalized === 'yes' || normalized === 'sí' || normalized === 'si' || normalized === 'true') return 'yes';
   if (normalized === 'no' || normalized === 'false') return 'no';
   if (normalized === 'unknown' || normalized === 'desconocido' || normalized === 'no registrado' || normalized === 'not_recorded') return null;
   if (normalized === '') return null;
 
-  return null;
-}
-
-function mapNullableBoolean(value: unknown): boolean | null {
-  if (value === true || value === false) return value;
-  if (typeof value !== 'string') return null;
-
-  const normalized = value.trim().toLowerCase();
+  const normalized = normalizedValue.toLowerCase();
   if (normalized === 'yes' || normalized === 'sí' || normalized === 'si' || normalized === 'true') return true;
   if (normalized === 'no' || normalized === 'false') return false;
-  if (normalized === 'unknown' || normalized === 'not_recorded' || normalized === '' || normalized === 'no registrado') return null;
   return null;
 }
 
-function normalizeAssessmentInput(input: NewClinicalAssessmentInput): NewClinicalAssessmentInput {
-  const rawInput = input as Partial<Record<string, unknown>>;
-  const normalizedRecord: Record<string, unknown> = {};
-  const unknownKeys = Object.keys(rawInput).filter((key) => !ALLOWED_INPUT_FIELDS.includes(key as (typeof ALLOWED_INPUT_FIELDS)[number]));
+function normalizeNumber(value: unknown, integer = false): number | null {
+  const normalizedValue = normalizeNullLike(value);
+  if (normalizedValue === null) return null;
+  if (typeof normalizedValue === 'number' && Number.isFinite(normalizedValue)) {
+    return integer ? Math.trunc(normalizedValue) : normalizedValue;
+  }
+  if (typeof normalizedValue !== 'string') return null;
 
-  if (unknownKeys.length > 0) {
-    console.warn('[upsertClinicalAssessment] Ignoring legacy/unexpected fields:', unknownKeys);
+  const n = Number(normalizedValue);
+  if (!Number.isFinite(n)) return null;
+  return integer ? Math.trunc(n) : n;
+}
+
+function normalizeEnum(value: unknown, allowedValues: readonly string[]): string | null {
+  const normalizedValue = normalizeNullLike(value);
+  if (normalizedValue === null || typeof normalizedValue !== 'string') return null;
+
+  const mappedBoolean =
+    normalizedValue.toLowerCase() === 'yes' || normalizedValue.toLowerCase() === 'sí' || normalizedValue.toLowerCase() === 'si'
+      ? 'yes'
+      : normalizedValue.toLowerCase() === 'no'
+        ? 'no'
+        : normalizedValue;
+
+  return allowedValues.includes(mappedBoolean) ? mappedBoolean : null;
+}
+
+export function normalizeAssessmentPayload(payload: Partial<NewClinicalAssessmentInput>): NewClinicalAssessmentInput {
+  const normalizedPayload: Record<string, unknown> = {};
+
+  for (const key of Object.keys(CLINICAL_ASSESSMENT_SCHEMA)) {
+    const schema = CLINICAL_ASSESSMENT_SCHEMA[key];
+    const rawValue = payload[key as keyof NewClinicalAssessmentInput];
+
+    if (schema.type === 'boolean') {
+      normalizedPayload[key] = normalizeBoolean(rawValue);
+      continue;
+    }
+
+    if (schema.type === 'numeric') {
+      normalizedPayload[key] = normalizeNumber(rawValue, false);
+      continue;
+    }
+
+    if (schema.type === 'integer') {
+      normalizedPayload[key] = normalizeNumber(rawValue, true);
+      continue;
+    }
+
+    if (schema.type === 'enum') {
+      normalizedPayload[key] = normalizeEnum(rawValue, schema.values ?? []);
+      continue;
+    }
+
+    const normalizedValue = normalizeNullLike(rawValue);
+    normalizedPayload[key] =
+      normalizedValue === null || typeof normalizedValue === 'string'
+        ? normalizedValue
+        : null;
   }
 
-  for (const field of ALLOWED_INPUT_FIELDS) {
-    normalizedRecord[field] = rawInput[field] ?? null;
-  }
-
-  if (typeof normalizedRecord.visit_id !== 'string') {
-    normalizedRecord.visit_id = input.visit_id;
-  }
-
-  for (const field of TRISTATE_FIELDS) {
-    normalizedRecord[field] = mapTriState(rawInput[field]);
-  }
-
-  for (const field of BOOLEAN_FIELDS) {
-    normalizedRecord[field] = mapNullableBoolean(rawInput[field]);
-  }
-
-  return normalizedRecord as NewClinicalAssessmentInput;
+  return normalizedPayload as NewClinicalAssessmentInput;
 }
 
 export async function upsertClinicalAssessment(input: NewClinicalAssessmentInput) {
@@ -180,8 +191,8 @@ export async function upsertClinicalAssessment(input: NewClinicalAssessmentInput
     return { data: null, errorMessage: 'Supabase no está configurado. No se puede guardar la evaluación clínica.' };
   }
 
-  const normalizedInput = normalizeAssessmentInput(input);
-  console.log('[upsertClinicalAssessment] payload:', JSON.stringify(normalizedInput, null, 2));
+  const normalizedInput = normalizeAssessmentPayload(input);
+  console.log('normalized payload', normalizedInput);
 
   const { data, error } = await supabase
     .from('clinical_assessments')
