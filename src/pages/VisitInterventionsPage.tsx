@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { ErrorState } from '../components/common/ErrorState';
@@ -11,11 +11,45 @@ import {
 } from '../services/interventionService';
 import { getVisitById } from '../services/visitService';
 
+type CmoPillar = 'capacidad' | 'motivacion' | 'oportunidad';
+type CmoLevel = 1 | 2 | 3;
+
+type InterventionCatalogItem = {
+  code: string;
+  label: string;
+  domain: string;
+  cmo_pillar: CmoPillar;
+  min_level: CmoLevel;
+};
+
+const OTHER_INTERVENTION_CODE = '__other__';
+
+const INTERVENTION_CATALOG: InterventionCatalogItem[] = [
+  { code: 'L1-TEL-01', label: 'Teleasistencia estructurada semanal', domain: 'monitoring', cmo_pillar: 'oportunidad', min_level: 1 },
+  { code: 'L1-COO-01', label: 'Coordinación rápida con médico de familia/especialista', domain: 'coordination', cmo_pillar: 'oportunidad', min_level: 1 },
+  { code: 'L1-MED-01', label: 'Reconciliación farmacoterapéutica intensiva', domain: 'medication', cmo_pillar: 'capacidad', min_level: 1 },
+  { code: 'L1-EDU-01', label: 'Educación terapéutica reforzada y plan de adherencia', domain: 'education', cmo_pillar: 'motivacion', min_level: 1 },
+  { code: 'L1-SAF-01', label: 'Seguimiento proactivo por eventos adversos y seguridad', domain: 'safety', cmo_pillar: 'oportunidad', min_level: 1 },
+  { code: 'L2-MON-01', label: 'Seguimiento farmacoterapéutico quincenal/mensual', domain: 'monitoring', cmo_pillar: 'oportunidad', min_level: 2 },
+  { code: 'L2-EDU-01', label: 'Intervención educativa personalizada', domain: 'education', cmo_pillar: 'capacidad', min_level: 2 },
+  { code: 'L2-COO-01', label: 'Coordinación con atención primaria según incidencias', domain: 'coordination', cmo_pillar: 'oportunidad', min_level: 2 },
+  { code: 'L2-LIF-01', label: 'Refuerzo de estilo de vida y objetivos clínicos', domain: 'lifestyle', cmo_pillar: 'motivacion', min_level: 2 },
+  { code: 'L3-EDU-01', label: 'Educación sanitaria básica en riesgo cardiovascular', domain: 'education', cmo_pillar: 'capacidad', min_level: 3 },
+  { code: 'L3-ADH-01', label: 'Refuerzo de adherencia y automonitorización', domain: 'adherence', cmo_pillar: 'motivacion', min_level: 3 },
+  { code: 'L3-MON-01', label: 'Seguimiento programado rutinario en farmacia comunitaria', domain: 'monitoring', cmo_pillar: 'oportunidad', min_level: 3 },
+];
+
 const LEVEL_META = {
-  1: { label: 'Nivel 1 · Prioridad',  color: '#dc2626', bg: '#fef2f2', border: '#fca5a5' },
+  1: { label: 'Nivel 1 · Prioridad', color: '#dc2626', bg: '#fef2f2', border: '#fca5a5' },
   2: { label: 'Nivel 2 · Intermedio', color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
-  3: { label: 'Nivel 3 · Basal',      color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
+  3: { label: 'Nivel 3 · Basal', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
 } as const;
+
+const CMO_PILLAR_LABEL: Record<CmoPillar, string> = {
+  capacidad: 'Capacidad',
+  motivacion: 'Motivación',
+  oportunidad: 'Oportunidad',
+};
 
 export function VisitInterventionsPage() {
   const { visitId = '' } = useParams();
@@ -23,18 +57,21 @@ export function VisitInterventionsPage() {
   const [cmoScore, setCmoScore] = useState<CmoScoreRecord | null>(null);
   const [items, setItems] = useState<Intervention[]>([]);
   const [form, setForm] = useState({
+    intervention_code: '',
     intervention_type: '',
     intervention_domain: '',
+    intervention_pillar: '' as CmoPillar | '',
     priority_level: 'low' as PriorityLevel,
     delivered: true,
     linked_to_cmo_level: '3',
     outcome: '',
     notes: '',
   });
+  const [otherIntervention, setOtherIntervention] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const cmoPriorityToInterventionPriority: Record<1 | 2 | 3, PriorityLevel> = {
+  const cmoPriorityToInterventionPriority: Record<CmoLevel, PriorityLevel> = {
     1: 'high',
     2: 'medium',
     3: 'low',
@@ -46,15 +83,16 @@ export function VisitInterventionsPage() {
     low: '3 · Basal',
   };
 
-  // Load the saved CMO score once on mount and seed the form level fields.
   useEffect(() => {
     void getCmoScoreByVisit(visitId).then(({ data }) => {
       if (data) {
         setCmoScore(data);
-        const level = Number(data.priority) as 1 | 2 | 3;
+        const level = Number(data.priority) as CmoLevel;
         setForm({
+          intervention_code: '',
           intervention_type: '',
           intervention_domain: '',
+          intervention_pillar: '',
           priority_level: cmoPriorityToInterventionPriority[level] ?? 'low',
           delivered: true,
           linked_to_cmo_level: String(level),
@@ -64,6 +102,17 @@ export function VisitInterventionsPage() {
       }
     });
   }, [visitId]);
+
+  const linkedLevel = Number(form.linked_to_cmo_level) as CmoLevel;
+
+  const visibleCatalog = useMemo(() => {
+    const uniqueByCode = INTERVENTION_CATALOG.reduce<Map<string, InterventionCatalogItem>>((acc, item) => {
+      if (!acc.has(item.code)) acc.set(item.code, item);
+      return acc;
+    }, new Map());
+
+    return Array.from(uniqueByCode.values()).filter((item) => item.min_level >= linkedLevel);
+  }, [linkedLevel]);
 
   async function loadInterventions() {
     const [visitRes, listRes] = await Promise.all([getVisitById(visitId), listInterventionsByVisit(visitId)]);
@@ -76,14 +125,46 @@ export function VisitInterventionsPage() {
     void loadInterventions();
   }, [visitId]);
 
+  const handleInterventionSelection = (selectedCode: string) => {
+    if (selectedCode === OTHER_INTERVENTION_CODE) {
+      setForm((prev) => ({
+        ...prev,
+        intervention_code: selectedCode,
+        intervention_type: '',
+        intervention_domain: '',
+        intervention_pillar: '',
+      }));
+      return;
+    }
+
+    const selected = visibleCatalog.find((item) => item.code === selectedCode);
+    setForm((prev) => ({
+      ...prev,
+      intervention_code: selectedCode,
+      intervention_type: selected?.label ?? '',
+      intervention_domain: selected?.domain ?? '',
+      intervention_pillar: selected?.cmo_pillar ?? '',
+    }));
+    setOtherIntervention('');
+  };
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
     setErrorMessage(null);
 
+    const isOtherIntervention = form.intervention_code === OTHER_INTERVENTION_CODE;
+    const interventionTypeToSave = isOtherIntervention ? otherIntervention.trim() : form.intervention_type;
+
+    if (!interventionTypeToSave) {
+      setErrorMessage('Selecciona una intervención del catálogo o escribe "Otra intervención".');
+      setSaving(false);
+      return;
+    }
+
     const payload = {
       visit_id: visitId,
-      intervention_type: form.intervention_type,
+      intervention_type: interventionTypeToSave,
       intervention_domain: form.intervention_domain || null,
       priority_level: form.priority_level,
       delivered: form.delivered,
@@ -91,8 +172,7 @@ export function VisitInterventionsPage() {
       outcome: form.outcome || null,
       notes: form.notes || null,
     };
-    // Temporal para verificar payload real enviado a Supabase.
-    console.log(payload);
+
     const result = await createIntervention(payload);
 
     if (result.errorMessage) {
@@ -101,19 +181,28 @@ export function VisitInterventionsPage() {
       return;
     }
 
-    setForm({ ...form, intervention_type: '', intervention_domain: '', outcome: '', notes: '' });
+    setForm((prev) => ({
+      ...prev,
+      intervention_code: '',
+      intervention_type: '',
+      intervention_domain: '',
+      intervention_pillar: '',
+      outcome: '',
+      notes: '',
+    }));
+    setOtherIntervention('');
     setSaving(false);
     await loadInterventions();
   };
 
-  const cmoMeta = cmoScore ? LEVEL_META[cmoScore.priority as 1 | 2 | 3] : null;
+  const cmoMeta = cmoScore ? LEVEL_META[cmoScore.priority as CmoLevel] : null;
+  const isOtherIntervention = form.intervention_code === OTHER_INTERVENTION_CODE;
 
   return (
     <div className="page-stack">
       <section className="card">
         <h1>Registro de intervenciones</h1>
 
-        {/* ── CMO context banner ───────────────────────────────────── */}
         {cmoScore && cmoMeta ? (
           <div
             style={{
@@ -142,12 +231,38 @@ export function VisitInterventionsPage() {
         <form className="form-grid" onSubmit={handleSubmit}>
           <label>
             Tipo de intervención
-            <input required value={form.intervention_type} onChange={(e) => setForm((p) => ({ ...p, intervention_type: e.target.value }))} />
+            <select required value={form.intervention_code} onChange={(e) => handleInterventionSelection(e.target.value)}>
+              <option value="">Seleccionar intervención</option>
+              {visibleCatalog.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.label}
+                </option>
+              ))}
+              <option value={OTHER_INTERVENTION_CODE}>Otra intervención (texto libre)</option>
+            </select>
           </label>
+
+          {isOtherIntervention ? (
+            <label>
+              Otra intervención
+              <input required value={otherIntervention} onChange={(e) => setOtherIntervention(e.target.value)} />
+            </label>
+          ) : null}
+
           <label>
             Dominio
-            <input value={form.intervention_domain} onChange={(e) => setForm((p) => ({ ...p, intervention_domain: e.target.value }))} />
+            <input
+              value={form.intervention_domain}
+              readOnly={!isOtherIntervention}
+              onChange={(e) => setForm((p) => ({ ...p, intervention_domain: e.target.value }))}
+            />
           </label>
+
+          <label>
+            Pilar CMO principal (autocompletado)
+            <input value={form.intervention_pillar ? CMO_PILLAR_LABEL[form.intervention_pillar] : ''} readOnly />
+          </label>
+
           <div className="grid-2">
             <label>
               Prioridad
@@ -166,6 +281,7 @@ export function VisitInterventionsPage() {
               </select>
             </label>
           </div>
+
           <label className="checkbox-row">
             <input type="checkbox" checked={form.delivered} onChange={(e) => setForm((p) => ({ ...p, delivered: e.target.checked }))} />
             Intervención entregada
@@ -184,7 +300,6 @@ export function VisitInterventionsPage() {
         {errorMessage ? <ErrorState title="No se pudo guardar/cargar intervenciones" message={errorMessage} /> : null}
       </section>
 
-      {/* ── Intervention list ────────────────────────────────────────── */}
       <section className="card">
         <h2>Intervenciones de la visita</h2>
         {items.length === 0 ? (
