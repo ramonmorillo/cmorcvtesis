@@ -13,7 +13,7 @@ import {
 import { getLatestCmoScoreByPatient, listCmoScoresByPatient, type CmoScoreHistoryEntry, type CmoScoreRecord } from '../services/cmoScoreService';
 import { listInterventionsByPatient, type PriorityLevel } from '../services/interventionService';
 import { getPatientById, type Patient } from '../services/patientService';
-import { isQuestionnaireVisitType, listQuestionnairesByPatient, type QuestionnaireResponseRecord } from '../services/questionnaireService';
+import { getQuestionnairesByPatient, isQuestionnaireVisitType, type QuestionnaireResponseRecord } from '../services/questionnaireService';
 import { listVisitsByPatient, updateVisit, type Visit } from '../services/visitService';
 
 const LEVEL_META = {
@@ -108,39 +108,72 @@ export function PatientDetailPage() {
   const [questionnaires, setQuestionnaires] = useState<QuestionnaireResponseRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [questionnaireWarning, setQuestionnaireWarning] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadData() {
-      const [patientResult, visitsResult, cmoResult, cmoHistoryResult, interventionsResult, questionnairesResult] = await Promise.all([
-        getPatientById(id),
-        listVisitsByPatient(id),
-        getLatestCmoScoreByPatient(id),
-        listCmoScoresByPatient(id),
-        listInterventionsByPatient(id),
-        listQuestionnairesByPatient(id),
-      ]);
+      try {
+        setLoading(true);
+        setErrorMessage(null);
+        setQuestionnaireWarning(null);
 
-      setPatient(patientResult.data);
-      setVisits(visitsResult.data);
-      setLatestCmoScore(cmoResult.data);
-      setCmoHistory(cmoHistoryResult.data);
-      setQuestionnaires(questionnairesResult.data);
-      setInterventions(
-        interventionsResult.data.map((x) => ({
-          id: x.id,
-          visit_id: x.visit_id,
-          intervention_type: x.intervention_type,
-          priority_level: x.priority_level,
-        })),
-      );
+        const [patientResult, visitsResult] = await Promise.all([getPatientById(id), listVisitsByPatient(id)]);
 
-      setErrorMessage(
-        patientResult.errorMessage
-          ?? visitsResult.errorMessage
-          ?? interventionsResult.errorMessage
-          ?? questionnairesResult.errorMessage,
-      );
-      setLoading(false);
+        if (patientResult.errorMessage || visitsResult.errorMessage) {
+          setErrorMessage(patientResult.errorMessage ?? visitsResult.errorMessage ?? 'No se pudo cargar la ficha.');
+          setLoading(false);
+          return;
+        }
+
+        setPatient(patientResult.data);
+        setVisits(visitsResult.data);
+
+        const [cmoResult, cmoHistoryResult, interventionsResult, questionnairesResult] = await Promise.allSettled([
+          getLatestCmoScoreByPatient(id),
+          listCmoScoresByPatient(id),
+          listInterventionsByPatient(id),
+          getQuestionnairesByPatient(id),
+        ]);
+
+        if (cmoResult.status === 'fulfilled') {
+          setLatestCmoScore(cmoResult.value.data);
+        } else {
+          setLatestCmoScore(null);
+        }
+
+        if (cmoHistoryResult.status === 'fulfilled') {
+          setCmoHistory(cmoHistoryResult.value.data);
+        } else {
+          setCmoHistory([]);
+        }
+
+        if (interventionsResult.status === 'fulfilled') {
+          setInterventions(
+            interventionsResult.value.data.map((x) => ({
+              id: x.id,
+              visit_id: x.visit_id,
+              intervention_type: x.intervention_type,
+              priority_level: x.priority_level,
+            })),
+          );
+        } else {
+          setInterventions([]);
+        }
+
+        if (questionnairesResult.status === 'fulfilled') {
+          setQuestionnaires(questionnairesResult.value.data);
+          if (questionnairesResult.value.errorMessage) {
+            setQuestionnaireWarning(`Cuestionarios no disponibles temporalmente: ${questionnairesResult.value.errorMessage}`);
+          }
+        } else {
+          setQuestionnaires([]);
+          setQuestionnaireWarning('Cuestionarios no disponibles temporalmente. La ficha base se cargó correctamente.');
+        }
+      } catch {
+        setErrorMessage('No se pudo cargar la ficha.');
+      } finally {
+        setLoading(false);
+      }
     }
 
     void loadData();
@@ -283,6 +316,11 @@ export function PatientDetailPage() {
           <div className="error-state" style={{ marginTop: '0.8rem' }}>
             Faltan cuestionarios obligatorios en {missingQuestionnaireVisits.length} visita(s) basal/final.
           </div>
+        ) : null}
+        {questionnaireWarning ? (
+          <p className="help-text" style={{ marginTop: '0.8rem', color: '#b45309' }}>
+            ⚠️ {questionnaireWarning}
+          </p>
         ) : null}
       </section>
 
