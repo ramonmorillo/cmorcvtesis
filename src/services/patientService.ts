@@ -88,3 +88,54 @@ export async function createPatient(input: NewPatientInput): Promise<{ data: Pat
 
   return { data: (data as Patient | null) ?? null, errorMessage: null };
 }
+
+export async function deletePatientById(id: string): Promise<{ success: boolean; errorMessage: string | null }> {
+  if (!supabase) {
+    return {
+      success: false,
+      errorMessage: 'Supabase no está configurado. No se puede eliminar el paciente.',
+    };
+  }
+
+  const deleteResult = await supabase.from('patients').delete().eq('id', id);
+
+  if (!deleteResult.error) {
+    return { success: true, errorMessage: null };
+  }
+
+  const isForeignKeyViolation = deleteResult.error.code === '23503';
+  if (!isForeignKeyViolation) {
+    return { success: false, errorMessage: extractErrorMessage(deleteResult.error) };
+  }
+
+  const { data: visits, error: visitsError } = await supabase.from('visits').select('id').eq('patient_id', id);
+  if (visitsError) {
+    return { success: false, errorMessage: extractErrorMessage(visitsError) };
+  }
+
+  const visitIds = (visits ?? []).map((visit) => visit.id as string);
+
+  if (visitIds.length > 0) {
+    const { error: cmoScoresError } = await supabase.from('cmo_scores').delete().in('visit_id', visitIds);
+    if (cmoScoresError) {
+      return { success: false, errorMessage: extractErrorMessage(cmoScoresError) };
+    }
+
+    const { error: interventionsError } = await supabase.from('interventions').delete().in('visit_id', visitIds);
+    if (interventionsError) {
+      return { success: false, errorMessage: extractErrorMessage(interventionsError) };
+    }
+
+    const { error: visitsDeleteError } = await supabase.from('visits').delete().eq('patient_id', id);
+    if (visitsDeleteError) {
+      return { success: false, errorMessage: extractErrorMessage(visitsDeleteError) };
+    }
+  }
+
+  const { error: patientDeleteError } = await supabase.from('patients').delete().eq('id', id);
+  if (patientDeleteError) {
+    return { success: false, errorMessage: extractErrorMessage(patientDeleteError) };
+  }
+
+  return { success: true, errorMessage: null };
+}
