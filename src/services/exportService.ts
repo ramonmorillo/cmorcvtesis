@@ -191,7 +191,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
     supabase.from('cmo_scores').select('visit_id,score,priority'),
     supabase.from('interventions').select('id,visit_id,intervention_type,intervention_domain,priority_level,delivered,linked_to_cmo_level,outcome,created_at').order('created_at', { ascending: true }),
     supabase.from('clinical_assessments').select('visit_id,education_level,pregnancy_postpartum,biological_sex,race_ethnicity_risk,hypertension_present,cv_pathology_present,comorbidities_present,recent_cvd_12m,hospital_er_use_12m,physical_activity_pattern,social_support_absent,psychosocial_stress,chronic_med_count,recent_regimen_change,regimen_complexity_present,adherence_problem,systolic_bp,diastolic_bp,heart_rate,weight_kg,height_cm,bmi,waist_cm,ldl_mg_dl,hdl_mg_dl,non_hdl_mg_dl,fasting_glucose_mg_dl,hba1c_pct,score2_value,framingham_value,cv_risk_level,smoker_status,diet_score,adverse_events_count,high_risk_medication_present'),
-    supabase.from('questionnaire_responses').select('visit_id,patient_id,visit_type,questionnaire_type,responses,total_score,secondary_score'),
+    supabase.from('v_questionnaire_responses_patient').select('visit_id,patient_id,visit_type,questionnaire_type,responses,total_score,secondary_score'),
   ]);
 
   const firstError = [
