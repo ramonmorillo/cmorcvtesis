@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { VISIT_STATUS_OPTIONS, VISIT_TYPE_OPTIONS } from '../constants/enums';
 import type { VisitStatus, VisitType } from '../constants/enums';
-import { normalizeVisitTypeValue } from '../constants/enums';
+import { getVisitNumberByType, normalizeVisitTypeValue } from '../constants/enums';
 import { ErrorState } from '../components/common/ErrorState';
 import { createVisit } from '../services/visitService';
 
@@ -12,7 +12,6 @@ export function NewVisitPage() {
   const navigate = useNavigate();
   const [form, setForm] = useState<{
     visit_type: VisitType;
-    visit_number: string;
     scheduled_date: string;
     visit_date: string;
     visit_status: VisitStatus;
@@ -20,7 +19,6 @@ export function NewVisitPage() {
     notes: string;
   }>({
     visit_type: 'baseline',
-    visit_number: '',
     scheduled_date: '',
     visit_date: '',
     visit_status: 'scheduled',
@@ -38,7 +36,7 @@ export function NewVisitPage() {
     const result = await createVisit({
       patient_id: id,
       visit_type: form.visit_type,
-      visit_number: form.visit_number ? Number(form.visit_number) : null,
+      visit_number: getVisitNumberByType(form.visit_type),
       scheduled_date: form.scheduled_date || null,
       visit_date: form.visit_date || null,
       visit_status: form.visit_status || null,
@@ -72,11 +70,7 @@ export function NewVisitPage() {
           </label>
           <label>
             Número de visita
-            <input
-              type="number"
-              value={form.visit_number}
-              onChange={(e) => setForm((p) => ({ ...p, visit_number: e.target.value }))}
-            />
+            <input type="text" value={getVisitNumberByType(form.visit_type) ?? 'Auto'} disabled />
           </label>
           <label>
             Fecha programada
@@ -105,7 +99,7 @@ export function NewVisitPage() {
           </label>
           {normalizeVisitTypeValue(form.visit_type) === 'extra' ? (
             <label>
-              Motivo extraordinaria
+              Motivo visita extra
               <input
                 value={form.extraordinary_reason}
                 onChange={(e) => setForm((p) => ({ ...p, extraordinary_reason: e.target.value }))}
