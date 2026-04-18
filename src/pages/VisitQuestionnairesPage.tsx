@@ -241,27 +241,24 @@ export function VisitQuestionnairesPage() {
 
     const payload: QuestionnaireResponseUpsertInput[] = [
       {
-        patient_id: visitPatientId,
+        user_id: visitPatientId,
         visit_id: visitId,
-        visit_type: visitType,
         questionnaire_type: 'iexpac',
         responses: iexpacMetrics.responses,
         total_score: iexpacMetrics.totalScore,
         secondary_score: iexpacMetrics.secondaryScore,
       },
       {
-        patient_id: visitPatientId,
+        user_id: visitPatientId,
         visit_id: visitId,
-        visit_type: visitType,
         questionnaire_type: 'morisky',
         responses: moriskyMetrics.responses,
         total_score: moriskyMetrics.totalScore,
         secondary_score: null,
       },
       {
-        patient_id: visitPatientId,
+        user_id: visitPatientId,
         visit_id: visitId,
-        visit_type: visitType,
         questionnaire_type: 'eq5d',
         responses: eq5dMetrics.responses,
         total_score: eq5dMetrics.totalScore,
