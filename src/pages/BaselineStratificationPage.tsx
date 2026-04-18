@@ -54,6 +54,21 @@ const NUMERIC_FIELDS: [string, string][] = [
   ['adverse_events_count', 'Eventos adversos'],
 ];
 
+const PHYSICAL_ACTIVITY_LEVEL_OPTIONS = [
+  { value: 'low', label: 'Baja' },
+  { value: 'moderate', label: 'Moderada' },
+  { value: 'high', label: 'Alta' },
+  { value: 'unknown', label: 'Desconocida' },
+] as const;
+
+const ALCOHOL_USE_OPTIONS = [
+  { value: 'none', label: 'No' },
+  { value: 'occasional', label: 'Ocasional' },
+  { value: 'moderate', label: 'Moderado' },
+  { value: 'high', label: 'Alto' },
+  { value: 'unknown', label: 'Desconocido' },
+] as const;
+
 export function BaselineStratificationPage() {
   const { visitId = '' } = useParams();
   const [visitPatientId, setVisitPatientId] = useState<string>('');
@@ -275,15 +290,20 @@ export function BaselineStratificationPage() {
                 Actividad física
                 <select {...field('physical_activity_level')}>
                   <option value="">Sin especificar</option>
-                  <option value="alta">Alta</option>
-                  <option value="moderada">Moderada</option>
-                  <option value="baja">Baja</option>
+                  {PHYSICAL_ACTIVITY_LEVEL_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
                 </select>
               </label>
 
               <label>
                 Alcohol
-                <input {...field('alcohol_use')} />
+                <select {...field('alcohol_use')}>
+                  <option value="">Sin especificar</option>
+                  {ALCOHOL_USE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
               </label>
 
               <label>
