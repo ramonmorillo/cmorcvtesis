@@ -111,14 +111,10 @@ function normalizeNullLike(value: unknown): unknown {
   if (value === undefined || value === null) return null;
   if (typeof value !== 'string') return value;
   const normalized = value.trim().toLowerCase();
-  return NULL_LIKE_VALUES.has(normalized) ? null : value.trim();
-}
-
-function normalizeBoolean(value: unknown): boolean | null {
-  const normalizedValue = normalizeNullLike(value);
-  if (normalizedValue === null) return null;
-  if (typeof normalizedValue === 'boolean') return normalizedValue;
-  if (typeof normalizedValue !== 'string') return null;
+  if (normalized === 'yes' || normalized === 'sí' || normalized === 'si' || normalized === 'true') return 'yes';
+  if (normalized === 'no' || normalized === 'false') return 'no';
+  if (normalized === 'unknown' || normalized === 'desconocido' || normalized === 'no registrado' || normalized === 'not_recorded') return null;
+  if (normalized === '') return null;
 
   const normalized = normalizedValue.toLowerCase();
   if (normalized === 'yes' || normalized === 'sí' || normalized === 'si' || normalized === 'true') return true;

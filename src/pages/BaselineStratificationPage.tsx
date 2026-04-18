@@ -31,9 +31,21 @@ function toNumber(value: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function toTernaryBool(value: string): boolean | null {
-  if (value === 'yes') return true;
-  if (value === 'no') return false;
+function toNullableBoolean(value: unknown): boolean | null {
+  if (value === true || value === false) return value;
+  if (typeof value !== 'string') return null;
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'yes' || normalized === 'sí' || normalized === 'si' || normalized === 'true') return true;
+  if (normalized === 'no' || normalized === 'false') return false;
+  if (normalized === 'unknown' || normalized === 'not_recorded' || normalized === '') return null;
+  return null;
+}
+
+function toTriStatePayloadValue(value: unknown): 'yes' | 'no' | null {
+  if (value === 'yes' || value === 'sí' || value === 'si' || value === true) return 'yes';
+  if (value === 'no' || value === false) return 'no';
+  if (value === 'unknown' || value === 'not_recorded' || value === '' || value === undefined || value === null) return null;
   return null;
 }
 
@@ -263,21 +275,21 @@ export function BaselineStratificationPage() {
   const assessmentPayload = useMemo<NewClinicalAssessmentInput>(() => ({
     visit_id: visitId,
     education_level: toEducationLevel(form.education_level ?? ''),
-    pregnancy_postpartum: yesNoUnknown(form.pregnancy_postpartum ?? ''),
+    pregnancy_postpartum: toTriStatePayloadValue(form.pregnancy_postpartum),
     biological_sex: toBiologicalSex(form.biological_sex ?? ''),
     race_ethnicity_risk: toRaceEthnicityRisk(form.race_ethnicity_risk ?? ''),
-    hypertension_present: yesNoUnknown(form.hypertension_present ?? ''),
-    cv_pathology_present: yesNoUnknown(form.cv_pathology_present ?? ''),
-    comorbidities_present: yesNoUnknown(form.comorbidities_present ?? ''),
-    recent_cvd_12m: yesNoUnknown(form.recent_cvd_12m ?? ''),
-    hospital_er_use_12m: yesNoUnknown(form.hospital_er_use_12m ?? ''),
+    hypertension_present: toTriStatePayloadValue(form.hypertension_present),
+    cv_pathology_present: toTriStatePayloadValue(form.cv_pathology_present),
+    comorbidities_present: toTriStatePayloadValue(form.comorbidities_present),
+    recent_cvd_12m: toTriStatePayloadValue(form.recent_cvd_12m),
+    hospital_er_use_12m: toTriStatePayloadValue(form.hospital_er_use_12m),
     physical_activity_pattern: toPhysicalActivityPattern(form.physical_activity_pattern ?? ''),
-    social_support_absent: yesNoUnknown(form.social_support_absent ?? ''),
-    psychosocial_stress: yesNoUnknown(form.psychosocial_stress ?? ''),
+    social_support_absent: toTriStatePayloadValue(form.social_support_absent),
+    psychosocial_stress: toTriStatePayloadValue(form.psychosocial_stress),
     chronic_med_count: toNumber(form.chronic_med_count ?? ''),
-    recent_regimen_change: yesNoUnknown(form.recent_regimen_change ?? ''),
-    regimen_complexity_present: yesNoUnknown(form.regimen_complexity_present ?? ''),
-    adherence_problem: yesNoUnknown(form.adherence_problem ?? ''),
+    recent_regimen_change: toTriStatePayloadValue(form.recent_regimen_change),
+    regimen_complexity_present: toTriStatePayloadValue(form.regimen_complexity_present),
+    adherence_problem: toTriStatePayloadValue(form.adherence_problem),
     systolic_bp: toNumber(form.systolic_bp ?? ''),
     diastolic_bp: toNumber(form.diastolic_bp ?? ''),
     heart_rate: toNumber(form.heart_rate ?? ''),
@@ -297,7 +309,7 @@ export function BaselineStratificationPage() {
     diet_score: toNumber(form.diet_score ?? ''),
     safety_incidents: form.safety_incidents || null,
     adverse_events_count: toNumber(form.adverse_events_count ?? ''),
-    high_risk_medication_present: toTernaryBool(form.high_risk_medication_present_status ?? ''),
+    high_risk_medication_present: toNullableBoolean(form.high_risk_medication_present_status),
   }), [form, computedBmi, cmoResult.level, visitId]);
 
   const handleSave = async (event: FormEvent) => {
