@@ -50,6 +50,32 @@ export function DashboardPage() {
             <p>Intervenciones totales</p>
             <strong>{data.totalInterventions}</strong>
           </article>
+          <article className="kpi-card">
+            <p>Media intervenciones / paciente</p>
+            <strong>{data.avgInterventionsPerPatient}</strong>
+          </article>
+          <article className="kpi-card">
+            <p>Pacientes sin seguimiento {'>'} 90 días</p>
+            <strong>{data.patientsWithoutFollowup90d}</strong>
+          </article>
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>Evolución de nivel respecto basal</h2>
+        <div className="kpi-grid">
+          <article className="kpi-card kpi-card-positive">
+            <p>Pacientes con mejora</p>
+            <strong>{data.patientEvolutionVsBaseline.improved}</strong>
+          </article>
+          <article className="kpi-card kpi-card-warning">
+            <p>Pacientes con empeoramiento</p>
+            <strong>{data.patientEvolutionVsBaseline.worsened}</strong>
+          </article>
+          <article className="kpi-card">
+            <p>Pacientes estables</p>
+            <strong>{data.patientEvolutionVsBaseline.stable}</strong>
+          </article>
         </div>
       </section>
 
@@ -85,6 +111,56 @@ export function DashboardPage() {
           <article className="kpi-card">
             <p>Nivel 3</p>
             <strong>{data.interventionsByLevel[3]}</strong>
+          </article>
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>Score medio por tipo de visita</h2>
+        {data.averageScoreByVisitType.length === 0 ? (
+          <EmptyState title="Sin scores registrados" description="Registra una visita con score CMO para visualizar este análisis." />
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tipo de visita</th>
+                  <th>Score medio</th>
+                  <th>Visitas con score</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.averageScoreByVisitType.map((item) => (
+                  <tr key={item.visitType ?? 'unknown'}>
+                    <td>{getVisitTypeLabel(item.visitType)}</td>
+                    <td>{item.averageScore.toFixed(2)}</td>
+                    <td>{item.visitsWithScore}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="card">
+        <h2>Calidad de datos</h2>
+        <div className="kpi-grid">
+          <article className="kpi-card">
+            <p>Pacientes sin estratificación basal</p>
+            <strong>{data.dataQuality.patientsWithoutBaselineStratification}</strong>
+          </article>
+          <article className="kpi-card">
+            <p>Visitas sin score</p>
+            <strong>{data.dataQuality.visitsWithoutScore}</strong>
+          </article>
+          <article className="kpi-card">
+            <p>Visitas sin intervenciones</p>
+            <strong>{data.dataQuality.visitsWithoutInterventions}</strong>
+          </article>
+          <article className="kpi-card kpi-card-warning">
+            <p>Pacientes nivel 1 sin intervención</p>
+            <strong>{data.dataQuality.level1PatientsWithoutIntervention}</strong>
           </article>
         </div>
       </section>
