@@ -247,6 +247,13 @@ export function DashboardPage() {
             <strong>{data.dataQuality.level1PatientsWithoutIntervention}</strong>
           </article>
         </div>
+        {data.kpiFallbackNotes.length > 0 && (
+          <ul className="help-text" style={{ marginTop: 12 }}>
+            {data.kpiFallbackNotes.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="card">

@@ -44,6 +44,7 @@ export type DashboardData = {
     visitsWithoutInterventions: number;
     level1PatientsWithoutIntervention: number;
   };
+  kpiFallbackNotes: string[];
   upcomingVisits: Array<{ id: string; patient_id: string; study_code: string | null; visit_type: string | null; scheduled_date: string | null }>;
   recentVisits: Array<{ id: string; patient_id: string; study_code: string | null; visit_type: string | null; visit_date: string | null }>;
   recentInterventions: Array<{ id: string; visit_id: string; patient_id: string; intervention_type: string; created_at: string | null }>;
@@ -86,7 +87,6 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
 
   const [
     patientsRes,
-    baselineProfilesRes,
     visitsForQualityRes,
     scoresRes,
     scoresByVisitTypeRes,
@@ -96,10 +96,9 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
     interventionsAggRes,
   ] = await Promise.all([
     supabase.from('patients').select('id,age_at_inclusion,sex'),
-    supabase.from('patient_baseline_profile').select('patient_id'),
     supabase
       .from('visits')
-      .select('id,patient_id,visit_type,visit_date,cmo_scores(id),interventions(id)'),
+      .select('id,patient_id,visit_type,visit_date,cmo_scores(id),clinical_assessments(id),interventions(id)'),
     supabase
       .from('cmo_scores')
       .select('priority,score,created_at,visits!inner(patient_id,visit_type,visit_date)')
@@ -129,7 +128,6 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
 
   const errors = [
     patientsRes.error,
-    baselineProfilesRes.error,
     visitsForQualityRes.error,
     scoresRes.error,
     scoresByVisitTypeRes.error,
@@ -179,13 +177,13 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
   }
 
   const allPatients = (patientsRes.data ?? []) as Array<{ id: string; age_at_inclusion: number | null; sex: string | null }>;
-  const baselineProfiles = (baselineProfilesRes.data ?? []) as Array<{ patient_id: string }>;
   const visitsForQuality = (visitsForQualityRes.data ?? []) as Array<{
     id: string;
     patient_id: string;
     visit_type: string | null;
     visit_date: string | null;
     cmo_scores: { id: string } | Array<{ id: string }> | null;
+    clinical_assessments: { id: string } | Array<{ id: string }> | null;
     interventions: { id: string } | Array<{ id: string }> | null;
   }>;
   const scoresByVisitType = (scoresByVisitTypeRes.data ?? []) as Array<{
@@ -193,11 +191,32 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
     visits: { visit_type: string | null } | Array<{ visit_type: string | null }>;
   }>;
 
-  const baselinePatientIds = new Set(baselineProfiles.map((item) => item.patient_id));
-  const patientsWithoutBaselineStratification = allPatients.reduce(
-    (count, patient) => count + (baselinePatientIds.has(patient.id) ? 0 : 1),
-    0,
-  );
+  const baselineStratifiedPatientIds = new Set<string>();
+  for (const visit of visitsForQuality) {
+    if (visit.visit_type !== 'baseline' && visit.visit_type !== 'basal') {
+      continue;
+    }
+
+    const scoreRows = Array.isArray(visit.cmo_scores) ? visit.cmo_scores : (visit.cmo_scores ? [visit.cmo_scores] : []);
+    const assessmentRows = Array.isArray(visit.clinical_assessments)
+      ? visit.clinical_assessments
+      : (visit.clinical_assessments ? [visit.clinical_assessments] : []);
+
+    if (scoreRows.length > 0 || assessmentRows.length > 0) {
+      baselineStratifiedPatientIds.add(visit.patient_id);
+    }
+  }
+
+  const patientsWithoutBaselineStratification = allPatients.reduce((count, patient) => {
+    return count + (baselineStratifiedPatientIds.has(patient.id) ? 0 : 1);
+  }, 0);
+  const kpiFallbackNotes: string[] = [];
+
+  if (baselineStratifiedPatientIds.size === 0 && allPatients.length > 0) {
+    kpiFallbackNotes.push(
+      "KPI 'Pacientes sin estratificación basal' calculado con fallback: se considera estratificado un paciente con visita basal y score CMO o evaluación clínica registrada.",
+    );
+  }
 
   const interventionsByPatient = new Map<string, number>();
   let visitsWithoutScore = 0;
@@ -367,6 +386,7 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
         visitsWithoutInterventions,
         level1PatientsWithoutIntervention,
       },
+      kpiFallbackNotes,
       upcomingVisits: ((upcomingRes.data ?? []) as Array<{
         id: string; patient_id: string; visit_type: string | null; scheduled_date: string | null;
         patients: { study_code: string | null } | Array<{ study_code: string | null }>;
