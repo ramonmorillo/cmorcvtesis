@@ -18,17 +18,13 @@ export const VISIT_TYPE_OPTIONS = [
 
 export type VisitType = (typeof VISIT_TYPE_OPTIONS)[number]['value'];
 
-export function getVisitTypeLabel(visitType: VisitType | string | null): string {
-  if (!visitType) {
-    return '-';
-  }
-
-  const normalizedVisitType = normalizeVisitTypeValue(visitType);
-  return VISIT_TYPE_OPTIONS.find((option) => option.value === normalizedVisitType)?.label ?? visitType;
-}
-
 const LEGACY_VISIT_TYPE_MAP: Record<string, VisitType> = {
   extraordinary: 'extra',
+  follow_up: 'month_3',
+  month3: 'month_3',
+  month6: 'month_6',
+  month9: 'month_9',
+  month12: 'month_12',
 };
 
 export function normalizeVisitTypeValue(visitType: string | null): VisitType | string | null {
@@ -37,6 +33,15 @@ export function normalizeVisitTypeValue(visitType: string | null): VisitType | s
   }
 
   return LEGACY_VISIT_TYPE_MAP[visitType] ?? visitType;
+}
+
+export function getVisitTypeLabel(visitType: VisitType | string | null): string {
+  if (!visitType) {
+    return '-';
+  }
+
+  const normalizedVisitType = normalizeVisitTypeValue(visitType);
+  return VISIT_TYPE_OPTIONS.find((option) => option.value === normalizedVisitType)?.label ?? visitType;
 }
 
 const VISIT_NUMBER_BY_TYPE: Record<VisitType, number | null> = {
@@ -48,6 +53,15 @@ const VISIT_NUMBER_BY_TYPE: Record<VisitType, number | null> = {
   extra: null,
 };
 
+const VISIT_SORT_ORDER_BY_TYPE: Record<VisitType, number> = {
+  baseline: 1,
+  month_3: 2,
+  month_6: 3,
+  month_9: 4,
+  month_12: 5,
+  extra: 99,
+};
+
 export function getVisitNumberByType(visitType: VisitType | string | null): number | null {
   const normalizedVisitType = normalizeVisitTypeValue(visitType);
 
@@ -56,6 +70,16 @@ export function getVisitNumberByType(visitType: VisitType | string | null): numb
   }
 
   return VISIT_NUMBER_BY_TYPE[normalizedVisitType as VisitType];
+}
+
+export function getVisitTypeSortOrder(visitType: VisitType | string | null): number {
+  const normalizedVisitType = normalizeVisitTypeValue(visitType);
+
+  if (!normalizedVisitType || !(normalizedVisitType in VISIT_SORT_ORDER_BY_TYPE)) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  return VISIT_SORT_ORDER_BY_TYPE[normalizedVisitType as VisitType];
 }
 
 // Valores del enum de BD (en inglés) con etiquetas de UI en español.

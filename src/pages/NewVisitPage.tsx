@@ -68,10 +68,9 @@ export function NewVisitPage() {
               ))}
             </select>
           </label>
-          <label>
-            Número de visita
-            <input type="text" value={getVisitNumberByType(form.visit_type) ?? 'Auto'} disabled />
-          </label>
+          <p className="help-text" style={{ marginTop: '1.9rem' }}>
+            Número de visita calculado automáticamente: {getVisitNumberByType(form.visit_type) ?? 'Extraordinaria'}.
+          </p>
           <label>
             Fecha programada
             <input
