@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
-import { listPatients, type Patient } from '../services/patientService';
+import { deletePatientById, listPatients, type Patient } from '../services/patientService';
 import { supabase } from '../lib/supabase';
 
 const LEVEL_META = {
@@ -21,6 +21,8 @@ export function PatientsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [deletingPatientId, setDeletingPatientId] = useState<string | null>(null);
 
   async function loadPatients(searchCode?: string) {
     setLoading(true);
@@ -45,6 +47,8 @@ export function PatientsPage() {
         }
       }
       setPriorities(map);
+    } else {
+      setPriorities({});
     }
     setLoading(false);
   }
@@ -55,6 +59,32 @@ export function PatientsPage() {
 
   const handleSearch = async (event: FormEvent) => {
     event.preventDefault();
+    await loadPatients(search);
+  };
+
+  const handleDeletePatient = async (patient: Patient) => {
+    const confirmed = window.confirm('¿Seguro que deseas eliminar este paciente?');
+    if (!confirmed) {
+      return;
+    }
+
+    setActionMessage(null);
+    setDeletingPatientId(patient.id);
+    const result = await deletePatientById(patient.id);
+    setDeletingPatientId(null);
+
+    if (result.errorMessage || !result.success) {
+      setActionMessage({
+        type: 'error',
+        text: result.errorMessage ?? 'No se pudo eliminar el paciente.',
+      });
+      return;
+    }
+
+    setActionMessage({
+      type: 'success',
+      text: `Paciente ${patient.study_code} eliminado correctamente.`,
+    });
     await loadPatients(search);
   };
 
@@ -87,6 +117,9 @@ export function PatientsPage() {
         />
         <button type="submit">Buscar</button>
       </form>
+      {actionMessage ? (
+        <p className={actionMessage.type === 'success' ? 'success-state' : 'error-state'}>{actionMessage.text}</p>
+      ) : null}
       <div className="table-wrap">
         <table>
           <thead>
@@ -113,8 +146,16 @@ export function PatientsPage() {
                     </span>
                   ) : '-'}
                 </td>
-                <td>
+                <td className="actions-inline">
                   <Link to={`/patients/${patient.id}`}>Abrir ficha</Link>
+                  <button
+                    type="button"
+                    className="button-danger"
+                    onClick={() => void handleDeletePatient(patient)}
+                    disabled={deletingPatientId === patient.id}
+                  >
+                    {deletingPatientId === patient.id ? 'Eliminando...' : 'Eliminar'}
+                  </button>
                 </td>
               </tr>
             ))}
