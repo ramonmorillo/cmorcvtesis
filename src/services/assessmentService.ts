@@ -1,25 +1,34 @@
 import { supabase } from '../lib/supabase';
-import type { SmokerStatus } from '../constants/enums';
+import type {
+  BiologicalSex,
+  EducationLevel,
+  PhysicalActivityPattern,
+  RaceEthnicityRisk,
+  SmokingStatus,
+  YesNoUnknown,
+} from './cmoScoringEngine';
+
+type TriState = Exclude<YesNoUnknown, null>;
 
 export type ClinicalAssessment = {
   id: string;
   visit_id: string;
-  education_level: string | null;
-  pregnancy_postpartum: boolean | null;
-  biological_sex: string | null;
-  race_ethnicity_risk: string | null;
-  hypertension_present: boolean | null;
-  cv_pathology_present: boolean | null;
-  comorbidities_present: boolean | null;
-  recent_cvd_12m: boolean | null;
-  hospital_er_use_12m: boolean | null;
-  physical_activity_pattern: string | null;
-  social_support_absent: boolean | null;
-  psychosocial_stress: boolean | null;
+  education_level: EducationLevel;
+  pregnancy_postpartum: TriState | null;
+  biological_sex: BiologicalSex;
+  race_ethnicity_risk: RaceEthnicityRisk;
+  hypertension_present: TriState | null;
+  cv_pathology_present: TriState | null;
+  comorbidities_present: TriState | null;
+  recent_cvd_12m: TriState | null;
+  hospital_er_use_12m: TriState | null;
+  physical_activity_pattern: PhysicalActivityPattern;
+  social_support_absent: TriState | null;
+  psychosocial_stress: TriState | null;
   chronic_med_count: number | null;
-  recent_regimen_change: boolean | null;
-  regimen_complexity_present: boolean | null;
-  adherence_problem: boolean | null;
+  recent_regimen_change: TriState | null;
+  regimen_complexity_present: TriState | null;
+  adherence_problem: TriState | null;
   systolic_bp: number | null;
   diastolic_bp: number | null;
   heart_rate: number | null;
@@ -35,9 +44,7 @@ export type ClinicalAssessment = {
   score2_value: number | null;
   framingham_value: number | null;
   cv_risk_level: string | null;
-  smoker_status: SmokerStatus | null;
-  alcohol_use: string | null;
-  physical_activity_level: string | null;
+  smoker_status: SmokingStatus;
   diet_score: number | null;
   safety_incidents: string | null;
   adverse_events_count: number | null;
@@ -49,7 +56,7 @@ export type ClinicalAssessment = {
 export type NewClinicalAssessmentInput = Omit<ClinicalAssessment, 'id' | 'created_at' | 'updated_at'>;
 
 const ASSESSMENT_SELECT =
-  'id,visit_id,education_level,pregnancy_postpartum,biological_sex,race_ethnicity_risk,hypertension_present,cv_pathology_present,comorbidities_present,recent_cvd_12m,hospital_er_use_12m,physical_activity_pattern,social_support_absent,psychosocial_stress,chronic_med_count,recent_regimen_change,regimen_complexity_present,adherence_problem,systolic_bp,diastolic_bp,heart_rate,weight_kg,height_cm,bmi,waist_cm,ldl_mg_dl,hdl_mg_dl,non_hdl_mg_dl,fasting_glucose_mg_dl,hba1c_pct,score2_value,framingham_value,cv_risk_level,smoker_status,alcohol_use,physical_activity_level,diet_score,safety_incidents,adverse_events_count,high_risk_medication_present,created_at,updated_at';
+  'id,visit_id,education_level,pregnancy_postpartum,biological_sex,race_ethnicity_risk,hypertension_present,cv_pathology_present,comorbidities_present,recent_cvd_12m,hospital_er_use_12m,physical_activity_pattern,social_support_absent,psychosocial_stress,chronic_med_count,recent_regimen_change,regimen_complexity_present,adherence_problem,systolic_bp,diastolic_bp,heart_rate,weight_kg,height_cm,bmi,waist_cm,ldl_mg_dl,hdl_mg_dl,non_hdl_mg_dl,fasting_glucose_mg_dl,hba1c_pct,score2_value,framingham_value,cv_risk_level,smoker_status,diet_score,safety_incidents,adverse_events_count,high_risk_medication_present,created_at,updated_at';
 
 function extractErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
@@ -58,7 +65,7 @@ function extractErrorMessage(error: unknown): string {
   return 'Error desconocido al procesar evaluación clínica.';
 }
 
-const BOOLEAN_FIELDS = [
+const TRISTATE_FIELDS = [
   'pregnancy_postpartum',
   'hypertension_present',
   'cv_pathology_present',
@@ -67,20 +74,20 @@ const BOOLEAN_FIELDS = [
   'hospital_er_use_12m',
   'social_support_absent',
   'psychosocial_stress',
-  'high_risk_medication_present',
   'recent_regimen_change',
   'regimen_complexity_present',
   'adherence_problem',
 ] as const;
 
-function mapTriStateToBoolean(value: unknown): boolean | null {
-  if (value === true || value === false || value === null) return value;
+function mapTriState(value: unknown): TriState | null {
+  if (value === 'yes' || value === 'no' || value === 'unknown' || value === null) return value;
   if (typeof value !== 'string') return null;
 
   const normalized = value.trim().toLowerCase();
-  if (normalized === 'yes' || normalized === 'sí' || normalized === 'si' || normalized === 'true') return true;
-  if (normalized === 'no' || normalized === 'false') return false;
-  if (normalized === 'unknown' || normalized === 'desconocido' || normalized === 'no registrado' || normalized === '') return null;
+  if (normalized === 'yes' || normalized === 'sí' || normalized === 'si' || normalized === 'true') return 'yes';
+  if (normalized === 'no' || normalized === 'false') return 'no';
+  if (normalized === 'unknown' || normalized === 'desconocido' || normalized === 'no registrado') return 'unknown';
+  if (normalized === '') return null;
 
   return null;
 }
@@ -88,9 +95,15 @@ function mapTriStateToBoolean(value: unknown): boolean | null {
 function normalizeAssessmentInput(input: NewClinicalAssessmentInput): NewClinicalAssessmentInput {
   const normalizedInput: NewClinicalAssessmentInput = { ...input };
 
-  for (const field of BOOLEAN_FIELDS) {
-    normalizedInput[field] = mapTriStateToBoolean(input[field]);
+  for (const field of TRISTATE_FIELDS) {
+    normalizedInput[field] = mapTriState(input[field]);
   }
+
+  normalizedInput.high_risk_medication_present =
+    input.high_risk_medication_present === true
+    || input.high_risk_medication_present === false
+      ? input.high_risk_medication_present
+      : null;
 
   return normalizedInput;
 }

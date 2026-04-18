@@ -2,7 +2,6 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { SMOKER_STATUS_OPTIONS } from '../constants/enums';
-import type { SmokerStatus } from '../constants/enums';
 import { ErrorState } from '../components/common/ErrorState';
 import {
   getClinicalAssessmentByVisit,
@@ -32,10 +31,6 @@ function toNumber(value: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function toSmokerStatus(value: string): SmokerStatus | null {
-  return value === 'never' || value === 'former_recent' || value === 'current' || value === 'unknown' ? value : null;
-}
-
 function toTernaryBool(value: string): boolean | null {
   if (value === 'yes') return true;
   if (value === 'no') return false;
@@ -45,6 +40,11 @@ function toTernaryBool(value: string): boolean | null {
 function fromNullableBoolean(value: boolean | null | undefined): YesNoUnknown {
   if (value === true) return 'yes';
   if (value === false) return 'no';
+  return 'unknown';
+}
+
+function fromTriState(value: string | null | undefined): YesNoUnknown {
+  if (value === 'yes' || value === 'no' || value === 'unknown') return value;
   return 'unknown';
 }
 
@@ -180,24 +180,24 @@ export function BaselineStratificationPage() {
         setForm((prev) => ({
           ...prev,
           education_level: v.education_level ?? 'unknown',
-          pregnancy_postpartum: fromNullableBoolean(v.pregnancy_postpartum),
+          pregnancy_postpartum: fromTriState(v.pregnancy_postpartum),
           biological_sex: v.biological_sex ?? 'unknown',
           race_ethnicity_risk: v.race_ethnicity_risk ?? 'unknown',
-          hypertension_present: fromNullableBoolean(v.hypertension_present),
+          hypertension_present: fromTriState(v.hypertension_present),
           non_hdl_mg_dl: String(v.non_hdl_mg_dl ?? ''),
-          cv_pathology_present: fromNullableBoolean(v.cv_pathology_present),
-          comorbidities_present: fromNullableBoolean(v.comorbidities_present),
-          recent_cvd_12m: fromNullableBoolean(v.recent_cvd_12m),
-          hospital_er_use_12m: fromNullableBoolean(v.hospital_er_use_12m),
+          cv_pathology_present: fromTriState(v.cv_pathology_present),
+          comorbidities_present: fromTriState(v.comorbidities_present),
+          recent_cvd_12m: fromTriState(v.recent_cvd_12m),
+          hospital_er_use_12m: fromTriState(v.hospital_er_use_12m),
           smoker_status: v.smoker_status ?? 'unknown',
           physical_activity_pattern: v.physical_activity_pattern ?? 'unknown',
-          social_support_absent: fromNullableBoolean(v.social_support_absent),
-          psychosocial_stress: fromNullableBoolean(v.psychosocial_stress),
+          social_support_absent: fromTriState(v.social_support_absent),
+          psychosocial_stress: fromTriState(v.psychosocial_stress),
           chronic_med_count: String(v.chronic_med_count ?? ''),
           high_risk_medication_present_status: fromNullableBoolean(v.high_risk_medication_present),
-          recent_regimen_change: fromNullableBoolean(v.recent_regimen_change),
-          regimen_complexity_present: fromNullableBoolean(v.regimen_complexity_present),
-          adherence_problem: fromNullableBoolean(v.adherence_problem),
+          recent_regimen_change: fromTriState(v.recent_regimen_change),
+          regimen_complexity_present: fromTriState(v.regimen_complexity_present),
+          adherence_problem: fromTriState(v.adherence_problem),
           systolic_bp: String(v.systolic_bp ?? ''),
           diastolic_bp: String(v.diastolic_bp ?? ''),
           heart_rate: String(v.heart_rate ?? ''),
@@ -263,21 +263,21 @@ export function BaselineStratificationPage() {
   const assessmentPayload = useMemo<NewClinicalAssessmentInput>(() => ({
     visit_id: visitId,
     education_level: toEducationLevel(form.education_level ?? ''),
-    pregnancy_postpartum: toTernaryBool(form.pregnancy_postpartum ?? ''),
+    pregnancy_postpartum: yesNoUnknown(form.pregnancy_postpartum ?? ''),
     biological_sex: toBiologicalSex(form.biological_sex ?? ''),
     race_ethnicity_risk: toRaceEthnicityRisk(form.race_ethnicity_risk ?? ''),
-    hypertension_present: toTernaryBool(form.hypertension_present ?? ''),
-    cv_pathology_present: toTernaryBool(form.cv_pathology_present ?? ''),
-    comorbidities_present: toTernaryBool(form.comorbidities_present ?? ''),
-    recent_cvd_12m: toTernaryBool(form.recent_cvd_12m ?? ''),
-    hospital_er_use_12m: toTernaryBool(form.hospital_er_use_12m ?? ''),
+    hypertension_present: yesNoUnknown(form.hypertension_present ?? ''),
+    cv_pathology_present: yesNoUnknown(form.cv_pathology_present ?? ''),
+    comorbidities_present: yesNoUnknown(form.comorbidities_present ?? ''),
+    recent_cvd_12m: yesNoUnknown(form.recent_cvd_12m ?? ''),
+    hospital_er_use_12m: yesNoUnknown(form.hospital_er_use_12m ?? ''),
     physical_activity_pattern: toPhysicalActivityPattern(form.physical_activity_pattern ?? ''),
-    social_support_absent: toTernaryBool(form.social_support_absent ?? ''),
-    psychosocial_stress: toTernaryBool(form.psychosocial_stress ?? ''),
+    social_support_absent: yesNoUnknown(form.social_support_absent ?? ''),
+    psychosocial_stress: yesNoUnknown(form.psychosocial_stress ?? ''),
     chronic_med_count: toNumber(form.chronic_med_count ?? ''),
-    recent_regimen_change: toTernaryBool(form.recent_regimen_change ?? ''),
-    regimen_complexity_present: toTernaryBool(form.regimen_complexity_present ?? ''),
-    adherence_problem: toTernaryBool(form.adherence_problem ?? ''),
+    recent_regimen_change: yesNoUnknown(form.recent_regimen_change ?? ''),
+    regimen_complexity_present: yesNoUnknown(form.regimen_complexity_present ?? ''),
+    adherence_problem: yesNoUnknown(form.adherence_problem ?? ''),
     systolic_bp: toNumber(form.systolic_bp ?? ''),
     diastolic_bp: toNumber(form.diastolic_bp ?? ''),
     heart_rate: toNumber(form.heart_rate ?? ''),
@@ -293,9 +293,7 @@ export function BaselineStratificationPage() {
     score2_value: toNumber(form.score2_value ?? ''),
     framingham_value: toNumber(form.framingham_value ?? ''),
     cv_risk_level: String(cmoResult.level),
-    smoker_status: toSmokerStatus(form.smoker_status ?? ''),
-    alcohol_use: form.alcohol_use || null,
-    physical_activity_level: form.physical_activity_pattern || null,
+    smoker_status: toSmokingStatus(form.smoker_status ?? ''),
     diet_score: toNumber(form.diet_score ?? ''),
     safety_incidents: form.safety_incidents || null,
     adverse_events_count: toNumber(form.adverse_events_count ?? ''),
