@@ -3,7 +3,12 @@ import { Link, useParams } from 'react-router-dom';
 
 import { ErrorState } from '../components/common/ErrorState';
 import { getCmoScoreByVisit, type CmoScoreRecord } from '../services/cmoScoreService';
-import { createIntervention, listInterventionsByVisit, type Intervention } from '../services/interventionService';
+import {
+  createIntervention,
+  listInterventionsByVisit,
+  type Intervention,
+  type PriorityLevel,
+} from '../services/interventionService';
 import { getVisitById } from '../services/visitService';
 
 const LEVEL_META = {
@@ -20,7 +25,7 @@ export function VisitInterventionsPage() {
   const [form, setForm] = useState({
     intervention_type: '',
     intervention_domain: '',
-    priority_level: '3',
+    priority_level: 'low' as PriorityLevel,
     delivered: true,
     linked_to_cmo_level: '3',
     outcome: '',
@@ -29,18 +34,30 @@ export function VisitInterventionsPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const cmoPriorityToInterventionPriority: Record<1 | 2 | 3, PriorityLevel> = {
+    1: 'high',
+    2: 'medium',
+    3: 'low',
+  };
+
+  const interventionPriorityLabel: Record<PriorityLevel, string> = {
+    high: '1 · Prioridad',
+    medium: '2 · Intermedio',
+    low: '3 · Basal',
+  };
+
   // Load the saved CMO score once on mount and seed the form level fields.
   useEffect(() => {
     void getCmoScoreByVisit(visitId).then(({ data }) => {
       if (data) {
         setCmoScore(data);
-        const level = String(data.priority as number);
+        const level = Number(data.priority) as 1 | 2 | 3;
         setForm({
           intervention_type: '',
           intervention_domain: '',
-          priority_level: level,
+          priority_level: cmoPriorityToInterventionPriority[level] ?? 'low',
           delivered: true,
-          linked_to_cmo_level: level,
+          linked_to_cmo_level: String(level),
           outcome: '',
           notes: '',
         });
@@ -64,16 +81,19 @@ export function VisitInterventionsPage() {
     setSaving(true);
     setErrorMessage(null);
 
-    const result = await createIntervention({
+    const payload = {
       visit_id: visitId,
       intervention_type: form.intervention_type,
       intervention_domain: form.intervention_domain || null,
-      priority_level: Number(form.priority_level),
+      priority_level: form.priority_level,
       delivered: form.delivered,
       linked_to_cmo_level: Number(form.linked_to_cmo_level),
       outcome: form.outcome || null,
       notes: form.notes || null,
-    });
+    };
+    // Temporal para verificar payload real enviado a Supabase.
+    console.log(payload);
+    const result = await createIntervention(payload);
 
     if (result.errorMessage) {
       setErrorMessage(result.errorMessage);
@@ -131,10 +151,10 @@ export function VisitInterventionsPage() {
           <div className="grid-2">
             <label>
               Prioridad
-              <select value={form.priority_level} onChange={(e) => setForm((p) => ({ ...p, priority_level: e.target.value }))}>
-                <option value="1">1 · Prioridad</option>
-                <option value="2">2 · Intermedio</option>
-                <option value="3">3 · Basal</option>
+              <select value={form.priority_level} onChange={(e) => setForm((p) => ({ ...p, priority_level: e.target.value as PriorityLevel }))}>
+                <option value="high">1 · Prioridad</option>
+                <option value="medium">2 · Intermedio</option>
+                <option value="low">3 · Basal</option>
               </select>
             </label>
             <label>
@@ -174,7 +194,7 @@ export function VisitInterventionsPage() {
             {items.map((item) => (
               <li key={item.id}>
                 <span>{item.intervention_type}</span>
-                <span>P{item.priority_level ?? '-'}</span>
+                <span>{item.priority_level ? interventionPriorityLabel[item.priority_level] : '-'}</span>
                 <span>{item.delivered ? 'Entregada' : 'Pendiente'}</span>
               </li>
             ))}

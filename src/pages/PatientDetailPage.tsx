@@ -6,7 +6,7 @@ import { ErrorState } from '../components/common/ErrorState';
 import { VISIT_STATUS_OPTIONS, type VisitStatus } from '../constants/enums';
 import { getLatestCmoScoreByPatient, listCmoScoresByPatient, type CmoScoreHistoryEntry, type CmoScoreRecord } from '../services/cmoScoreService';
 import { getVisitStatusLabel, getVisitTypeLabel } from '../constants/enums';
-import { listInterventionsByPatient } from '../services/interventionService';
+import { listInterventionsByPatient, type PriorityLevel } from '../services/interventionService';
 import { getPatientById, type Patient } from '../services/patientService';
 import { listVisitsByPatient, updateVisit, type Visit } from '../services/visitService';
 
@@ -16,13 +16,19 @@ const LEVEL_META = {
   3: { label: 'Nivel 3 · Basal',      color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
 } as const;
 
+const PRIORITY_LEVEL_LABEL: Record<PriorityLevel, string> = {
+  high: '1 · Prioridad',
+  medium: '2 · Intermedio',
+  low: '3 · Basal',
+};
+
 export function PatientDetailPage() {
   const { id = '' } = useParams();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [latestCmoScore, setLatestCmoScore] = useState<CmoScoreRecord | null>(null);
   const [cmoHistory, setCmoHistory] = useState<CmoScoreHistoryEntry[]>([]);
-  const [interventions, setInterventions] = useState<Array<{ id: string; intervention_type: string; priority_level: number | null }>>([]);
+  const [interventions, setInterventions] = useState<Array<{ id: string; intervention_type: string; priority_level: PriorityLevel | null }>>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -219,7 +225,7 @@ export function PatientDetailPage() {
             {interventions.slice(0, 10).map((item) => (
               <li key={item.id}>
                 <span>{item.intervention_type}</span>
-                <span>P{item.priority_level ?? '-'}</span>
+                <span>{item.priority_level ? PRIORITY_LEVEL_LABEL[item.priority_level] : '-'}</span>
               </li>
             ))}
           </ul>

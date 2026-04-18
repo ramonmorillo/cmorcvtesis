@@ -41,8 +41,10 @@ export function getVisitStatusLabel(status: VisitStatus | null): string {
 }
 
 export const SMOKER_STATUS_OPTIONS = [
-  { value: 'si', label: 'Sí' },
-  { value: 'no', label: 'No' },
+  { value: 'never', label: 'Nunca' },
+  { value: 'former', label: 'Exfumador' },
+  { value: 'current', label: 'Actual' },
+  { value: 'unknown', label: 'Desconocido' },
 ] as const;
 
 export type SmokerStatus = (typeof SMOKER_STATUS_OPTIONS)[number]['value'];

@@ -21,7 +21,7 @@ function toNumber(value: string): number | null {
 }
 
 function toSmokerStatus(value: string): SmokerStatus | null {
-  return value === 'si' || value === 'no' ? value : null;
+  return value === 'never' || value === 'former' || value === 'current' || value === 'unknown' ? value : null;
 }
 
 function toSex(value: string): CmoScoringInput['sex'] {
@@ -72,7 +72,7 @@ const ALCOHOL_USE_OPTIONS = [
 export function BaselineStratificationPage() {
   const { visitId = '' } = useParams();
   const [visitPatientId, setVisitPatientId] = useState<string>('');
-  const [form, setForm] = useState<Record<string, string>>({});
+  const [form, setForm] = useState<Record<string, string>>({ smoker_status: 'unknown' });
   const [highRiskMedicationPresent, setHighRiskMedicationPresent] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -110,7 +110,7 @@ export function BaselineStratificationPage() {
           hba1c_pct:             String(v.hba1c_pct ?? ''),
           score2_value:          String(v.score2_value ?? ''),
           framingham_value:      String(v.framingham_value ?? ''),
-          smoker_status:         v.smoker_status ?? '',
+          smoker_status:         v.smoker_status ?? 'unknown',
           sex:                   defaultSex,
           physical_activity_level: v.physical_activity_level ?? '',
           alcohol_use:           v.alcohol_use ?? '',
@@ -151,7 +151,7 @@ export function BaselineStratificationPage() {
     bmi:                  computedBmi,
     waistCm:              toNumber(form.waist_cm ?? ''),
     sex:                  toSex(form.sex ?? ''),
-    smoker:               form.smoker_status === 'si' ? true : form.smoker_status === 'no' ? false : null,
+    smoker:               form.smoker_status === 'current' ? true : form.smoker_status === 'never' || form.smoker_status === 'former' ? false : null,
     physicalActivityLevel: form.physical_activity_level || null,
     dietScore:            toNumber(form.diet_score ?? ''),
     highRiskMedication:   highRiskMedicationPresent,
@@ -194,6 +194,8 @@ export function BaselineStratificationPage() {
     setErrorMessage(null);
     setSaveSuccess(false);
 
+    // Temporal para verificar payload real enviado a Supabase.
+    console.log(assessmentPayload);
     const { errorMessage: assessErr } = await upsertClinicalAssessment(assessmentPayload);
     if (assessErr) {
       setErrorMessage(assessErr);
