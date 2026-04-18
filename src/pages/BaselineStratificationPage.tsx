@@ -9,10 +9,21 @@ import {
   upsertClinicalAssessment,
   type NewClinicalAssessmentInput,
 } from '../services/assessmentService';
-import { scoreCmo, type CmoLevel, type CmoScoringInput, type CmoScoringResult } from '../services/cmoScoringEngine';
+import {
+  scoreCmo,
+  type BiologicalSex,
+  type CmoLevel,
+  type CmoScoringInput,
+  type CmoScoringResult,
+  type EducationLevel,
+  type PhysicalActivityPattern,
+  type RaceEthnicityRisk,
+  type SmokingStatus,
+} from '../services/cmoScoringEngine';
 import { upsertCmoScore } from '../services/cmoScoreService';
-import { getPatientById } from '../services/patientService';
 import { getVisitById } from '../services/visitService';
+
+type YesNoUnknown = 'yes' | 'no' | 'unknown';
 
 function toNumber(value: string): number | null {
   if (!value.trim()) return null;
@@ -21,59 +32,101 @@ function toNumber(value: string): number | null {
 }
 
 function toSmokerStatus(value: string): SmokerStatus | null {
-  return value === 'never' || value === 'former' || value === 'current' || value === 'unknown' ? value : null;
+  return value === 'never' || value === 'former_recent' || value === 'current' || value === 'unknown' ? value : null;
 }
 
-function toSex(value: string): CmoScoringInput['sex'] {
-  if (value === 'male' || value === 'female' || value === 'other') return value;
+function toTernaryBool(value: string): boolean | null {
+  if (value === 'yes') return true;
+  if (value === 'no') return false;
   return null;
 }
 
+function yesNoUnknown(value: string): YesNoUnknown {
+  if (value === 'yes' || value === 'no' || value === 'unknown') return value;
+  return 'unknown';
+}
+
+function toEducationLevel(value: string): EducationLevel {
+  return value === 'low' || value === 'medium' || value === 'high' || value === 'unknown' ? value : 'unknown';
+}
+
+function toBiologicalSex(value: string): BiologicalSex {
+  return value === 'female' || value === 'male' || value === 'other' || value === 'unknown' ? value : 'unknown';
+}
+
+function toRaceEthnicityRisk(value: string): RaceEthnicityRisk {
+  return value === 'asian_non_chinese'
+    || value === 'afro_caribbean'
+    || value === 'afro_descendant_or_chinese'
+    || value === 'other'
+    || value === 'unknown'
+    ? value
+    : 'unknown';
+}
+
+function toSmokingStatus(value: string): SmokingStatus {
+  return value === 'current' || value === 'former_recent' || value === 'never' || value === 'unknown' ? value : 'unknown';
+}
+
+function toPhysicalActivityPattern(value: string): PhysicalActivityPattern {
+  return value === 'sedentary' || value === 'intense' || value === 'normal' || value === 'unknown' ? value : 'unknown';
+}
+
 const LEVEL_META: Record<CmoLevel, { label: string; color: string; bg: string; border: string }> = {
-  1: { label: 'Nivel 1 · Prioridad',  color: '#dc2626', bg: '#fef2f2', border: '#fca5a5' },
+  1: { label: 'Nivel 1 · Prioridad', color: '#dc2626', bg: '#fef2f2', border: '#fca5a5' },
   2: { label: 'Nivel 2 · Intermedio', color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
-  3: { label: 'Nivel 3 · Basal',      color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
+  3: { label: 'Nivel 3 · Basal', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
 };
 
 const NUMERIC_FIELDS: [string, string][] = [
-  ['systolic_bp',          'TA sistólica (mmHg)'],
-  ['diastolic_bp',         'TA diastólica (mmHg)'],
-  ['heart_rate',           'FC (lpm)'],
-  ['weight_kg',            'Peso (kg)'],
-  ['height_cm',            'Talla (cm)'],
-  ['bmi',                  'IMC (kg/m²)'],
-  ['waist_cm',             'Cintura (cm)'],
-  ['ldl_mg_dl',            'LDL (mg/dL)'],
-  ['hdl_mg_dl',            'HDL (mg/dL)'],
-  ['non_hdl_mg_dl',        'No-HDL (mg/dL)'],
-  ['fasting_glucose_mg_dl','Glucosa (mg/dL)'],
-  ['hba1c_pct',            'HbA1c (%)'],
-  ['score2_value',         'SCORE2 (%)'],
-  ['framingham_value',     'Framingham (%)'],
-  ['diet_score',           'Dieta (0–10)'],
+  ['age_years', 'Edad (años)'],
+  ['non_hdl_mg_dl', 'No-HDL (mg/dL)'],
+  ['chronic_med_count', 'Nº medicamentos crónicos'],
+  ['systolic_bp', 'TA sistólica (mmHg)'],
+  ['diastolic_bp', 'TA diastólica (mmHg)'],
+  ['heart_rate', 'FC (lpm)'],
+  ['weight_kg', 'Peso (kg)'],
+  ['height_cm', 'Talla (cm)'],
+  ['bmi', 'IMC (kg/m²)'],
+  ['waist_cm', 'Cintura (cm)'],
+  ['ldl_mg_dl', 'LDL (mg/dL)'],
+  ['hdl_mg_dl', 'HDL (mg/dL)'],
+  ['fasting_glucose_mg_dl', 'Glucosa (mg/dL)'],
+  ['hba1c_pct', 'HbA1c (%)'],
+  ['score2_value', 'SCORE2 (%)'],
+  ['framingham_value', 'Framingham (%)'],
+  ['diet_score', 'Dieta (0–10)'],
   ['adverse_events_count', 'Eventos adversos'],
 ];
 
-const PHYSICAL_ACTIVITY_LEVEL_OPTIONS = [
-  { value: 'low', label: 'Baja' },
-  { value: 'moderate', label: 'Moderada' },
-  { value: 'high', label: 'Alta' },
-  { value: 'unknown', label: 'Desconocida' },
-] as const;
-
-const ALCOHOL_USE_OPTIONS = [
-  { value: 'none', label: 'No' },
-  { value: 'occasional', label: 'Ocasional' },
-  { value: 'moderate', label: 'Moderado' },
-  { value: 'high', label: 'Alto' },
-  { value: 'unknown', label: 'Desconocido' },
-] as const;
+const YES_NO_UNKNOWN_OPTIONS: Array<{ value: YesNoUnknown; label: string }> = [
+  { value: 'yes', label: 'Sí' },
+  { value: 'no', label: 'No' },
+  { value: 'unknown', label: 'No registrado' },
+];
 
 export function BaselineStratificationPage() {
   const { visitId = '' } = useParams();
   const [visitPatientId, setVisitPatientId] = useState<string>('');
-  const [form, setForm] = useState<Record<string, string>>({ smoker_status: 'unknown' });
-  const [highRiskMedicationPresent, setHighRiskMedicationPresent] = useState(false);
+  const [form, setForm] = useState<Record<string, string>>({
+    smoker_status: 'unknown',
+    education_level: 'unknown',
+    pregnancy_postpartum: 'unknown',
+    biological_sex: 'unknown',
+    race_ethnicity_risk: 'unknown',
+    hypertension_present: 'unknown',
+    cv_pathology_present: 'unknown',
+    comorbidities_present: 'unknown',
+    recent_cvd_12m: 'unknown',
+    hospital_er_use_12m: 'unknown',
+    physical_activity_pattern: 'unknown',
+    social_support_absent: 'unknown',
+    psychosocial_stress: 'unknown',
+    high_risk_medication_present_status: 'unknown',
+    recent_regimen_change: 'unknown',
+    regimen_complexity_present: 'unknown',
+    adherence_problem: 'unknown',
+  });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -89,38 +142,47 @@ export function BaselineStratificationPage() {
       if (patientId) setVisitPatientId(patientId);
       if (assessmentRes.errorMessage) setErrorMessage(assessmentRes.errorMessage);
 
-      const patientRes = patientId ? await getPatientById(patientId) : { data: null };
-      const rawSex = patientRes.data?.sex ?? '';
-      const defaultSex = (rawSex === 'male' || rawSex === 'female' || rawSex === 'other') ? rawSex : '';
-
       if (assessmentRes.data) {
         const v = assessmentRes.data;
-        setForm({
-          systolic_bp:           String(v.systolic_bp ?? ''),
-          diastolic_bp:          String(v.diastolic_bp ?? ''),
-          heart_rate:            String(v.heart_rate ?? ''),
-          weight_kg:             String(v.weight_kg ?? ''),
-          height_cm:             String(v.height_cm ?? ''),
-          bmi:                   String(v.bmi ?? ''),
-          waist_cm:              String(v.waist_cm ?? ''),
-          ldl_mg_dl:             String(v.ldl_mg_dl ?? ''),
-          hdl_mg_dl:             String(v.hdl_mg_dl ?? ''),
-          non_hdl_mg_dl:         String(v.non_hdl_mg_dl ?? ''),
+        setForm((prev) => ({
+          ...prev,
+          age_years: String(v.age_years ?? ''),
+          education_level: v.education_level ?? 'unknown',
+          pregnancy_postpartum: v.pregnancy_postpartum ?? 'unknown',
+          biological_sex: v.biological_sex ?? 'unknown',
+          race_ethnicity_risk: v.race_ethnicity_risk ?? 'unknown',
+          hypertension_present: v.hypertension_present ?? 'unknown',
+          non_hdl_mg_dl: String(v.non_hdl_mg_dl ?? ''),
+          cv_pathology_present: v.cv_pathology_present ?? 'unknown',
+          comorbidities_present: v.comorbidities_present ?? 'unknown',
+          recent_cvd_12m: v.recent_cvd_12m ?? 'unknown',
+          hospital_er_use_12m: v.hospital_er_use_12m ?? 'unknown',
+          smoker_status: v.smoker_status ?? 'unknown',
+          physical_activity_pattern: v.physical_activity_pattern ?? 'unknown',
+          social_support_absent: v.social_support_absent ?? 'unknown',
+          psychosocial_stress: v.psychosocial_stress ?? 'unknown',
+          chronic_med_count: String(v.chronic_med_count ?? ''),
+          high_risk_medication_present_status: v.high_risk_medication_present === true ? 'yes' : v.high_risk_medication_present === false ? 'no' : 'unknown',
+          recent_regimen_change: v.recent_regimen_change ?? 'unknown',
+          regimen_complexity_present: v.regimen_complexity_present ?? 'unknown',
+          adherence_problem: v.adherence_problem ?? 'unknown',
+          systolic_bp: String(v.systolic_bp ?? ''),
+          diastolic_bp: String(v.diastolic_bp ?? ''),
+          heart_rate: String(v.heart_rate ?? ''),
+          weight_kg: String(v.weight_kg ?? ''),
+          height_cm: String(v.height_cm ?? ''),
+          bmi: String(v.bmi ?? ''),
+          waist_cm: String(v.waist_cm ?? ''),
+          ldl_mg_dl: String(v.ldl_mg_dl ?? ''),
+          hdl_mg_dl: String(v.hdl_mg_dl ?? ''),
           fasting_glucose_mg_dl: String(v.fasting_glucose_mg_dl ?? ''),
-          hba1c_pct:             String(v.hba1c_pct ?? ''),
-          score2_value:          String(v.score2_value ?? ''),
-          framingham_value:      String(v.framingham_value ?? ''),
-          smoker_status:         v.smoker_status ?? 'unknown',
-          sex:                   defaultSex,
-          physical_activity_level: v.physical_activity_level ?? '',
-          alcohol_use:           v.alcohol_use ?? '',
-          diet_score:            String(v.diet_score ?? ''),
-          safety_incidents:      v.safety_incidents ?? '',
-          adverse_events_count:  String(v.adverse_events_count ?? ''),
-        });
-        setHighRiskMedicationPresent(Boolean(v.high_risk_medication_present));
-      } else if (defaultSex) {
-        setForm((prev: Record<string, string>) => ({ ...prev, sex: defaultSex }));
+          hba1c_pct: String(v.hba1c_pct ?? ''),
+          score2_value: String(v.score2_value ?? ''),
+          framingham_value: String(v.framingham_value ?? ''),
+          diet_score: String(v.diet_score ?? ''),
+          safety_incidents: v.safety_incidents ?? '',
+          adverse_events_count: String(v.adverse_events_count ?? ''),
+        }));
       }
     }
     void loadCurrent();
@@ -129,10 +191,9 @@ export function BaselineStratificationPage() {
   const field = (name: string) => ({
     value: form[name] ?? '',
     onChange: (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-      setForm((prev: Record<string, string>) => ({ ...prev, [name]: e.target.value })),
+      setForm((prev) => ({ ...prev, [name]: e.target.value })),
   });
 
-  // Derived BMI (when weight + height given but BMI not manually entered).
   const computedBmi = useMemo<number | null>(() => {
     const bmiVal = toNumber(form.bmi ?? '');
     if (bmiVal) return bmiVal;
@@ -141,52 +202,74 @@ export function BaselineStratificationPage() {
     return w && h ? Number((w / (h / 100) ** 2).toFixed(1)) : null;
   }, [form.bmi, form.weight_kg, form.height_cm]);
 
-  // Build scoring input from live form state — used for every render.
   const cmoInput = useMemo<CmoScoringInput>(() => ({
-    score2:               toNumber(form.score2_value ?? ''),
-    framingham:           toNumber(form.framingham_value ?? ''),
-    systolicBp:           toNumber(form.systolic_bp ?? ''),
-    ldl:                  toNumber(form.ldl_mg_dl ?? ''),
-    hba1c:                toNumber(form.hba1c_pct ?? ''),
-    bmi:                  computedBmi,
-    waistCm:              toNumber(form.waist_cm ?? ''),
-    sex:                  toSex(form.sex ?? ''),
-    smoker:               form.smoker_status === 'current' ? true : form.smoker_status === 'never' || form.smoker_status === 'former' ? false : null,
-    physicalActivityLevel: form.physical_activity_level || null,
-    dietScore:            toNumber(form.diet_score ?? ''),
-    highRiskMedication:   highRiskMedicationPresent,
-    adverseEventsCount:   toNumber(form.adverse_events_count ?? ''),
-  }), [form, computedBmi, highRiskMedicationPresent]);
+    educationLevel: toEducationLevel(form.education_level ?? ''),
+    age: toNumber(form.age_years ?? ''),
+    pregnancyPostpartum: yesNoUnknown(form.pregnancy_postpartum ?? ''),
+    biologicalSex: toBiologicalSex(form.biological_sex ?? ''),
+    raceEthnicityRisk: toRaceEthnicityRisk(form.race_ethnicity_risk ?? ''),
+    hypertensionPresent: yesNoUnknown(form.hypertension_present ?? ''),
+    nonHdlMgDl: toNumber(form.non_hdl_mg_dl ?? ''),
+    cvPathologyPresent: yesNoUnknown(form.cv_pathology_present ?? ''),
+    comorbiditiesPresent: yesNoUnknown(form.comorbidities_present ?? ''),
+    recentCvd12m: yesNoUnknown(form.recent_cvd_12m ?? ''),
+    hospitalErUse12m: yesNoUnknown(form.hospital_er_use_12m ?? ''),
+    smokingStatus: toSmokingStatus(form.smoker_status ?? ''),
+    physicalActivityPattern: toPhysicalActivityPattern(form.physical_activity_pattern ?? ''),
+    socialSupportAbsent: yesNoUnknown(form.social_support_absent ?? ''),
+    psychosocialStress: yesNoUnknown(form.psychosocial_stress ?? ''),
+    chronicMedCount: toNumber(form.chronic_med_count ?? ''),
+    highRiskMedicationPresent: yesNoUnknown(form.high_risk_medication_present_status ?? ''),
+    recentRegimenChange: yesNoUnknown(form.recent_regimen_change ?? ''),
+    regimenComplexityPresent: yesNoUnknown(form.regimen_complexity_present ?? ''),
+    adherenceProblem: yesNoUnknown(form.adherence_problem ?? ''),
+  }), [form]);
 
   const cmoResult: CmoScoringResult = useMemo(() => scoreCmo(cmoInput), [cmoInput]);
   const meta = LEVEL_META[cmoResult.level];
 
-  // Payload for DB persistence — cv_risk_level always reflects the live score.
   const assessmentPayload = useMemo<NewClinicalAssessmentInput>(() => ({
-    visit_id:                  visitId,
-    systolic_bp:               toNumber(form.systolic_bp ?? ''),
-    diastolic_bp:              toNumber(form.diastolic_bp ?? ''),
-    heart_rate:                toNumber(form.heart_rate ?? ''),
-    weight_kg:                 toNumber(form.weight_kg ?? ''),
-    height_cm:                 toNumber(form.height_cm ?? ''),
-    bmi:                       computedBmi,
-    waist_cm:                  toNumber(form.waist_cm ?? ''),
-    ldl_mg_dl:                 toNumber(form.ldl_mg_dl ?? ''),
-    hdl_mg_dl:                 toNumber(form.hdl_mg_dl ?? ''),
-    non_hdl_mg_dl:             toNumber(form.non_hdl_mg_dl ?? ''),
-    fasting_glucose_mg_dl:     toNumber(form.fasting_glucose_mg_dl ?? ''),
-    hba1c_pct:                 toNumber(form.hba1c_pct ?? ''),
-    score2_value:              toNumber(form.score2_value ?? ''),
-    framingham_value:          toNumber(form.framingham_value ?? ''),
-    cv_risk_level:             String(cmoResult.level),
-    smoker_status:             toSmokerStatus(form.smoker_status ?? ''),
-    alcohol_use:               form.alcohol_use || null,
-    physical_activity_level:   form.physical_activity_level || null,
-    diet_score:                toNumber(form.diet_score ?? ''),
-    safety_incidents:          form.safety_incidents || null,
-    adverse_events_count:      toNumber(form.adverse_events_count ?? ''),
-    high_risk_medication_present: highRiskMedicationPresent,
-  }), [form, computedBmi, cmoResult.level, highRiskMedicationPresent, visitId]);
+    visit_id: visitId,
+    age_years: toNumber(form.age_years ?? ''),
+    education_level: toEducationLevel(form.education_level ?? ''),
+    pregnancy_postpartum: yesNoUnknown(form.pregnancy_postpartum ?? ''),
+    biological_sex: toBiologicalSex(form.biological_sex ?? ''),
+    race_ethnicity_risk: toRaceEthnicityRisk(form.race_ethnicity_risk ?? ''),
+    hypertension_present: yesNoUnknown(form.hypertension_present ?? ''),
+    cv_pathology_present: yesNoUnknown(form.cv_pathology_present ?? ''),
+    comorbidities_present: yesNoUnknown(form.comorbidities_present ?? ''),
+    recent_cvd_12m: yesNoUnknown(form.recent_cvd_12m ?? ''),
+    hospital_er_use_12m: yesNoUnknown(form.hospital_er_use_12m ?? ''),
+    physical_activity_pattern: toPhysicalActivityPattern(form.physical_activity_pattern ?? ''),
+    social_support_absent: yesNoUnknown(form.social_support_absent ?? ''),
+    psychosocial_stress: yesNoUnknown(form.psychosocial_stress ?? ''),
+    chronic_med_count: toNumber(form.chronic_med_count ?? ''),
+    recent_regimen_change: yesNoUnknown(form.recent_regimen_change ?? ''),
+    regimen_complexity_present: yesNoUnknown(form.regimen_complexity_present ?? ''),
+    adherence_problem: yesNoUnknown(form.adherence_problem ?? ''),
+    systolic_bp: toNumber(form.systolic_bp ?? ''),
+    diastolic_bp: toNumber(form.diastolic_bp ?? ''),
+    heart_rate: toNumber(form.heart_rate ?? ''),
+    weight_kg: toNumber(form.weight_kg ?? ''),
+    height_cm: toNumber(form.height_cm ?? ''),
+    bmi: computedBmi,
+    waist_cm: toNumber(form.waist_cm ?? ''),
+    ldl_mg_dl: toNumber(form.ldl_mg_dl ?? ''),
+    hdl_mg_dl: toNumber(form.hdl_mg_dl ?? ''),
+    non_hdl_mg_dl: toNumber(form.non_hdl_mg_dl ?? ''),
+    fasting_glucose_mg_dl: toNumber(form.fasting_glucose_mg_dl ?? ''),
+    hba1c_pct: toNumber(form.hba1c_pct ?? ''),
+    score2_value: toNumber(form.score2_value ?? ''),
+    framingham_value: toNumber(form.framingham_value ?? ''),
+    cv_risk_level: String(cmoResult.level),
+    smoker_status: toSmokerStatus(form.smoker_status ?? ''),
+    alcohol_use: form.alcohol_use || null,
+    physical_activity_level: form.physical_activity_pattern || null,
+    diet_score: toNumber(form.diet_score ?? ''),
+    safety_incidents: form.safety_incidents || null,
+    adverse_events_count: toNumber(form.adverse_events_count ?? ''),
+    high_risk_medication_present: toTernaryBool(form.high_risk_medication_present_status ?? ''),
+  }), [form, computedBmi, cmoResult.level, visitId]);
 
   const handleSave = async (event: FormEvent) => {
     event.preventDefault();
@@ -194,8 +277,6 @@ export function BaselineStratificationPage() {
     setErrorMessage(null);
     setSaveSuccess(false);
 
-    // Temporal para verificar payload real enviado a Supabase.
-    console.log(assessmentPayload);
     const { errorMessage: assessErr } = await upsertClinicalAssessment(assessmentPayload);
     if (assessErr) {
       setErrorMessage(assessErr);
@@ -214,15 +295,13 @@ export function BaselineStratificationPage() {
     setSaving(false);
   };
 
-  const hasFormData =
-    (Object.values(form) as string[]).some((v) => v.trim() !== '') || highRiskMedicationPresent;
+  const hasFormData = (Object.values(form) as string[]).some((v) => v.trim() !== '');
 
   return (
     <div className="page-stack">
       <section className="card">
         <h1>Estratificación basal</h1>
 
-        {/* ── Live score banner ─────────────────────────────────────── */}
         <div
           style={{
             display: 'flex', alignItems: 'center', gap: '1rem',
@@ -247,12 +326,84 @@ export function BaselineStratificationPage() {
         </div>
 
         <form className="form-grid" onSubmit={handleSave}>
-          {/* ── Clinical parameters ──────────────────────────────────── */}
           <div>
             <p className="help-text" style={{ fontSize: '0.8rem', marginBottom: '0.5rem', fontWeight: 600 }}>
-              PARÁMETROS CLÍNICOS
+              DEMOGRÁFICAS
             </p>
             <div className="grid-2">
+              <label>Edad (años)<input {...field('age_years')} inputMode="decimal" /></label>
+              <label>
+                Nivel educativo
+                <select {...field('education_level')}>
+                  <option value="low">Bajo</option>
+                  <option value="medium">Medio</option>
+                  <option value="high">Alto</option>
+                  <option value="unknown">No registrado</option>
+                </select>
+              </label>
+              <label>
+                Embarazo / posparto
+                <select {...field('pregnancy_postpartum')}>
+                  {YES_NO_UNKNOWN_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
+              <label>
+                Sexo biológico
+                <select {...field('biological_sex')}>
+                  <option value="female">Mujer</option>
+                  <option value="male">Varón</option>
+                  <option value="other">Otro</option>
+                  <option value="unknown">No registrado</option>
+                </select>
+              </label>
+              <label>
+                Raza/etnia de riesgo
+                <select {...field('race_ethnicity_risk')}>
+                  <option value="asian_non_chinese">Asiático no chino</option>
+                  <option value="afro_caribbean">Afrocaribeño</option>
+                  <option value="afro_descendant_or_chinese">Afrodescendiente o chino</option>
+                  <option value="other">Otra</option>
+                  <option value="unknown">No registrado</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <p className="help-text" style={{ fontSize: '0.8rem', marginBottom: '0.5rem', fontWeight: 600 }}>
+              CLÍNICAS
+            </p>
+            <div className="grid-2">
+              <label>
+                HTA documentada
+                <select {...field('hypertension_present')}>
+                  {YES_NO_UNKNOWN_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
+              <label>
+                Patología cardiovascular
+                <select {...field('cv_pathology_present')}>
+                  {YES_NO_UNKNOWN_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
+              <label>
+                Comorbilidades
+                <select {...field('comorbidities_present')}>
+                  {YES_NO_UNKNOWN_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
+              <label>
+                ECV reciente (12 meses)
+                <select {...field('recent_cvd_12m')}>
+                  {YES_NO_UNKNOWN_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
+              <label>
+                Uso hospital/urgencias (12 meses)
+                <select {...field('hospital_er_use_12m')}>
+                  {YES_NO_UNKNOWN_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
               {NUMERIC_FIELDS.map(([name, label]) => (
                 <label key={name}>
                   {label}
@@ -262,67 +413,72 @@ export function BaselineStratificationPage() {
             </div>
           </div>
 
-          {/* ── Contextual / behavioural factors ────────────────────── */}
           <div>
             <p className="help-text" style={{ fontSize: '0.8rem', marginBottom: '0.5rem', fontWeight: 600 }}>
-              FACTORES CONTEXTUALES
+              SOCIALES Y SANITARIAS
             </p>
             <div className="grid-2">
               <label>
-                Sexo biológico
-                <select {...field('sex')}>
-                  <option value="">Sin especificar</option>
-                  <option value="male">Varón</option>
-                  <option value="female">Mujer</option>
-                  <option value="other">Otro</option>
-                </select>
-              </label>
-
-              <label>
                 Tabaquismo
                 <select {...field('smoker_status')}>
-                  <option value="">Seleccionar</option>
-                  {SMOKER_STATUS_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
+                  {SMOKER_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </label>
-
               <label>
-                Actividad física
-                <select {...field('physical_activity_level')}>
-                  <option value="">Sin especificar</option>
-                  {PHYSICAL_ACTIVITY_LEVEL_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
+                Patrón de actividad física
+                <select {...field('physical_activity_pattern')}>
+                  <option value="sedentary">Sedentario</option>
+                  <option value="intense">Intenso</option>
+                  <option value="normal">Normal</option>
+                  <option value="unknown">No registrado</option>
                 </select>
               </label>
-
               <label>
-                Alcohol
-                <select {...field('alcohol_use')}>
-                  <option value="">Sin especificar</option>
-                  {ALCOHOL_USE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
+                Ausencia de apoyo social
+                <select {...field('social_support_absent')}>
+                  {YES_NO_UNKNOWN_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </label>
-
               <label>
-                Incidentes de seguridad
-                <textarea rows={3} {...field('safety_incidents')} />
+                Estrés psicosocial
+                <select {...field('psychosocial_stress')}>
+                  {YES_NO_UNKNOWN_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
               </label>
             </div>
           </div>
 
-          <label className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={highRiskMedicationPresent}
-              onChange={(e) => setHighRiskMedicationPresent(e.target.checked)}
-            />
-            Medicación de alto riesgo presente
-          </label>
+          <div>
+            <p className="help-text" style={{ fontSize: '0.8rem', marginBottom: '0.5rem', fontWeight: 600 }}>
+              FARMACOTERAPÉUTICAS
+            </p>
+            <div className="grid-2">
+              <label>
+                Med. de alto riesgo
+                <select {...field('high_risk_medication_present_status')}>
+                  {YES_NO_UNKNOWN_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
+              <label>
+                Cambio reciente de pauta
+                <select {...field('recent_regimen_change')}>
+                  {YES_NO_UNKNOWN_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
+              <label>
+                Complejidad de pauta
+                <select {...field('regimen_complexity_present')}>
+                  {YES_NO_UNKNOWN_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
+              <label>
+                Problema de adherencia
+                <select {...field('adherence_problem')}>
+                  {YES_NO_UNKNOWN_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
+            </div>
+          </div>
 
           <button type="submit" disabled={saving}>
             {saving ? 'Guardando...' : 'Guardar evaluación'}
@@ -345,7 +501,6 @@ export function BaselineStratificationPage() {
         ) : null}
       </section>
 
-      {/* ── Scoring breakdown ─────────────────────────────────────────── */}
       {hasFormData ? (
         <section className="card">
           <h2 style={{ marginBottom: '0.75rem' }}>Factores contribuyentes</h2>
