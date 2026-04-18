@@ -5,21 +5,21 @@ export type ClinicalAssessment = {
   id: string;
   visit_id: string;
   education_level: string | null;
-  pregnancy_postpartum: string | null;
+  pregnancy_postpartum: boolean | null;
   biological_sex: string | null;
   race_ethnicity_risk: string | null;
-  hypertension_present: string | null;
-  cv_pathology_present: string | null;
-  comorbidities_present: string | null;
-  recent_cvd_12m: string | null;
-  hospital_er_use_12m: string | null;
+  hypertension_present: boolean | null;
+  cv_pathology_present: boolean | null;
+  comorbidities_present: boolean | null;
+  recent_cvd_12m: boolean | null;
+  hospital_er_use_12m: boolean | null;
   physical_activity_pattern: string | null;
-  social_support_absent: string | null;
-  psychosocial_stress: string | null;
+  social_support_absent: boolean | null;
+  psychosocial_stress: boolean | null;
   chronic_med_count: number | null;
-  recent_regimen_change: string | null;
-  regimen_complexity_present: string | null;
-  adherence_problem: string | null;
+  recent_regimen_change: boolean | null;
+  regimen_complexity_present: boolean | null;
+  adherence_problem: boolean | null;
   systolic_bp: number | null;
   diastolic_bp: number | null;
   heart_rate: number | null;
@@ -58,14 +58,53 @@ function extractErrorMessage(error: unknown): string {
   return 'Error desconocido al procesar evaluación clínica.';
 }
 
+const BOOLEAN_FIELDS = [
+  'pregnancy_postpartum',
+  'hypertension_present',
+  'cv_pathology_present',
+  'comorbidities_present',
+  'recent_cvd_12m',
+  'hospital_er_use_12m',
+  'social_support_absent',
+  'psychosocial_stress',
+  'high_risk_medication_present',
+  'recent_regimen_change',
+  'regimen_complexity_present',
+  'adherence_problem',
+] as const;
+
+function mapTriStateToBoolean(value: unknown): boolean | null {
+  if (value === true || value === false || value === null) return value;
+  if (typeof value !== 'string') return null;
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'yes' || normalized === 'sí' || normalized === 'si' || normalized === 'true') return true;
+  if (normalized === 'no' || normalized === 'false') return false;
+  if (normalized === 'unknown' || normalized === 'desconocido' || normalized === 'no registrado' || normalized === '') return null;
+
+  return null;
+}
+
+function normalizeAssessmentInput(input: NewClinicalAssessmentInput): NewClinicalAssessmentInput {
+  const normalizedInput: NewClinicalAssessmentInput = { ...input };
+
+  for (const field of BOOLEAN_FIELDS) {
+    normalizedInput[field] = mapTriStateToBoolean(input[field]);
+  }
+
+  return normalizedInput;
+}
+
 export async function upsertClinicalAssessment(input: NewClinicalAssessmentInput) {
   if (!supabase) {
     return { data: null, errorMessage: 'Supabase no está configurado. No se puede guardar la evaluación clínica.' };
   }
 
+  const normalizedInput = normalizeAssessmentInput(input);
+
   const { data, error } = await supabase
     .from('clinical_assessments')
-    .upsert(input, { onConflict: 'visit_id' })
+    .upsert(normalizedInput, { onConflict: 'visit_id' })
     .select(ASSESSMENT_SELECT)
     .maybeSingle();
 
