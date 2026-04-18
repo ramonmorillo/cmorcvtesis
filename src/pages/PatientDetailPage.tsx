@@ -3,17 +3,22 @@ import { Link, useParams } from 'react-router-dom';
 
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
-import { VISIT_STATUS_OPTIONS, type VisitStatus } from '../constants/enums';
+import {
+  VISIT_STATUS_OPTIONS,
+  getVisitStatusLabel,
+  getVisitTypeLabel,
+  getVisitTypeSortOrder,
+  type VisitStatus,
+} from '../constants/enums';
 import { getLatestCmoScoreByPatient, listCmoScoresByPatient, type CmoScoreHistoryEntry, type CmoScoreRecord } from '../services/cmoScoreService';
-import { getVisitStatusLabel, getVisitTypeLabel } from '../constants/enums';
 import { listInterventionsByPatient, type PriorityLevel } from '../services/interventionService';
 import { getPatientById, type Patient } from '../services/patientService';
 import { listVisitsByPatient, updateVisit, type Visit } from '../services/visitService';
 
 const LEVEL_META = {
-  1: { label: 'Nivel 1 · Prioridad',  color: '#dc2626', bg: '#fef2f2', border: '#fca5a5' },
+  1: { label: 'Nivel 1 · Prioridad', color: '#dc2626', bg: '#fef2f2', border: '#fca5a5' },
   2: { label: 'Nivel 2 · Intermedio', color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
-  3: { label: 'Nivel 3 · Basal',      color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
+  3: { label: 'Nivel 3 · Basal', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
 } as const;
 
 const PRIORITY_LEVEL_LABEL: Record<PriorityLevel, string> = {
@@ -22,13 +27,40 @@ const PRIORITY_LEVEL_LABEL: Record<PriorityLevel, string> = {
   low: '3 · Basal',
 };
 
+function toSortTs(dateLike: string | null): number {
+  return dateLike ? new Date(dateLike).getTime() : Number.MAX_SAFE_INTEGER;
+}
+
+function compareVisitsTimeline(a: Visit, b: Visit): number {
+  const byDate = toSortTs(a.visit_date ?? a.scheduled_date) - toSortTs(b.visit_date ?? b.scheduled_date);
+  if (byDate !== 0) return byDate;
+
+  const byVisitNumber = (a.visit_number ?? Number.MAX_SAFE_INTEGER) - (b.visit_number ?? Number.MAX_SAFE_INTEGER);
+  if (byVisitNumber !== 0) return byVisitNumber;
+
+  const byVisitType = getVisitTypeSortOrder(a.visit_type) - getVisitTypeSortOrder(b.visit_type);
+  if (byVisitType !== 0) return byVisitType;
+
+  return (a.created_at ?? '').localeCompare(b.created_at ?? '');
+}
+
+function compareCmoDesc(a: CmoScoreHistoryEntry, b: CmoScoreHistoryEntry): number {
+  const byDate = toSortTs(b.visit_date ?? b.scheduled_date) - toSortTs(a.visit_date ?? a.scheduled_date);
+  if (byDate !== 0) return byDate;
+
+  const byVisit = (b.visit_number ?? Number.NEGATIVE_INFINITY) - (a.visit_number ?? Number.NEGATIVE_INFINITY);
+  if (byVisit !== 0) return byVisit;
+
+  return (b.updated_at ?? '').localeCompare(a.updated_at ?? '');
+}
+
 export function PatientDetailPage() {
   const { id = '' } = useParams();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [latestCmoScore, setLatestCmoScore] = useState<CmoScoreRecord | null>(null);
   const [cmoHistory, setCmoHistory] = useState<CmoScoreHistoryEntry[]>([]);
-  const [interventions, setInterventions] = useState<Array<{ id: string; intervention_type: string; priority_level: PriorityLevel | null }>>([]);
+  const [interventions, setInterventions] = useState<Array<{ id: string; visit_id: string; intervention_type: string; priority_level: PriorityLevel | null }>>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -49,6 +81,7 @@ export function PatientDetailPage() {
       setInterventions(
         interventionsResult.data.map((x) => ({
           id: x.id,
+          visit_id: x.visit_id,
           intervention_type: x.intervention_type,
           priority_level: x.priority_level,
         })),
@@ -69,12 +102,37 @@ export function PatientDetailPage() {
       : { visit_status: status };
     const { data, errorMessage: err } = await updateVisit(visitId, updates);
     if (!err && data) {
-      setVisits((prev) => prev.map((v) => v.id === visitId ? { ...v, ...data } : v));
+      setVisits((prev) => prev.map((v) => (v.id === visitId ? { ...v, ...data } : v)).sort(compareVisitsTimeline));
     }
   };
 
-  const latestVisitId = useMemo(() => visits[0]?.id, [visits]);
+  const visitsTimeline = useMemo(() => [...visits].sort(compareVisitsTimeline), [visits]);
+  const latestVisitId = useMemo(() => visitsTimeline[visitsTimeline.length - 1]?.id, [visitsTimeline]);
+
   const cmoMeta = latestCmoScore ? LEVEL_META[latestCmoScore.priority as 1 | 2 | 3] : null;
+  const cmoHistoryDesc = useMemo(() => [...cmoHistory].sort(compareCmoDesc), [cmoHistory]);
+
+  const scoreByVisitId = useMemo(() => {
+    const map = new Map<string, CmoScoreHistoryEntry>();
+    cmoHistoryDesc.forEach((entry) => {
+      if (!map.has(entry.visit_id)) {
+        map.set(entry.visit_id, entry);
+      }
+    });
+    return map;
+  }, [cmoHistoryDesc]);
+
+  const interventionsByVisitId = useMemo(() => {
+    const map = new Map<string, number>();
+    interventions.forEach((item) => {
+      map.set(item.visit_id, (map.get(item.visit_id) ?? 0) + 1);
+    });
+    return map;
+  }, [interventions]);
+
+  const latestHistory = cmoHistoryDesc[0] ?? null;
+  const previousHistory = cmoHistoryDesc[1] ?? null;
+  const cmoDelta = latestHistory && previousHistory ? latestHistory.score - previousHistory.score : null;
 
   if (loading) return <p>Cargando ficha...</p>;
   if (errorMessage) return <ErrorState title="No se pudo cargar la ficha" message={errorMessage} />;
@@ -113,72 +171,109 @@ export function PatientDetailPage() {
       </section>
 
       <section className="card">
-        <h2>Visitas</h2>
-        {visits.length === 0 ? (
+        <h2>Longitudinalidad de visitas</h2>
+        {visitsTimeline.length === 0 ? (
           <EmptyState
             title="Sin visitas registradas"
             description="Añade la primera visita para iniciar seguimiento."
             action={<Link to={`/patients/${patient.id}/visits/new`}>Nueva visita</Link>}
           />
         ) : (
-          <ul className="visit-list">
-            {visits.map((visit) => (
-              <li key={visit.id}>
-                <div>
-                  <strong>{visit.visit_date ?? visit.scheduled_date ?? '-'}</strong>
-                  <span>{getVisitTypeLabel(visit.visit_type)}</span>
-                </div>
-                <div className="actions-inline" style={{ alignItems: 'center' }}>
-                  <select
-                    value={visit.visit_status ?? ''}
-                    onChange={(e) => void handleStatusChange(visit.id, e.target.value as VisitStatus)}
-                    style={{ fontSize: '0.85rem' }}
-                  >
-                    <option value="" disabled>Estado</option>
-                    {VISIT_STATUS_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                  <p>Estado: {getVisitStatusLabel(visit.visit_status)}</p>
-                  <div className="actions-inline">
-                    <Link to={`/visits/${visit.id}/stratification`}>Evaluación clínica</Link>
-                    <Link to={`/visits/${visit.id}/interventions`}>Intervenciones</Link>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tipo</th>
+                  <th>Fecha</th>
+                  <th>Estado</th>
+                  <th style={{ textAlign: 'right' }}>Score CMO</th>
+                  <th>Nivel CMO</th>
+                  <th style={{ textAlign: 'right' }}>Intervenciones</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visitsTimeline.map((visit) => {
+                  const scoreEntry = scoreByVisitId.get(visit.id) ?? null;
+                  const levelMeta = scoreEntry ? LEVEL_META[scoreEntry.priority as 1 | 2 | 3] : null;
+                  const interventionsCount = interventionsByVisitId.get(visit.id) ?? 0;
+
+                  return (
+                    <tr key={visit.id}>
+                      <td>{getVisitTypeLabel(visit.visit_type)}</td>
+                      <td>{visit.visit_date ?? visit.scheduled_date ?? '-'}</td>
+                      <td>
+                        <div className="actions-inline" style={{ alignItems: 'center' }}>
+                          <select
+                            value={visit.visit_status ?? ''}
+                            onChange={(e) => void handleStatusChange(visit.id, e.target.value as VisitStatus)}
+                            style={{ fontSize: '0.85rem' }}
+                          >
+                            <option value="" disabled>Estado</option>
+                            {VISIT_STATUS_OPTIONS.map((o) => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                          </select>
+                          <span>{getVisitStatusLabel(visit.visit_status)}</span>
+                        </div>
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{scoreEntry ? scoreEntry.score : '-'}</td>
+                      <td style={{ color: levelMeta?.color ?? 'inherit', fontWeight: levelMeta ? 600 : 400 }}>
+                        {levelMeta ? levelMeta.label : '-'}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>{interventionsCount}</td>
+                      <td>
+                        <div className="actions-inline">
+                          <Link to={`/visits/${visit.id}/stratification`}>Evaluación clínica</Link>
+                          <Link to={`/visits/${visit.id}/interventions`}>Intervenciones</Link>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 
       <section className="card">
-        <h2>Última puntuación CMO-RCV</h2>
-        {latestCmoScore && cmoMeta ? (
-          <div
-            style={{
-              display: 'flex', alignItems: 'center', gap: '1rem',
-              padding: '0.65rem 1rem', borderRadius: '8px',
-              background: cmoMeta.bg, border: `1px solid ${cmoMeta.border}`,
-            }}
-          >
-            <span style={{ fontSize: '2rem', fontWeight: 700, color: cmoMeta.color, lineHeight: 1, minWidth: '2.5ch', textAlign: 'center' }}>
-              {latestCmoScore.score}
-            </span>
-            <div>
-              <div style={{ fontWeight: 700, color: cmoMeta.color }}>{cmoMeta.label}</div>
-              <div className="help-text" style={{ fontSize: '0.8rem', marginTop: '0.1rem' }}>
-                Guardado: {latestCmoScore.updated_at?.slice(0, 10) ?? '-'}
-              </div>
-            </div>
-          </div>
+        <h2>Resumen de evolución CMO-RCV</h2>
+        {latestHistory ? (
+          <ul className="simple-list">
+            <li>
+              <span>Última puntuación</span>
+              <strong>{latestHistory.score}</strong>
+            </li>
+            <li>
+              <span>Nivel actual</span>
+              <strong style={{ color: LEVEL_META[latestHistory.priority as 1 | 2 | 3].color }}>
+                {LEVEL_META[latestHistory.priority as 1 | 2 | 3].label}
+              </strong>
+            </li>
+            <li>
+              <span>Visitas previas con score</span>
+              <strong>{Math.max(cmoHistoryDesc.length - 1, 0)}</strong>
+            </li>
+            <li>
+              <span>Cambio respecto a visita anterior</span>
+              <strong>
+                {cmoDelta === null
+                  ? 'N/A'
+                  : cmoDelta > 0
+                    ? `+${cmoDelta}`
+                    : `${cmoDelta}`}
+              </strong>
+            </li>
+          </ul>
         ) : (
           <p className="help-text">Sin puntuación CMO registrada. Completa la estratificación basal.</p>
         )}
       </section>
 
-      {cmoHistory.length > 1 ? (
+      {cmoHistoryDesc.length > 1 ? (
         <section className="card">
-          <h2>Evolución CMO-RCV</h2>
+          <h2>Evolución histórica CMO-RCV</h2>
           <div className="table-wrap">
             <table>
               <thead>
@@ -190,13 +285,13 @@ export function PatientDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {cmoHistory.map((entry, i) => {
+                {cmoHistoryDesc.map((entry, i) => {
                   const m = LEVEL_META[entry.priority as 1 | 2 | 3];
-                  const prev = cmoHistory[i + 1];
+                  const prev = cmoHistoryDesc[i + 1];
                   const delta = prev ? entry.score - prev.score : null;
                   return (
                     <tr key={entry.id}>
-                      <td>{entry.visit_number != null ? `V${entry.visit_number}` : '-'}</td>
+                      <td>{entry.visit_number != null ? `V${entry.visit_number}` : 'Extraordinaria'}</td>
                       <td>{entry.visit_date ?? entry.scheduled_date ?? entry.updated_at?.slice(0, 10) ?? '-'}</td>
                       <td style={{ textAlign: 'right', fontWeight: 700, color: m.color }}>
                         {entry.score}
