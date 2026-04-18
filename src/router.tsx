@@ -9,6 +9,7 @@ import { NewVisitPage } from './pages/NewVisitPage';
 import { PatientDetailPage } from './pages/PatientDetailPage';
 import { PatientsPage } from './pages/PatientsPage';
 import { VisitInterventionsPage } from './pages/VisitInterventionsPage';
+import { VisitQuestionnairesPage } from './pages/VisitQuestionnairesPage';
 
 export const router = createHashRouter([
   {
@@ -30,6 +31,7 @@ export const router = createHashRouter([
       { path: '/patients/:id/visits/new', element: <NewVisitPage /> },
       { path: '/visits/:visitId/stratification', element: <BaselineStratificationPage /> },
       { path: '/visits/:visitId/interventions', element: <VisitInterventionsPage /> },
+      { path: '/visits/:visitId/questionnaires', element: <VisitQuestionnairesPage /> },
     ],
   },
   {
