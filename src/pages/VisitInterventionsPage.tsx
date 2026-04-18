@@ -250,16 +250,7 @@ export function VisitInterventionsPage() {
           ) : null}
 
           <label>
-            Dominio
-            <input
-              value={form.intervention_domain}
-              readOnly={!isOtherIntervention}
-              onChange={(e) => setForm((p) => ({ ...p, intervention_domain: e.target.value }))}
-            />
-          </label>
-
-          <label>
-            Pilar CMO principal (autocompletado)
+            Pilar CMO principal (solo lectura)
             <input value={form.intervention_pillar ? CMO_PILLAR_LABEL[form.intervention_pillar] : ''} readOnly />
           </label>
 
@@ -287,7 +278,7 @@ export function VisitInterventionsPage() {
             Intervención entregada
           </label>
           <label>
-            Outcome
+            Resultado
             <input value={form.outcome} onChange={(e) => setForm((p) => ({ ...p, outcome: e.target.value }))} />
           </label>
           <label>
