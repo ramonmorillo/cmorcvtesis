@@ -12,7 +12,7 @@
  *   scoreCmo({
  *     score2: 3, systolicBp: 122, ldl: 88, hba1c: 5.6,
  *     bmi: 23, waistCm: 84, sex: 'male', smoker: false,
- *     physicalActivityLevel: 'alta', dietScore: 9,
+ *     physicalActivityLevel: 'high', dietScore: 9,
  *     adverseEventsCount: 0, highRiskMedication: false,
  *   })
  *   → { totalScore: 0, level: 3, triggeredVariables: [] }
@@ -21,7 +21,7 @@
  *   scoreCmo({
  *     score2: 7, systolicBp: 135, ldl: 110, hba1c: 6.8,
  *     bmi: 28, waistCm: 96, sex: 'male', smoker: false,
- *     physicalActivityLevel: 'moderada', dietScore: 3,
+ *     physicalActivityLevel: 'moderate', dietScore: 3,
  *     adverseEventsCount: 0, highRiskMedication: false,
  *   })
  *   → { totalScore: 15, level: 3,
@@ -39,7 +39,7 @@
  *   scoreCmo({
  *     score2: 14, systolicBp: 148, ldl: 140, hba1c: 7.4,
  *     bmi: 31, waistCm: 98, sex: 'male', smoker: true,
- *     physicalActivityLevel: 'baja', dietScore: 5,
+ *     physicalActivityLevel: 'low', dietScore: 5,
  *     adverseEventsCount: 0, highRiskMedication: false,
  *   })
  *   → { totalScore: 28, level: 2,
@@ -58,7 +58,7 @@
  *   scoreCmo({
  *     score2: 22, systolicBp: 168, ldl: 175, hba1c: 9.2,
  *     bmi: 37, waistCm: 108, sex: 'male', smoker: true,
- *     physicalActivityLevel: 'baja', dietScore: 2,
+ *     physicalActivityLevel: 'low', dietScore: 2,
  *     adverseEventsCount: 3, highRiskMedication: true,
  *   })
  *   → { totalScore: 51, level: 1,
@@ -116,7 +116,7 @@ export interface CmoScoringInput {
   sex?: 'male' | 'female' | 'other' | null;
   /** Active smoker status. */
   smoker?: boolean | null;
-  /** Physical activity level (string). Values containing 'baja' trigger points. */
+  /** Physical activity level (string). Values containing 'low' trigger points. */
   physicalActivityLevel?: string | null;
   /** Diet quality score (0–10). Values ≤ 4 trigger points. */
   dietScore?: number | null;
@@ -270,7 +270,8 @@ const VARIABLE_CATALOG: ReadonlyArray<VariableDefinition<number | boolean | stri
     label: 'Inactividad física',
     score: (v) => {
       if (typeof v !== 'string') return null;
-      if (!v.toLowerCase().includes('baja')) return null;
+      const normalized = v.toLowerCase();
+      if (!normalized.includes('low') && !normalized.includes('baja')) return null;
       return { points: 3, rationale: 'Actividad física baja' };
     },
   },
