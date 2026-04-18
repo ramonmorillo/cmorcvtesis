@@ -25,10 +25,94 @@ export function DashboardPage() {
   if (loading) return <p>Cargando dashboard...</p>;
   if (errorMessage || !data) return <ErrorState title="No se pudo cargar el dashboard" message={errorMessage ?? 'Sin datos'} />;
 
+  const pct = (value: number) => `${value.toFixed(1)}%`;
+
   return (
     <div className="page-stack">
       <section className="card">
-        <h1>Dashboard</h1>
+        <div className="section-header">
+          <div>
+            <h1>Dashboard</h1>
+            <p className="help-text">Vista operacional actual + bloque estratégico Dashboard PRO.</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="section-header">
+          <h2>Dashboard PRO · Cohorte</h2>
+        </div>
+        <div className="kpi-grid kpi-grid-pro">
+          <article className="kpi-card kpi-card-pro">
+            <p>Total pacientes</p>
+            <strong>{data.pro.cohort.totalPatients}</strong>
+          </article>
+          <article className="kpi-card kpi-card-pro">
+            <p>Edad media</p>
+            <strong>{data.pro.cohort.averageAge.toFixed(1)}</strong>
+          </article>
+          <article className="kpi-card kpi-card-pro">
+            <p>% mujeres</p>
+            <strong>{pct(data.pro.cohort.womenPercentage)}</strong>
+          </article>
+          <article className="kpi-card kpi-card-pro">
+            <p>% Nivel 1 / 2 / 3</p>
+            <strong>
+              {pct(data.pro.cohort.levelPercentage[1])} / {pct(data.pro.cohort.levelPercentage[2])} / {pct(data.pro.cohort.levelPercentage[3])}
+            </strong>
+          </article>
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>Dashboard PRO · Seguimiento</h2>
+        <div className="kpi-grid kpi-grid-pro">
+          <article className="kpi-card kpi-card-pro"><p>Nº visitas basal</p><strong>{data.pro.followup.baselineVisits}</strong></article>
+          <article className="kpi-card kpi-card-pro"><p>Nº visitas 3m</p><strong>{data.pro.followup.month3Visits}</strong></article>
+          <article className="kpi-card kpi-card-pro"><p>Nº visitas 6m</p><strong>{data.pro.followup.month6Visits}</strong></article>
+          <article className="kpi-card kpi-card-pro"><p>Nº extraordinarias</p><strong>{data.pro.followup.extraordinaryVisits}</strong></article>
+          <article className="kpi-card kpi-card-pro kpi-card-warning"><p>Pacientes sin seguimiento {'>'}90 días</p><strong>{data.pro.followup.patientsWithoutFollowup90d}</strong></article>
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>Dashboard PRO · Evolución clínica</h2>
+        <div className="kpi-grid kpi-grid-pro">
+          <article className="kpi-card kpi-card-pro kpi-card-positive"><p>Pacientes mejoran nivel</p><strong>{data.pro.clinicalEvolution.improved}</strong></article>
+          <article className="kpi-card kpi-card-pro kpi-card-warning"><p>Pacientes empeoran</p><strong>{data.pro.clinicalEvolution.worsened}</strong></article>
+          <article className="kpi-card kpi-card-pro"><p>Score medio basal</p><strong>{data.pro.clinicalEvolution.averageBaselineScore.toFixed(2)}</strong></article>
+          <article className="kpi-card kpi-card-pro"><p>Score medio última visita</p><strong>{data.pro.clinicalEvolution.averageLatestScore.toFixed(2)}</strong></article>
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>Dashboard PRO · Actividad farmacéutica</h2>
+        <div className="kpi-grid kpi-grid-pro">
+          <article className="kpi-card kpi-card-pro">
+            <p>Intervenciones totales</p>
+            <strong>{data.pro.pharmaceuticalActivity.totalInterventions}</strong>
+          </article>
+          <article className="kpi-card kpi-card-pro">
+            <p>Media por paciente</p>
+            <strong>{data.pro.pharmaceuticalActivity.avgInterventionsPerPatient}</strong>
+          </article>
+          <article className="kpi-card kpi-card-pro">
+            <p>Por pilar CMO</p>
+            <strong>
+              C {data.pro.pharmaceuticalActivity.interventionsByPillar.capacidad} · M {data.pro.pharmaceuticalActivity.interventionsByPillar.motivacion} · O {data.pro.pharmaceuticalActivity.interventionsByPillar.oportunidad}
+            </strong>
+          </article>
+          <article className="kpi-card kpi-card-pro">
+            <p>Por nivel</p>
+            <strong>
+              N1 {data.pro.pharmaceuticalActivity.interventionsByLevel[1]} · N2 {data.pro.pharmaceuticalActivity.interventionsByLevel[2]} · N3 {data.pro.pharmaceuticalActivity.interventionsByLevel[3]}
+            </strong>
+          </article>
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>Dashboard operacional (actual)</h2>
         <div className="kpi-grid">
           <article className="kpi-card">
             <p>Total pacientes</p>

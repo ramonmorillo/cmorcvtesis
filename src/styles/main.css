@@ -76,6 +76,23 @@ th,td { text-align: left; padding: 0.6rem; border-bottom: 1px solid #e5e7eb; }
 .kpi-card strong { font-size: 1.4rem; }
 .kpi-card-positive { background: #f0fdf4; border-color: #bbf7d0; }
 .kpi-card-warning { background: #fffbeb; border-color: #fde68a; }
+.kpi-grid-pro { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.kpi-card-pro {
+  background: linear-gradient(180deg, #f8fbff 0%, #f2f7ff 100%);
+  border-color: #c8d7f3;
+  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.04);
+}
+.kpi-card-pro p {
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 0.75rem;
+  color: #475569;
+}
+.kpi-card-pro strong {
+  font-size: 1.2rem;
+  line-height: 1.35;
+  color: #0f172a;
+}
 .simple-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.45rem; }
 .simple-list li { display: flex; justify-content: space-between; gap: 0.8rem; border-bottom: 1px solid #eef2f7; padding: 0.35rem 0; }
 .search-row { display: flex; gap: 0.6rem; margin-bottom: 0.9rem; }

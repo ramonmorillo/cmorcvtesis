@@ -2,6 +2,33 @@ import { supabase } from '../lib/supabase';
 import { INTERVENTION_CATALOG, type CmoPillar } from '../constants/interventionCatalog';
 
 export type DashboardData = {
+  pro: {
+    cohort: {
+      totalPatients: number;
+      averageAge: number;
+      womenPercentage: number;
+      levelPercentage: { 1: number; 2: number; 3: number };
+    };
+    followup: {
+      baselineVisits: number;
+      month3Visits: number;
+      month6Visits: number;
+      extraordinaryVisits: number;
+      patientsWithoutFollowup90d: number;
+    };
+    clinicalEvolution: {
+      improved: number;
+      worsened: number;
+      averageBaselineScore: number;
+      averageLatestScore: number;
+    };
+    pharmaceuticalActivity: {
+      totalInterventions: number;
+      avgInterventionsPerPatient: number;
+      interventionsByPillar: Record<CmoPillar, number>;
+      interventionsByLevel: { 1: number; 2: number; 3: number };
+    };
+  };
   totalPatients: number;
   patientsByPriority: { 1: number; 2: number; 3: number };
   patientEvolutionVsBaseline: { improved: number; worsened: number; stable: number };
@@ -68,14 +95,14 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
     interventionsRes,
     interventionsAggRes,
   ] = await Promise.all([
-    supabase.from('patients').select('id'),
+    supabase.from('patients').select('id,age_at_inclusion,sex'),
     supabase.from('patient_baseline_profile').select('patient_id'),
     supabase
       .from('visits')
-      .select('id,patient_id,visit_date,cmo_scores(id),interventions(id)'),
+      .select('id,patient_id,visit_type,visit_date,cmo_scores(id),interventions(id)'),
     supabase
       .from('cmo_scores')
-      .select('priority,created_at,visits!inner(patient_id)')
+      .select('priority,score,created_at,visits!inner(patient_id,visit_type,visit_date)')
       .order('created_at', { ascending: false }),
     supabase
       .from('cmo_scores')
@@ -151,11 +178,12 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
     if (pillar) byPillar[pillar] += 1;
   }
 
-  const allPatients = (patientsRes.data ?? []) as Array<{ id: string }>;
+  const allPatients = (patientsRes.data ?? []) as Array<{ id: string; age_at_inclusion: number | null; sex: string | null }>;
   const baselineProfiles = (baselineProfilesRes.data ?? []) as Array<{ patient_id: string }>;
   const visitsForQuality = (visitsForQualityRes.data ?? []) as Array<{
     id: string;
     patient_id: string;
+    visit_type: string | null;
     visit_date: string | null;
     cmo_scores: { id: string } | Array<{ id: string }> | null;
     interventions: { id: string } | Array<{ id: string }> | null;
@@ -206,13 +234,30 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
 
   const baselinePriorityByPatient = new Map<string, 1 | 2 | 3>();
   const latestPriorityByPatient = new Map<string, 1 | 2 | 3>();
-  for (const row of (scoresRes.data ?? []) as Array<{ priority: number; visits: { patient_id: string } | Array<{ patient_id: string }> }>) {
+  const latestScoreByPatient = new Map<string, number>();
+  let baselineScoreTotal = 0;
+  let baselineScoreCount = 0;
+  for (const row of (scoresRes.data ?? []) as Array<{
+    priority: number;
+    score: number;
+    visits: { patient_id: string; visit_type: string | null } | Array<{ patient_id: string; visit_type: string | null }>;
+  }>) {
     const pid = Array.isArray(row.visits) ? row.visits[0]?.patient_id : row.visits?.patient_id;
+    const visitType = Array.isArray(row.visits) ? row.visits[0]?.visit_type : row.visits?.visit_type;
     const p = Number(row.priority) as 1 | 2 | 3;
     if (!pid || !(p === 1 || p === 2 || p === 3)) continue;
 
     if (!latestPriorityByPatient.has(pid)) latestPriorityByPatient.set(pid, p);
+    if (!latestScoreByPatient.has(pid)) latestScoreByPatient.set(pid, Number(row.score));
     baselinePriorityByPatient.set(pid, p);
+
+    if (visitType === 'baseline' || visitType === 'basal') {
+      const baselineScore = Number(row.score);
+      if (Number.isFinite(baselineScore)) {
+        baselineScoreTotal += baselineScore;
+        baselineScoreCount += 1;
+      }
+    }
   }
 
   let improved = 0;
@@ -252,8 +297,61 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
     }))
     .sort((a, b) => (a.visitType ?? '').localeCompare(b.visitType ?? ''));
 
+  const ages = allPatients
+    .map((patient) => Number(patient.age_at_inclusion))
+    .filter((age) => Number.isFinite(age) && age > 0);
+  const averageAge = ages.length === 0 ? 0 : Number((ages.reduce((acc, age) => acc + age, 0) / ages.length).toFixed(1));
+  const womenCount = allPatients.reduce((count, patient) => count + (patient.sex === 'female' ? 1 : 0), 0);
+  const womenPercentage = totalPatients === 0 ? 0 : Number(((womenCount / totalPatients) * 100).toFixed(1));
+  const levelPercentage = {
+    1: totalPatients === 0 ? 0 : Number(((priorities[1] / totalPatients) * 100).toFixed(1)),
+    2: totalPatients === 0 ? 0 : Number(((priorities[2] / totalPatients) * 100).toFixed(1)),
+    3: totalPatients === 0 ? 0 : Number(((priorities[3] / totalPatients) * 100).toFixed(1)),
+  } as { 1: number; 2: number; 3: number };
+
+  const visitTypeCount = { baseline: 0, month_3: 0, month_6: 0, extra: 0 };
+  for (const visit of visitsForQuality) {
+    if (visit.visit_type === 'baseline' || visit.visit_type === 'basal') visitTypeCount.baseline += 1;
+    if (visit.visit_type === 'month_3') visitTypeCount.month_3 += 1;
+    if (visit.visit_type === 'month_6') visitTypeCount.month_6 += 1;
+    if (visit.visit_type === 'extra' || visit.visit_type === 'extraordinary') visitTypeCount.extra += 1;
+  }
+
+  const averageBaselineScore = baselineScoreCount === 0 ? 0 : Number((baselineScoreTotal / baselineScoreCount).toFixed(2));
+  const latestScores = Array.from(latestScoreByPatient.values()).filter((score) => Number.isFinite(score));
+  const averageLatestScore = latestScores.length === 0
+    ? 0
+    : Number((latestScores.reduce((acc, score) => acc + score, 0) / latestScores.length).toFixed(2));
+
   return {
     data: {
+      pro: {
+        cohort: {
+          totalPatients,
+          averageAge,
+          womenPercentage,
+          levelPercentage,
+        },
+        followup: {
+          baselineVisits: visitTypeCount.baseline,
+          month3Visits: visitTypeCount.month_3,
+          month6Visits: visitTypeCount.month_6,
+          extraordinaryVisits: visitTypeCount.extra,
+          patientsWithoutFollowup90d,
+        },
+        clinicalEvolution: {
+          improved,
+          worsened,
+          averageBaselineScore,
+          averageLatestScore,
+        },
+        pharmaceuticalActivity: {
+          totalInterventions: interventionsAggRes.count ?? 0,
+          avgInterventionsPerPatient,
+          interventionsByPillar: byPillar,
+          interventionsByLevel: byLevel,
+        },
+      },
       totalPatients,
       patientsByPriority: priorities,
       patientEvolutionVsBaseline: { improved, worsened, stable },
