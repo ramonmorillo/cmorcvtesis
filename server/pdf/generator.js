@@ -13,6 +13,7 @@ export async function generateVisitReportPdf({ template, data }) {
     const page = await browser.newPage();
     const html = templateToHtml(template, data);
     await page.setContent(html, { waitUntil: 'networkidle' });
+    await page.evaluate(() => document.fonts?.ready);
 
     return await page.pdf({
       format: 'A4',
