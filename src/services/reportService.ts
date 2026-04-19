@@ -39,25 +39,16 @@ export type VisitReportLoadResult = {
   missingFields: string[];
 };
 
-type PdfLine = {
-  text: string;
-  size: number;
-  font: 'normal' | 'bold';
-  indent?: number;
-  spacingAfter?: number;
-};
+type PdfFontKind = 'regular' | 'bold';
+type PdfElement = { text: string; size: number; font: PdfFontKind; indent?: number; spacingAfter?: number };
 
 const PDF_PAGE_WIDTH = 595.28;
 const PDF_PAGE_HEIGHT = 841.89;
-const PDF_MARGIN_TOP = 56;
-const PDF_MARGIN_BOTTOM = 56;
-const PDF_MARGIN_LEFT = 56;
-const PDF_MARGIN_RIGHT = 56;
-const PDF_BODY_COLOR = '0.07 0.11 0.19 rg';
-const PDF_MUTED_COLOR = '0.30 0.35 0.42 rg';
-const PDF_HEADER_COLOR = '0.02 0.24 0.55 rg';
+const PDF_MARGIN = 48;
+const PDF_CONTENT_WIDTH = PDF_PAGE_WIDTH - PDF_MARGIN * 2;
 const PDF_LINE_HEIGHT = 1.35;
 const PDF_DEBUG_LOGS = true;
+const SPANISH_CHARSET_SAMPLE = 'áéíóúñÁÉÍÓÚÑ';
 
 function toDateLabel(value: string | null): string {
   if (!value) return 'No disponible';
@@ -77,89 +68,82 @@ function toDateTimeLabel(value: Date): string {
 }
 
 function cmoPriorityLabel(priority: number | null | undefined): string {
-  if (priority === 1) return 'Nivel 1 · Prioridad';
-  if (priority === 2) return 'Nivel 2 · Intermedio';
-  if (priority === 3) return 'Nivel 3 · Basal';
+  if (priority === 1) return 'Nivel 1 · Prioridad alta';
+  if (priority === 2) return 'Nivel 2 · Seguimiento estrecho';
+  if (priority === 3) return 'Nivel 3 · Seguimiento rutinario';
   return 'No disponible';
 }
 
 function formatQuestionnaireItem(item: QuestionnaireResponseRecord): string {
-  const score = typeof item.total_score === 'number' ? ` · score ${item.total_score}` : '';
+  const score = typeof item.total_score === 'number' ? ` · puntuación ${item.total_score}` : '';
   return `${item.questionnaire_type.toUpperCase()}${score}`;
 }
 
 function formatInterventionItem(item: Intervention): string {
-  if (item.outcome?.trim()) return `${item.intervention_type} (${item.outcome.trim()})`;
+  if (item.outcome?.trim()) return `${item.intervention_type}: ${item.outcome.trim()}`;
   return item.intervention_type;
 }
 
 function deriveSimpleSummary(visit: Visit, cmoScore: number | null, interventions: Intervention[], questionnaires: QuestionnaireResponseRecord[]): string {
   const chunks: string[] = [];
-
-  if (cmoScore !== null) chunks.push(`Nivel CMO registrado (${cmoScore} puntos)`);
-  if (interventions.length > 0) chunks.push(`${interventions.length} intervención(es) realizada(s)`);
-  if (questionnaires.length > 0) chunks.push(`${questionnaires.length} cuestionario(s) completado(s)`);
-  if (visit.notes?.trim()) chunks.push(`Observaciones: ${visit.notes.trim()}`);
-
-  if (chunks.length > 0) return `${chunks.join('. ')}.`;
-  return 'No disponible: la visita aún no tiene datos estructurados suficientes para un resumen detallado.';
+  if (cmoScore !== null) chunks.push(`Su nivel de prioridad CMO actual es ${cmoScore}`);
+  if (interventions.length > 0) chunks.push(`Se registraron ${interventions.length} intervención(es) en esta visita`);
+  if (questionnaires.length > 0) chunks.push(`Se completaron ${questionnaires.length} cuestionario(s) de seguimiento`);
+  if (visit.notes?.trim()) chunks.push(`Comentario clínico relevante: ${visit.notes.trim()}`);
+  return chunks.length > 0 ? `${chunks.join('. ')}.` : 'No hay información clínica suficiente para elaborar un resumen ampliado en esta visita.';
 }
 
 function deriveClinicalSummary(visit: Visit, cmoScore: number | null, questionnaires: QuestionnaireResponseRecord[]): string {
-  const pieces: string[] = [];
-  pieces.push(`Puntuación CMO: ${cmoScore !== null ? cmoScore : 'No disponible'}.`);
-  pieces.push(`Cuestionarios registrados: ${questionnaires.length}.`);
-
-  if (visit.notes?.trim()) {
-    pieces.push(`Observaciones clínicas: ${visit.notes.trim()}.`);
-  }
-
-  return pieces.join(' ');
+  return [
+    `Priorización clínica CMO: ${cmoScore !== null ? cmoScore : 'No disponible'}.`,
+    `Total de cuestionarios con respuesta: ${questionnaires.length}.`,
+    visit.notes?.trim() ? `Evolución/observaciones: ${visit.notes.trim()}.` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 function derivePatientRecommendations(interventions: Intervention[]): string[] {
-  const specificRecommendations = interventions
-    .map((item) => item.outcome?.trim())
-    .filter((value): value is string => Boolean(value));
-
-  if (specificRecommendations.length > 0) {
-    return specificRecommendations.slice(0, 4).map((text) => `• ${text}`);
-  }
-
+  const items = interventions.map((item) => item.outcome?.trim()).filter((v): v is string => Boolean(v));
+  if (items.length > 0) return items.slice(0, 4);
   return [
-    'Mantenga la medicación tal y como se le ha indicado y consulte si aparece cualquier efecto no esperado.',
+    'Mantenga la medicación según la pauta indicada.',
+    'Si aparecen síntomas nuevos o efectos adversos, contacte con su centro de salud.',
+    'Lleve a la próxima consulta una lista actualizada de su tratamiento.',
   ];
 }
 
 function deriveCoordinationRecommendations(cmoPriority: number | null | undefined): string[] {
   if (cmoPriority === 1) {
     return [
-      'Inferida por prioridad CMO: coordinar revisión clínica prioritaria con medicina de familia/especialista en ≤ 7 días.',
+      'Caso de alta prioridad: coordinar revisión médica preferente en ≤ 7 días.',
+      'Verificar conciliación terapéutica y riesgo de eventos adversos antes del próximo contacto.',
     ];
   }
 
   if (cmoPriority === 2) {
     return [
-      'Inferida por prioridad CMO: compartir evolución clínica y ajustar seguimiento con atención primaria.',
+      'Mantener coordinación con atención primaria para ajuste de plan farmacoterapéutico.',
+      'Programar reevaluación de adherencia y control clínico en el siguiente contacto asistencial.',
     ];
   }
 
   if (cmoPriority === 3) {
     return [
-      'Inferida por prioridad CMO: mantener coordinación habitual y reevaluar en la próxima visita programada.',
+      'Continuar circuito asistencial habitual con reevaluación periódica.',
+      'Sin alertas de alta prioridad; mantener monitorización en visita programada.',
     ];
   }
 
-  return ['No disponible: no existe prioridad CMO registrada para inferir coordinación.'];
+  return ['No hay prioridad CMO registrada para emitir recomendaciones de coordinación específicas.'];
 }
 
 function getInstitutionalFooter(): string {
   return [
-    `Proyecto vinculado a la tesis doctoral “${THESIS_INSTITUTIONAL_REFERENCE.projectTitle}”.`,
+    `Proyecto de tesis doctoral: “${THESIS_INSTITUTIONAL_REFERENCE.projectTitle}”.`,
     `Doctoranda: ${THESIS_INSTITUTIONAL_REFERENCE.doctoralCandidate}.`,
-    `Directores: ${THESIS_INSTITUTIONAL_REFERENCE.thesisDirectors}.`,
-    `${THESIS_INSTITUTIONAL_REFERENCE.university}.`,
-    `${THESIS_INSTITUTIONAL_REFERENCE.siceiaCode}.`,
+    `Universidad: ${THESIS_INSTITUTIONAL_REFERENCE.university}.`,
+    `Referencia institucional: ${THESIS_INSTITUTIONAL_REFERENCE.siceiaCode}.`,
   ].join(' ');
 }
 
@@ -198,7 +182,6 @@ export async function loadVisitReportData(visitId: string): Promise<VisitReportL
   const visitDateLabel = toDateLabel(visit.visit_date ?? visit.scheduled_date);
   const generatedAtLabel = toDateTimeLabel(new Date());
   const cmoLevel = cmoPriorityLabel(cmoResult.data?.priority);
-
   const patientLabel = patient?.study_code ? `Paciente ${patient.study_code}` : 'Paciente';
 
   return {
@@ -211,8 +194,7 @@ export async function loadVisitReportData(visitId: string): Promise<VisitReportL
       cmoLevelLabel: cmoLevel,
       interventions: interventions.map(formatInterventionItem),
       recommendations: derivePatientRecommendations(interventions),
-      followUp:
-        'Se recomienda revisión en la próxima visita programada y contacto previo si aparecen dudas, síntomas nuevos o problemas con la medicación.',
+      followUp: 'Siguiente paso: acudir a la próxima visita programada. Contacte antes si detecta síntomas nuevos, dudas con su medicación o dificultades para seguir el plan.',
       institutionalFooter: getInstitutionalFooter(),
     },
     clinicianReportData: {
@@ -228,11 +210,7 @@ export async function loadVisitReportData(visitId: string): Promise<VisitReportL
       institutionalFooter: getInstitutionalFooter(),
     },
     errorMessage:
-      patientResult.errorMessage ??
-      cmoResult.errorMessage ??
-      interventionsResult.errorMessage ??
-      questionnairesResult.errorMessage ??
-      null,
+      patientResult.errorMessage ?? cmoResult.errorMessage ?? interventionsResult.errorMessage ?? questionnairesResult.errorMessage ?? null,
     missingFields,
   };
 }
@@ -253,7 +231,7 @@ function wrapText(text: string, maxWidth: number, fontSize: number): string[] {
 
   const lines: string[] = [];
   let currentLine = '';
-  const averageCharWidth = fontSize * 0.52;
+  const averageCharWidth = fontSize * 0.5;
 
   words.forEach((word) => {
     const candidate = currentLine ? `${currentLine} ${word}` : word;
@@ -261,7 +239,6 @@ function wrapText(text: string, maxWidth: number, fontSize: number): string[] {
       currentLine = candidate;
       return;
     }
-
     if (currentLine) lines.push(currentLine);
     currentLine = word;
   });
@@ -270,102 +247,167 @@ function wrapText(text: string, maxWidth: number, fontSize: number): string[] {
   return lines;
 }
 
+const PDF_WINANSI_OVERRIDES: Record<string, number> = {
+  '€': 128,
+  '‚': 130,
+  'ƒ': 131,
+  '„': 132,
+  '…': 133,
+  '†': 134,
+  '‡': 135,
+  'ˆ': 136,
+  '‰': 137,
+  'Š': 138,
+  '‹': 139,
+  'Œ': 140,
+  'Ž': 142,
+  '‘': 145,
+  '’': 146,
+  '“': 147,
+  '”': 148,
+  '•': 149,
+  '–': 150,
+  '—': 151,
+  '˜': 152,
+  '™': 153,
+  'š': 154,
+  '›': 155,
+  'œ': 156,
+  'ž': 158,
+  'Ÿ': 159,
+};
+
 function escapePdfText(value: string): string {
-  return value
-    .replace(/\\/g, '\\\\')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)');
+  let out = '';
+
+  for (const char of value) {
+    if (char === '\\') {
+      out += '\\\\';
+      continue;
+    }
+    if (char === '(') {
+      out += '\\(';
+      continue;
+    }
+    if (char === ')') {
+      out += '\\)';
+      continue;
+    }
+
+    const override = PDF_WINANSI_OVERRIDES[char];
+    if (override !== undefined) {
+      out += `\\${override.toString(8).padStart(3, '0')}`;
+      continue;
+    }
+
+    const code = char.charCodeAt(0);
+    if (code >= 32 && code <= 126) {
+      out += char;
+    } else if (code >= 160 && code <= 255) {
+      out += `\\${code.toString(8).padStart(3, '0')}`;
+    } else {
+      out += '?';
+    }
+  }
+
+  return out;
 }
 
-function pushSection(lines: PdfLine[], title: string, body: string | string[], options?: { bullet?: boolean }) {
-  lines.push({ text: title, size: 12, font: 'bold', spacingAfter: 4 });
-
+function pushSection(lines: PdfElement[], title: string, body: string | string[], options?: { bullet?: boolean }) {
+  lines.push({ text: title, size: 11.5, font: 'bold', spacingAfter: 6 });
   const values = Array.isArray(body) ? normalizeList(body) : [textOrNotAvailable(body)];
   values.forEach((value, index) => {
-    const bulletPrefix = options?.bullet ? '• ' : '';
-    lines.push({ text: `${bulletPrefix}${value}`, size: 10.5, font: 'normal', indent: options?.bullet ? 8 : 0, spacingAfter: 2 });
-    if (index === values.length - 1) {
-      lines.push({ text: '', size: 5, font: 'normal', spacingAfter: 6 });
-    }
+    lines.push({ text: `${options?.bullet ? '• ' : ''}${value}`, size: 10, font: 'regular', indent: options?.bullet ? 10 : 0, spacingAfter: 2 });
+    if (index === values.length - 1) lines.push({ text: '', size: 4, font: 'regular', spacingAfter: 8 });
   });
 }
 
-function buildPatientReportLines(data: PatientVisitReportData): PdfLine[] {
-  const lines: PdfLine[] = [
-    { text: 'INFORME DE VISITA PARA PACIENTE', size: 18, font: 'bold', spacingAfter: 6 },
-    {
-      text: `${textOrNotAvailable(data.visitTypeLabel)} · Fecha visita: ${textOrNotAvailable(data.visitDateLabel)}`,
-      size: 10,
-      font: 'normal',
-      spacingAfter: 2,
-    },
-    { text: `Fecha/hora de generación: ${textOrNotAvailable(data.generatedAtLabel)}`, size: 10, font: 'normal', spacingAfter: 10 },
-  ];
-
-  pushSection(lines, 'Resumen de la visita', data.simpleSummary);
-  pushSection(lines, 'Nivel CMO', data.cmoLevelLabel);
-  pushSection(lines, 'Intervenciones', data.interventions, { bullet: true });
-  pushSection(lines, 'Recomendaciones para el paciente', data.recommendations, { bullet: true });
-  pushSection(lines, 'Seguimiento recomendado', data.followUp);
-  pushSection(lines, 'Referencia institucional', data.institutionalFooter);
-
-  return lines;
-}
-
-function buildClinicianReportLines(data: ClinicianVisitReportData): PdfLine[] {
-  const lines: PdfLine[] = [
-    { text: 'INFORME DE VISITA PARA PROFESIONAL MÉDICO', size: 18, font: 'bold', spacingAfter: 6 },
-    {
-      text: `${textOrNotAvailable(data.visitTypeLabel)} · Fecha visita: ${textOrNotAvailable(data.visitDateLabel)}`,
-      size: 10,
-      font: 'normal',
-      spacingAfter: 2,
-    },
-    { text: `Fecha/hora de generación: ${textOrNotAvailable(data.generatedAtLabel)}`, size: 10, font: 'normal', spacingAfter: 10 },
-  ];
-
-  pushSection(lines, 'Resumen clínico', data.clinicalSummary);
-  pushSection(lines, 'Puntuación / nivel CMO', data.cmoScoreLabel);
+function buildPatientReportLines(data: PatientVisitReportData): PdfElement[] {
+  const lines: PdfElement[] = [];
+  pushSection(lines, 'Resumen para paciente', data.simpleSummary);
+  pushSection(lines, 'Nivel de prioridad actual', data.cmoLevelLabel);
   pushSection(lines, 'Intervenciones realizadas', data.interventions, { bullet: true });
-  pushSection(lines, 'Cuestionarios relevantes', data.relevantQuestionnaires, { bullet: true });
-  pushSection(lines, 'Recomendaciones de coordinación asistencial', data.careCoordinationRecommendations, { bullet: true });
-  pushSection(lines, 'Referencia institucional', data.institutionalFooter);
-
+  pushSection(lines, 'Recomendaciones prácticas', data.recommendations, { bullet: true });
+  pushSection(lines, 'Plan de seguimiento', data.followUp);
+  pushSection(lines, 'Validación de caracteres', `Muestra UTF-8: ${SPANISH_CHARSET_SAMPLE}`);
   return lines;
 }
 
-function createPdfPages(lines: PdfLine[]): string[] {
+function buildClinicianReportLines(data: ClinicianVisitReportData): PdfElement[] {
+  const lines: PdfElement[] = [];
+  pushSection(lines, 'Resumen clínico estructurado', data.clinicalSummary);
+  pushSection(lines, 'Puntuación y nivel CMO', data.cmoScoreLabel);
+  pushSection(lines, 'Intervenciones registradas', data.interventions, { bullet: true });
+  pushSection(lines, 'Cuestionarios interpretables', data.relevantQuestionnaires, { bullet: true });
+  pushSection(lines, 'Coordinación asistencial sugerida', data.careCoordinationRecommendations, { bullet: true });
+  pushSection(lines, 'Validación de caracteres', `Muestra UTF-8: ${SPANISH_CHARSET_SAMPLE}`);
+  return lines;
+}
+
+function createPdfPages(kind: 'patient' | 'clinician', meta: { visitTypeLabel: string; visitDateLabel: string; generatedAtLabel: string; footer: string }, lines: PdfElement[]): string[] {
   const pages: string[] = [];
-  let y = PDF_PAGE_HEIGHT - PDF_MARGIN_TOP;
-  let currentCommands: string[] = [`${PDF_HEADER_COLOR}`];
+  let y = PDF_PAGE_HEIGHT - PDF_MARGIN;
+  let commands: string[] = [];
 
-  const availableWidth = PDF_PAGE_WIDTH - PDF_MARGIN_LEFT - PDF_MARGIN_RIGHT;
+  const startPage = () => {
+    commands = [];
+    y = PDF_PAGE_HEIGHT - PDF_MARGIN;
 
-  lines.forEach((line) => {
-    const lineIndent = line.indent ?? 0;
-    const wrapped = line.text
-      ? wrapText(line.text, availableWidth - lineIndent, line.size)
-      : [''];
+    commands.push('0.02 0.24 0.55 rg');
+    commands.push(`${PDF_MARGIN} ${y - 10} ${PDF_CONTENT_WIDTH} 42 re f`);
+    commands.push('1 1 1 rg');
+    commands.push('BT');
+    commands.push('/F2 13 Tf');
+    commands.push(`1 0 0 1 ${PDF_MARGIN + 12} ${y + 13} Tm (${escapePdfText(kind === 'patient' ? 'INFORME PARA PACIENTE' : 'INFORME CLÍNICO PARA PROFESIONAL')}) Tj`);
+    commands.push('/F1 9 Tf');
+    commands.push(`1 0 0 1 ${PDF_MARGIN + 12} ${y - 2} Tm (${escapePdfText(`${textOrNotAvailable(meta.visitTypeLabel)} · ${textOrNotAvailable(meta.visitDateLabel)}`)}) Tj`);
+    commands.push('ET');
+    y -= 58;
 
-    wrapped.forEach((wrappedLine) => {
-      const requiredHeight = line.size * PDF_LINE_HEIGHT;
-      if (y - requiredHeight < PDF_MARGIN_BOTTOM) {
-        pages.push(currentCommands.join('\n'));
-        currentCommands = [`${PDF_HEADER_COLOR}`];
-        y = PDF_PAGE_HEIGHT - PDF_MARGIN_TOP;
+    commands.push('0.95 0.97 1 rg');
+    commands.push(`${PDF_MARGIN} ${y - 42} ${PDF_CONTENT_WIDTH} 40 re f`);
+    commands.push('0.08 0.15 0.24 rg');
+    commands.push('BT');
+    commands.push('/F2 10 Tf');
+    commands.push(`1 0 0 1 ${PDF_MARGIN + 10} ${y - 26} Tm (${escapePdfText('Resumen institucional de la visita')}) Tj`);
+    commands.push('/F1 9 Tf');
+    commands.push(`1 0 0 1 ${PDF_MARGIN + 195} ${y - 26} Tm (${escapePdfText(`Generado: ${textOrNotAvailable(meta.generatedAtLabel)}`)}) Tj`);
+    commands.push('ET');
+    y -= 56;
+  };
+
+  const closePage = () => {
+    commands.push('0.4 0.45 0.55 rg');
+    commands.push('BT');
+    commands.push('/F1 8 Tf');
+    commands.push(`1 0 0 1 ${PDF_MARGIN} ${PDF_MARGIN - 10} Tm (${escapePdfText(meta.footer)}) Tj`);
+    commands.push('ET');
+    pages.push(commands.join('\n'));
+  };
+
+  startPage();
+  const usableWidth = PDF_CONTENT_WIDTH - 16;
+
+  for (const line of lines) {
+    const wrapped = line.text ? wrapText(line.text, usableWidth - (line.indent ?? 0), line.size) : [''];
+    for (const text of wrapped) {
+      const required = line.size * PDF_LINE_HEIGHT;
+      if (y - required < PDF_MARGIN + 24) {
+        closePage();
+        startPage();
       }
-
-      currentCommands.push(`${line.font === 'bold' ? '/F2' : '/F1'} ${line.size} Tf`);
-      currentCommands.push(line.size <= 10 ? PDF_MUTED_COLOR : PDF_BODY_COLOR);
-      currentCommands.push(`1 0 0 1 ${(PDF_MARGIN_LEFT + lineIndent).toFixed(2)} ${y.toFixed(2)} Tm`);
-      currentCommands.push(`(${escapePdfText(wrappedLine || ' ')}) Tj`);
-      y -= requiredHeight;
-    });
-
+      commands.push(line.font === 'bold' ? '0.04 0.18 0.43 rg' : '0.08 0.12 0.18 rg');
+      commands.push('BT');
+      commands.push(`${line.font === 'bold' ? '/F2' : '/F1'} ${line.size} Tf`);
+      commands.push(`1 0 0 1 ${(PDF_MARGIN + 8 + (line.indent ?? 0)).toFixed(2)} ${y.toFixed(2)} Tm`);
+      commands.push(`(${escapePdfText(text || ' ')}) Tj`);
+      commands.push('ET');
+      y -= required;
+    }
     if (line.spacingAfter) y -= line.spacingAfter;
-  });
+  }
 
-  pages.push(currentCommands.join('\n'));
+  closePage();
   return pages;
 }
 
@@ -386,9 +428,7 @@ function buildPdfBlob(pageStreams: string[]): Blob {
   pageStreams.forEach((stream) => {
     const contentObj = nextObj++;
     const pageObj = nextObj++;
-
-    const streamContent = `BT\n${stream}\nET`;
-    objects[contentObj] = `<< /Length ${streamContent.length} >>\nstream\n${streamContent}\nendstream`;
+    objects[contentObj] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
     objects[pageObj] =
       `<< /Type /Page /Parent ${pagesObj} 0 R /MediaBox [0 0 ${PDF_PAGE_WIDTH} ${PDF_PAGE_HEIGHT}] ` +
       `/Resources << /Font << /F1 ${fontRegularObj} 0 R /F2 ${fontBoldObj} 0 R >> >> /Contents ${contentObj} 0 R >>`;
@@ -449,36 +489,12 @@ function logPdfDebug(context: {
     linesCount: context.linesCount,
     pagesCount: context.pagesCount,
   });
-  console.info('[PDF DEBUG] blob metadata', {
-    reportType: context.reportType,
-    fileName: context.fileName,
-    blobSize: context.blob.size,
-    blobType: context.blob.type,
-  });
 
   validatePdfBlobStructure(context.blob)
-    .then((structure) => {
-      console.info('[PDF DEBUG] blob structure', {
-        reportType: context.reportType,
-        fileName: context.fileName,
-        ...structure,
-      });
-    })
-    .catch((error) => {
-      console.error('[PDF DEBUG] structure validation error', {
-        reportType: context.reportType,
-        fileName: context.fileName,
-        error,
-      });
-    });
+    .then((structure) => console.info('[PDF DEBUG] blob structure', { ...structure, reportType: context.reportType, fileName: context.fileName }))
+    .catch((error) => console.error('[PDF DEBUG] structure validation error', error));
 
-  if (context.renderError) {
-    console.error('[PDF DEBUG] document build error', {
-      reportType: context.reportType,
-      fileName: context.fileName,
-      error: context.renderError,
-    });
-  }
+  if (context.renderError) console.error('[PDF DEBUG] document build error', context.renderError);
 }
 
 function triggerPdfDownload(blob: Blob, filename: string): void {
@@ -498,93 +514,72 @@ function safeFilePart(value: string): string {
 
 export async function generatePatientVisitReportPdf(data: PatientVisitReportData): Promise<Blob> {
   const lines = buildPatientReportLines(data);
-  const pages = createPdfPages(lines);
+  const pages = createPdfPages(
+    'patient',
+    {
+      visitTypeLabel: data.visitTypeLabel,
+      visitDateLabel: data.visitDateLabel,
+      generatedAtLabel: data.generatedAtLabel,
+      footer: data.institutionalFooter,
+    },
+    lines,
+  );
   return buildPdfBlob(pages);
 }
 
 export async function generateClinicianVisitReportPdf(data: ClinicianVisitReportData): Promise<Blob> {
   const lines = buildClinicianReportLines(data);
-  const pages = createPdfPages(lines);
+  const pages = createPdfPages(
+    'clinician',
+    {
+      visitTypeLabel: data.visitTypeLabel,
+      visitDateLabel: data.visitDateLabel,
+      generatedAtLabel: data.generatedAtLabel,
+      footer: data.institutionalFooter,
+    },
+    lines,
+  );
   return buildPdfBlob(pages);
 }
 
 export async function downloadPatientVisitReportPdf(data: PatientVisitReportData): Promise<void> {
   const fileName = `informe-paciente-${safeFilePart(data.visitId)}.pdf`;
-  const dataPreview = {
-    visitId: data.visitId,
-    visitTypeLabel: data.visitTypeLabel,
-    interventionsCount: data.interventions.length,
-    recommendationsCount: data.recommendations.length,
-    hasSummary: Boolean(data.simpleSummary?.trim()),
-  };
-
   try {
-    const lines = buildPatientReportLines(data);
-    const pages = createPdfPages(lines);
-    const pdfBlob = buildPdfBlob(pages);
+    const pdfBlob = await generatePatientVisitReportPdf(data);
     logPdfDebug({
       reportType: 'patient',
       fileName,
-      dataPreview,
-      linesCount: lines.length,
-      pagesCount: pages.length,
+      dataPreview: { visitId: data.visitId, visitTypeLabel: data.visitTypeLabel },
+      linesCount: buildPatientReportLines(data).length,
+      pagesCount: 1,
       blob: pdfBlob,
     });
     triggerPdfDownload(pdfBlob, fileName);
   } catch (error) {
-    logPdfDebug({
-      reportType: 'patient',
-      fileName,
-      dataPreview,
-      linesCount: 0,
-      pagesCount: 0,
-      blob: new Blob([], { type: 'application/pdf' }),
-      renderError: error,
-    });
+    logPdfDebug({ reportType: 'patient', fileName, dataPreview: { visitId: data.visitId }, linesCount: 0, pagesCount: 0, blob: new Blob([]), renderError: error });
     throw error;
   }
 }
 
 export async function downloadClinicianVisitReportPdf(data: ClinicianVisitReportData): Promise<void> {
   const fileName = `informe-medico-${safeFilePart(data.visitId)}.pdf`;
-  const dataPreview = {
-    visitId: data.visitId,
-    visitTypeLabel: data.visitTypeLabel,
-    interventionsCount: data.interventions.length,
-    questionnairesCount: data.relevantQuestionnaires.length,
-    hasClinicalSummary: Boolean(data.clinicalSummary?.trim()),
-  };
-
   try {
-    const lines = buildClinicianReportLines(data);
-    const pages = createPdfPages(lines);
-    const pdfBlob = buildPdfBlob(pages);
+    const pdfBlob = await generateClinicianVisitReportPdf(data);
     logPdfDebug({
       reportType: 'clinician',
       fileName,
-      dataPreview,
-      linesCount: lines.length,
-      pagesCount: pages.length,
+      dataPreview: { visitId: data.visitId, visitTypeLabel: data.visitTypeLabel },
+      linesCount: buildClinicianReportLines(data).length,
+      pagesCount: 1,
       blob: pdfBlob,
     });
     triggerPdfDownload(pdfBlob, fileName);
   } catch (error) {
-    logPdfDebug({
-      reportType: 'clinician',
-      fileName,
-      dataPreview,
-      linesCount: 0,
-      pagesCount: 0,
-      blob: new Blob([], { type: 'application/pdf' }),
-      renderError: error,
-    });
+    logPdfDebug({ reportType: 'clinician', fileName, dataPreview: { visitId: data.visitId }, linesCount: 0, pagesCount: 0, blob: new Blob([]), renderError: error });
     throw error;
   }
 }
 
-/**
- * Obsoleto: el flujo HTML imprimible con popup ha sido reemplazado por generación PDF directa.
- */
 export function openPrintableHtmlDocument(): never {
   throw new Error('openPrintableHtmlDocument está obsoleto. Use las funciones de PDF directo.');
 }
