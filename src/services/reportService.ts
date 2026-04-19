@@ -48,7 +48,10 @@ const PDF_MARGIN = 48;
 const PDF_CONTENT_WIDTH = PDF_PAGE_WIDTH - PDF_MARGIN * 2;
 const PDF_LINE_HEIGHT = 1.35;
 const PDF_DEBUG_LOGS = true;
-const SPANISH_CHARSET_SAMPLE = 'áéíóúñÁÉÍÓÚÑ';
+const SIGNATURE_BLOCK = [
+  'Profesional responsable: María Romero Murillo',
+  'Farmacéutica responsable de la visita',
+];
 
 function toDateLabel(value: string | null): string {
   if (!value) return 'No disponible';
@@ -75,8 +78,13 @@ function cmoPriorityLabel(priority: number | null | undefined): string {
 }
 
 function formatQuestionnaireItem(item: QuestionnaireResponseRecord): string {
-  const score = typeof item.total_score === 'number' ? ` · puntuación ${item.total_score}` : '';
-  return `${item.questionnaire_type.toUpperCase()}${score}`;
+  const labels: Record<QuestionnaireResponseRecord['questionnaire_type'], string> = {
+    iexpac: 'IEXPAC (experiencia del paciente)',
+    morisky: 'Morisky-Green (adherencia terapéutica)',
+    eq5d: 'EQ-5D-5L (calidad de vida percibida)',
+  };
+  const score = typeof item.total_score === 'number' ? ` · puntuación: ${item.total_score}` : ' · puntuación no disponible';
+  return `${labels[item.questionnaire_type]}${score}`;
 }
 
 function formatInterventionItem(item: Intervention): string {
@@ -87,17 +95,19 @@ function formatInterventionItem(item: Intervention): string {
 function deriveSimpleSummary(visit: Visit, cmoScore: number | null, interventions: Intervention[], questionnaires: QuestionnaireResponseRecord[]): string {
   const chunks: string[] = [];
   if (cmoScore !== null) chunks.push(`Su nivel de prioridad CMO actual es ${cmoScore}`);
-  if (interventions.length > 0) chunks.push(`Se registraron ${interventions.length} intervención(es) en esta visita`);
-  if (questionnaires.length > 0) chunks.push(`Se completaron ${questionnaires.length} cuestionario(s) de seguimiento`);
-  if (visit.notes?.trim()) chunks.push(`Comentario clínico relevante: ${visit.notes.trim()}`);
-  return chunks.length > 0 ? `${chunks.join('. ')}.` : 'No hay información clínica suficiente para elaborar un resumen ampliado en esta visita.';
+  if (interventions.length > 0) chunks.push(`Durante esta visita se registraron ${interventions.length} intervenciones farmacéuticas`);
+  if (questionnaires.length > 0) chunks.push(`Se completaron ${questionnaires.length} cuestionarios de seguimiento`);
+  if (visit.notes?.trim()) chunks.push(`Observaciones relevantes del equipo clínico: ${visit.notes.trim()}`);
+  return chunks.length > 0
+    ? `${chunks.join('. ')}.`
+    : 'En esta visita no se registró información clínica suficiente para ampliar el resumen.';
 }
 
 function deriveClinicalSummary(visit: Visit, cmoScore: number | null, questionnaires: QuestionnaireResponseRecord[]): string {
   return [
-    `Priorización clínica CMO: ${cmoScore !== null ? cmoScore : 'No disponible'}.`,
-    `Total de cuestionarios con respuesta: ${questionnaires.length}.`,
-    visit.notes?.trim() ? `Evolución/observaciones: ${visit.notes.trim()}.` : '',
+    `Priorización clínica CMO actual: ${cmoScore !== null ? cmoScore : 'No disponible'}.`,
+    `Cuestionarios con respuesta registrados en la visita: ${questionnaires.length}.`,
+    visit.notes?.trim() ? `Evolución clínica y observaciones relevantes: ${visit.notes.trim()}.` : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -107,16 +117,16 @@ function derivePatientRecommendations(interventions: Intervention[]): string[] {
   const items = interventions.map((item) => item.outcome?.trim()).filter((v): v is string => Boolean(v));
   if (items.length > 0) return items.slice(0, 4);
   return [
-    'Mantenga la medicación según la pauta indicada.',
-    'Si aparecen síntomas nuevos o efectos adversos, contacte con su centro de salud.',
-    'Lleve a la próxima consulta una lista actualizada de su tratamiento.',
+    'Mantenga la medicación exactamente según la pauta indicada y evite cambios por cuenta propia.',
+    'Si aparece algún síntoma nuevo o un efecto adverso, contacte con su centro de salud lo antes posible.',
+    'Lleve a la próxima consulta una lista actualizada de toda su medicación, incluidas dosis y horarios.',
   ];
 }
 
 function deriveCoordinationRecommendations(cmoPriority: number | null | undefined): string[] {
   if (cmoPriority === 1) {
     return [
-      'Caso de alta prioridad: coordinar revisión médica preferente en ≤ 7 días.',
+      'Caso de alta prioridad: coordinar revisión médica preferente en un plazo máximo de 7 días.',
       'Verificar conciliación terapéutica y riesgo de eventos adversos antes del próximo contacto.',
     ];
   }
@@ -194,7 +204,8 @@ export async function loadVisitReportData(visitId: string): Promise<VisitReportL
       cmoLevelLabel: cmoLevel,
       interventions: interventions.map(formatInterventionItem),
       recommendations: derivePatientRecommendations(interventions),
-      followUp: 'Siguiente paso: acudir a la próxima visita programada. Contacte antes si detecta síntomas nuevos, dudas con su medicación o dificultades para seguir el plan.',
+      followUp:
+        'Plan de seguimiento: acudir a la próxima visita programada con su medicación actualizada. Si aparecen dudas, olvida dosis o nota efectos adversos, contacte antes con su equipo de salud para ajustar el plan.',
       institutionalFooter: getInstitutionalFooter(),
     },
     clinicianReportData: {
@@ -329,7 +340,7 @@ function buildPatientReportLines(data: PatientVisitReportData): PdfElement[] {
   pushSection(lines, 'Intervenciones realizadas', data.interventions, { bullet: true });
   pushSection(lines, 'Recomendaciones prácticas', data.recommendations, { bullet: true });
   pushSection(lines, 'Plan de seguimiento', data.followUp);
-  pushSection(lines, 'Validación de caracteres', `Muestra UTF-8: ${SPANISH_CHARSET_SAMPLE}`);
+  pushSection(lines, 'Firma profesional', SIGNATURE_BLOCK);
   return lines;
 }
 
@@ -338,9 +349,9 @@ function buildClinicianReportLines(data: ClinicianVisitReportData): PdfElement[]
   pushSection(lines, 'Resumen clínico estructurado', data.clinicalSummary);
   pushSection(lines, 'Puntuación y nivel CMO', data.cmoScoreLabel);
   pushSection(lines, 'Intervenciones registradas', data.interventions, { bullet: true });
-  pushSection(lines, 'Cuestionarios interpretables', data.relevantQuestionnaires, { bullet: true });
+  pushSection(lines, 'Cuestionarios con interpretación clínica', data.relevantQuestionnaires, { bullet: true });
   pushSection(lines, 'Coordinación asistencial sugerida', data.careCoordinationRecommendations, { bullet: true });
-  pushSection(lines, 'Validación de caracteres', `Muestra UTF-8: ${SPANISH_CHARSET_SAMPLE}`);
+  pushSection(lines, 'Firma profesional', SIGNATURE_BLOCK);
   return lines;
 }
 
