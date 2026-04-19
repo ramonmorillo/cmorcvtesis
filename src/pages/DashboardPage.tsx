@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { EmptyState } from '../components/common/EmptyState';
+import { InstitutionalReference } from '../components/common/InstitutionalReference';
 import { ErrorState } from '../components/common/ErrorState';
 import { getVisitTypeLabel } from '../constants/enums';
 import { loadDashboardData, type DashboardData } from '../services/dashboardService';
@@ -58,6 +59,8 @@ export function DashboardPage() {
           </div>
         </div>
       </section>
+
+      <InstitutionalReference />
 
       <section className="card">
         <div className="section-header">

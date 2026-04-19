@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 
 import { getCurrentSession, signOut, subscribeToAuthChanges } from '../../services/authService';
+import { InstitutionalReference } from '../common/InstitutionalReference';
 
 export function AppShell() {
   const navigate = useNavigate();
@@ -111,6 +112,9 @@ export function AppShell() {
       <main className="main-content">
         <Outlet />
       </main>
+      <footer className="app-footer">
+        <InstitutionalReference compact />
+      </footer>
     </div>
   );
 }
