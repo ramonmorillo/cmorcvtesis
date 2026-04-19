@@ -18,13 +18,96 @@ function renderList(items) {
   return items.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
 }
 
-function renderBaseDocument({ title, subtitle, generatedAtLabel, bodySections, institutionalFooter, audienceLabel }) {
+function renderSection({ title, content }) {
+  return `
+    <section class="section-card">
+      <h2>${escapeHtml(title)}</h2>
+      ${content}
+    </section>
+  `;
+}
+
+function renderSummaryBox({ title, items }) {
+  return `
+    <section class="summary-box" aria-label="${escapeHtml(title)}">
+      <p class="summary-title">${escapeHtml(title)}</p>
+      <dl class="summary-grid">
+        ${items
+          .map(
+            ({ label, value }) => `
+              <div class="summary-item">
+                <dt>${escapeHtml(label)}</dt>
+                <dd>${escapeHtml(value)}</dd>
+              </div>
+            `,
+          )
+          .join('')}
+      </dl>
+    </section>
+  `;
+}
+
+function renderHeader({ audienceLabel, reportSubtitle, visitId, visitTypeLabel, visitDateLabel, generatedAtLabel }) {
+  return `
+    <header class="report-header">
+      <p class="brand">IRIS</p>
+      <div class="title-row">
+        <h1>${escapeHtml(reportSubtitle)}</h1>
+        <span class="audience">${escapeHtml(audienceLabel)}</span>
+      </div>
+      <hr class="header-separator" />
+      <dl class="meta-grid">
+        <div class="meta-item">
+          <dt>ID de visita</dt>
+          <dd>${escapeHtml(visitId)}</dd>
+        </div>
+        <div class="meta-item">
+          <dt>Tipo de visita</dt>
+          <dd>${escapeHtml(visitTypeLabel)}</dd>
+        </div>
+        <div class="meta-item">
+          <dt>Fecha de visita</dt>
+          <dd>${escapeHtml(visitDateLabel)}</dd>
+        </div>
+        <div class="meta-item">
+          <dt>Fecha de generación</dt>
+          <dd>${escapeHtml(generatedAtLabel)}</dd>
+        </div>
+      </dl>
+    </header>
+  `;
+}
+
+function renderSignatureSection() {
+  return renderSection({
+    title: 'Firma profesional',
+    content: `
+      <div class="signature-block">
+        <p class="signature-name">${escapeHtml(SIGNATURE_NAME)}</p>
+        <p class="signature-role">${escapeHtml(SIGNATURE_ROLE)}</p>
+      </div>
+    `,
+  });
+}
+
+function renderFooter({ institutionalFooter }) {
+  return `
+    <footer class="footer">
+      <div class="footer-grid">
+        <p class="footer-ref">${escapeHtml(institutionalFooter)}</p>
+        <p class="page-number"></p>
+      </div>
+    </footer>
+  `;
+}
+
+function renderBaseDocument({ header, summaryBox, bodySections, institutionalFooter }) {
   return `<!doctype html>
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${escapeHtml(title)}</title>
+    <title>IRIS</title>
     <style>
       @font-face {
         font-family: 'IRIS Unicode';
@@ -34,110 +117,181 @@ function renderBaseDocument({ title, subtitle, generatedAtLabel, bodySections, i
 
       @page {
         size: A4;
-        margin: 20mm 16mm 24mm 16mm;
+        margin: 18mm 15mm 24mm 15mm;
       }
 
       * { box-sizing: border-box; }
 
       body {
         font-family: 'IRIS Unicode';
-        color: #1a2433;
+        color: #1f2b3a;
         margin: 0;
-        font-size: 12px;
-        line-height: 1.58;
-        letter-spacing: 0.01em;
+        font-size: 11.4px;
+        line-height: 1.64;
         background: #ffffff;
       }
 
       .sheet {
         min-height: 100vh;
         position: relative;
-        padding-bottom: 36mm;
+        padding-bottom: 26mm;
       }
 
       .report-header {
-        border: 1px solid #d5dfec;
-        border-top: 4px solid #0a4f66;
-        border-radius: 8px;
-        padding: 13px 15px 12px;
-        margin-bottom: 18px;
-        background: linear-gradient(180deg, #f6f9fd 0%, #ffffff 100%);
-        box-shadow: 0 0 0 1px #eef3f9 inset;
+        margin-bottom: 14px;
       }
 
-      .institution {
-        color: #0a4f66;
-        font-size: 10px;
+      .brand {
+        margin: 0;
+        font-size: 20px;
+        line-height: 1;
         font-weight: 700;
         letter-spacing: 0.09em;
-        text-transform: uppercase;
-        margin: 0;
+        color: #15364a;
       }
 
-      .brand-row {
+      .title-row {
         display: flex;
         justify-content: space-between;
-        gap: 14px;
         align-items: baseline;
-        margin: 9px 0 7px;
+        gap: 8px;
+        margin-top: 5px;
       }
 
       h1 {
         margin: 0;
-        font-size: 19px;
-        line-height: 1.3;
-        color: #12283b;
-        letter-spacing: 0.01em;
+        font-size: 16px;
+        font-weight: 600;
+        color: #1b3042;
       }
 
       .audience {
-        color: #224a62;
-        font-size: 10.5px;
+        color: #41566b;
+        font-size: 10px;
         font-weight: 600;
-        border: 1px solid #cfdceb;
+        border: 1px solid #d4dee8;
         border-radius: 999px;
-        padding: 2px 8px;
-        background: #f6f9fd;
+        padding: 1px 8px;
+        background: #f7f9fc;
       }
 
-      .meta {
+      .header-separator {
+        border: 0;
+        border-top: 1px solid #cdd8e4;
+        margin: 8px 0 9px;
+      }
+
+      .meta-grid {
         margin: 0;
-        color: #3b4c61;
-        font-size: 10.5px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px 16px;
       }
 
-      section {
+      .meta-item dt {
+        font-size: 9.5px;
+        color: #627488;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin: 0 0 1px;
+      }
+
+      .meta-item dd {
+        margin: 0;
+        font-size: 11px;
+        color: #1f2b3a;
+      }
+
+      .summary-box {
+        border: 1px solid #d8e1ea;
+        background: #f8fafc;
+        border-radius: 6px;
+        padding: 9px 10px 8px;
         margin-bottom: 12px;
         page-break-inside: avoid;
       }
 
+      .summary-title {
+        margin: 0 0 6px;
+        font-size: 11.1px;
+        font-weight: 700;
+        color: #21384d;
+      }
+
+      .summary-grid {
+        margin: 0;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .summary-item dt {
+        margin: 0;
+        font-size: 9.2px;
+        color: #5e7185;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+
+      .summary-item dd {
+        margin: 1px 0 0;
+        font-size: 11px;
+        font-weight: 600;
+        color: #203446;
+      }
+
+      section {
+        margin-bottom: 10px;
+        page-break-inside: avoid;
+      }
+
       .section-card {
-        border: 1px solid #dfe7f2;
-        border-radius: 7px;
-        padding: 10px 11px;
-        background: #ffffff;
-        box-shadow: 0 1px 0 #f3f6fa;
+        border: 1px solid #e0e7ef;
+        border-radius: 6px;
+        padding: 8px 10px 9px;
+        background: #fff;
       }
 
       h2 {
-        font-size: 12.8px;
-        margin: 0 0 7px;
-        color: #0c4b61;
-        padding-bottom: 4px;
-        border-bottom: 1px solid #e8eef6;
+        margin: 0 0 6px;
+        font-size: 11.8px;
+        color: #17364a;
+        font-weight: 700;
       }
 
       p {
         margin: 0;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
       }
 
       ul {
         margin: 0;
-        padding-left: 17px;
+        padding-left: 16px;
+      }
+
+      li {
+        margin: 0;
       }
 
       li + li {
-        margin-top: 3px;
+        margin-top: 4px;
+      }
+
+      .signature-block {
+        display: inline-block;
+        border-top: 1px solid #ccd7e2;
+        padding-top: 8px;
+        min-width: 58%;
+      }
+
+      .signature-name {
+        font-weight: 700;
+        margin-bottom: 1px;
+      }
+
+      .signature-role {
+        color: #4d6074;
       }
 
       .footer {
@@ -145,128 +299,124 @@ function renderBaseDocument({ title, subtitle, generatedAtLabel, bodySections, i
         left: 0;
         right: 0;
         bottom: 0;
-        border-top: 1px solid #c5d2e2;
-        padding: 8px 0 0;
-        font-size: 9.3px;
-        color: #3f5267;
+        border-top: 1px solid #d6dee8;
+        padding-top: 6px;
         background: #fff;
       }
 
       .footer-grid {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 12px;
-        align-items: end;
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 10px;
       }
 
-      .signature {
-        text-align: right;
+      .footer-ref {
+        margin: 0;
+        font-size: 8.8px;
+        color: #51657a;
+      }
+
+      .page-number {
+        margin: 0;
+        font-size: 8.8px;
+        color: #51657a;
         white-space: nowrap;
-        padding-left: 12px;
-        border-left: 1px solid #d7e1ed;
-      }
-
-      .signature-name {
-        font-weight: 700;
       }
 
       .page-number::before {
-        content: 'Página ' counter(page) ' de ' counter(pages);
-        font-weight: 700;
+        content: 'Pág. ' counter(page) '/' counter(pages);
+        font-weight: 600;
       }
     </style>
   </head>
   <body>
     <main class="sheet">
-      <header class="report-header">
-        <p class="institution">IRIS · Plataforma clínica de atención farmacéutica cardiovascular</p>
-        <div class="brand-row">
-          <h1>${escapeHtml(title)}</h1>
-          <span class="audience">${escapeHtml(audienceLabel)}</span>
-        </div>
-        <p class="meta">${escapeHtml(subtitle)}</p>
-        <p class="meta">Fecha de generación: ${escapeHtml(generatedAtLabel)}</p>
-      </header>
-
+      ${header}
+      ${summaryBox}
       ${bodySections}
     </main>
-
-    <footer class="footer">
-      <div class="footer-grid">
-        <div>
-          <p>${escapeHtml(institutionalFooter)}</p>
-          <p class="page-number"></p>
-        </div>
-        <div class="signature">
-          <p class="signature-name">${SIGNATURE_NAME}</p>
-          <p>${SIGNATURE_ROLE}</p>
-        </div>
-      </div>
-    </footer>
+    ${renderFooter({ institutionalFooter })}
   </body>
 </html>`;
 }
 
 export function renderPatientTemplate(data) {
-  return renderBaseDocument({
-    title: 'Informe de visita para paciente',
+  const header = renderHeader({
     audienceLabel: 'Versión paciente',
-    subtitle: `${data.visitTypeLabel} · ${data.visitDateLabel}`,
+    reportSubtitle: 'Informe de visita (Paciente)',
+    visitId: data.visitId,
+    visitTypeLabel: data.visitTypeLabel,
+    visitDateLabel: data.visitDateLabel,
     generatedAtLabel: data.generatedAtLabel,
+  });
+
+  const summaryBox = renderSummaryBox({
+    title: 'Resumen superior de seguimiento',
+    items: [
+      { label: 'Nivel CMO', value: data.cmoLevelLabel },
+      { label: 'Estado de seguimiento', value: data.followUp },
+      { label: 'Tipo de visita', value: data.visitTypeLabel },
+    ],
+  });
+
+  const bodySections = [
+    renderSection({ title: 'Resumen de la visita', content: `<p>${escapeHtml(data.simpleSummary)}</p>` }),
+    renderSection({ title: 'Intervenciones registradas', content: `<ul>${renderList(data.interventions)}</ul>` }),
+    renderSection({ title: 'Recomendaciones', content: `<ul>${renderList(data.recommendations)}</ul>` }),
+    renderSection({ title: 'Seguimiento', content: `<p>${escapeHtml(data.followUp)}</p>` }),
+    renderSignatureSection(),
+  ].join('');
+
+  return renderBaseDocument({
+    header,
+    summaryBox,
+    bodySections,
     institutionalFooter: data.institutionalFooter,
-    bodySections: `
-      <section class="section-card">
-        <h2>Resumen de la visita</h2>
-        <p>${escapeHtml(data.simpleSummary)}</p>
-      </section>
-      <section class="section-card">
-        <h2>Nivel de prioridad CMO</h2>
-        <p>${escapeHtml(data.cmoLevelLabel)}</p>
-      </section>
-      <section class="section-card">
-        <h2>Intervenciones realizadas</h2>
-        <ul>${renderList(data.interventions)}</ul>
-      </section>
-      <section class="section-card">
-        <h2>Recomendaciones prácticas</h2>
-        <ul>${renderList(data.recommendations)}</ul>
-      </section>
-      <section class="section-card">
-        <h2>Plan de seguimiento</h2>
-        <p>${escapeHtml(data.followUp)}</p>
-      </section>
-    `,
   });
 }
 
 export function renderClinicianTemplate(data) {
-  return renderBaseDocument({
-    title: 'Informe clínico para profesional',
+  const header = renderHeader({
     audienceLabel: 'Versión médica',
-    subtitle: `${data.visitTypeLabel} · ${data.visitDateLabel}`,
+    reportSubtitle: 'Informe de visita (Médico)',
+    visitId: data.visitId,
+    visitTypeLabel: data.visitTypeLabel,
+    visitDateLabel: data.visitDateLabel,
     generatedAtLabel: data.generatedAtLabel,
+  });
+
+  const summaryBox = renderSummaryBox({
+    title: 'Resumen superior de seguimiento',
+    items: [
+      { label: 'Puntuación CMO', value: data.cmoScoreLabel },
+      { label: 'Tipo de seguimiento', value: data.visitTypeLabel },
+      {
+        label: 'Estado de seguimiento',
+        value: data.careCoordinationRecommendations?.[0] ?? 'No disponible',
+      },
+    ],
+  });
+
+  const bodySections = [
+    renderSection({ title: 'Resumen clínico', content: `<p>${escapeHtml(data.clinicalSummary)}</p>` }),
+    renderSection({ title: 'Cuestionarios relevantes', content: `<ul>${renderList(data.relevantQuestionnaires)}</ul>` }),
+    renderSection({ title: 'Intervenciones registradas', content: `<ul>${renderList(data.interventions)}</ul>` }),
+    renderSection({
+      title: 'Recomendaciones',
+      content: `<ul>${renderList(data.careCoordinationRecommendations)}</ul>`,
+    }),
+    renderSection({
+      title: 'Seguimiento',
+      content: `<p>${escapeHtml(data.careCoordinationRecommendations?.[0] ?? 'No disponible.')}</p>`,
+    }),
+    renderSignatureSection(),
+  ].join('');
+
+  return renderBaseDocument({
+    header,
+    summaryBox,
+    bodySections,
     institutionalFooter: data.institutionalFooter,
-    bodySections: `
-      <section class="section-card">
-        <h2>Síntesis clínica estructurada</h2>
-        <p>${escapeHtml(data.clinicalSummary)}</p>
-      </section>
-      <section class="section-card">
-        <h2>Puntuación CMO</h2>
-        <p>${escapeHtml(data.cmoScoreLabel)}</p>
-      </section>
-      <section class="section-card">
-        <h2>Intervenciones registradas</h2>
-        <ul>${renderList(data.interventions)}</ul>
-      </section>
-      <section class="section-card">
-        <h2>Cuestionarios relevantes</h2>
-        <ul>${renderList(data.relevantQuestionnaires)}</ul>
-      </section>
-      <section class="section-card">
-        <h2>Recomendaciones de coordinación asistencial</h2>
-        <ul>${renderList(data.careCoordinationRecommendations)}</ul>
-      </section>
-    `,
   });
 }
