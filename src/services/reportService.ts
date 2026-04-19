@@ -210,19 +210,201 @@ export async function loadVisitReportData(visitId: string): Promise<VisitReportL
   };
 }
 
-async function requestPdfFromServer(template: 'patient' | 'clinician', data: PatientVisitReportData | ClinicianVisitReportData): Promise<Blob> {
-  const response = await fetch('/api/reports/pdf', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ template, data }),
-  });
+type ReportTemplate = 'patient' | 'clinician';
 
-  if (!response.ok) {
-    const payload = await response.text();
-    throw new Error(`No se pudo generar el PDF (${response.status}): ${payload || 'sin detalle.'}`);
+type PdfTemplatePayload = PatientVisitReportData | ClinicianVisitReportData;
+
+function normalizePdfText(value: string): string {
+  return value
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[–—]/g, '-')
+    .replace(/…/g, '...')
+    .replace(/ /g, ' ')
+    .replace(/[^ -~¡-ÿ]/g, ' ')
+    .trimEnd();
+}
+
+function escapePdfString(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+}
+
+function wrapTextLine(text: string, maxChars: number): string[] {
+  const clean = normalizePdfText(text);
+  if (!clean) return [''];
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [''];
+
+  const lines: string[] = [];
+  let current = words[0];
+
+  for (const word of words.slice(1)) {
+    if (`${current} ${word}`.length <= maxChars) {
+      current = `${current} ${word}`;
+      continue;
+    }
+
+    lines.push(current);
+    current = word;
   }
 
-  return response.blob();
+  lines.push(current);
+  return lines;
+}
+
+function buildPdfLines(template: ReportTemplate, data: PdfTemplatePayload): string[] {
+  if (template === 'patient') {
+    const patient = data as PatientVisitReportData;
+    return [
+      'IRIS - INFORME DE VISITA (PACIENTE)',
+      '',
+      `ID de visita: ${patient.visitId}`,
+      `Tipo de visita: ${patient.visitTypeLabel}`,
+      `Fecha de la visita: ${patient.visitDateLabel}`,
+      `Generado el: ${patient.generatedAtLabel}`,
+      '',
+      'Resumen de la visita',
+      patient.simpleSummary,
+      '',
+      `Nivel CMO: ${patient.cmoLevelLabel}`,
+      '',
+      'Intervenciones registradas',
+      ...(patient.interventions.length > 0 ? patient.interventions.map((item) => `- ${item}`) : ['- No disponibles']),
+      '',
+      'Recomendaciones para el paciente',
+      ...(patient.recommendations.length > 0 ? patient.recommendations.map((item) => `- ${item}`) : ['- No disponibles']),
+      '',
+      'Seguimiento',
+      patient.followUp,
+      '',
+      'Firma profesional',
+      'María Romero Murillo',
+      'Farmacéutica responsable de la visita',
+      '',
+      patient.institutionalFooter,
+    ];
+  }
+
+  const clinician = data as ClinicianVisitReportData;
+  return [
+    'IRIS - INFORME DE VISITA (MÉDICO)',
+    '',
+    `ID de visita: ${clinician.visitId}`,
+    `Tipo de visita: ${clinician.visitTypeLabel}`,
+    `Fecha de la visita: ${clinician.visitDateLabel}`,
+    `Generado el: ${clinician.generatedAtLabel}`,
+    '',
+    `Puntuación CMO: ${clinician.cmoScoreLabel}`,
+    '',
+    'Resumen clínico',
+    clinician.clinicalSummary,
+    '',
+    'Cuestionarios relevantes',
+    ...(clinician.relevantQuestionnaires.length > 0
+      ? clinician.relevantQuestionnaires.map((item) => `- ${item}`)
+      : ['- No disponibles']),
+    '',
+    'Intervenciones registradas',
+    ...(clinician.interventions.length > 0 ? clinician.interventions.map((item) => `- ${item}`) : ['- No disponibles']),
+    '',
+    'Recomendaciones de coordinación asistencial',
+    ...(clinician.careCoordinationRecommendations.length > 0
+      ? clinician.careCoordinationRecommendations.map((item) => `- ${item}`)
+      : ['- No disponibles']),
+    '',
+    'Firma profesional',
+    'María Romero Murillo',
+    'Farmacéutica responsable de la visita',
+    '',
+    clinician.institutionalFooter,
+  ];
+}
+
+function encodeLatin1(value: string): Uint8Array {
+  const bytes = new Uint8Array(value.length);
+  for (let index = 0; index < value.length; index += 1) {
+    bytes[index] = value.charCodeAt(index) & 0xff;
+  }
+  return bytes;
+}
+
+function composePdfDocument(lines: string[]): Uint8Array {
+  const maxCharsPerLine = 96;
+  const linesPerPage = 44;
+  const wrappedLines = lines.flatMap((line) => wrapTextLine(line, maxCharsPerLine));
+  const pages: string[][] = [];
+
+  for (let i = 0; i < wrappedLines.length; i += linesPerPage) {
+    pages.push(wrappedLines.slice(i, i + linesPerPage));
+  }
+
+  const objects: string[] = [];
+  const pageObjectIds: number[] = [];
+  const contentObjectIds: number[] = [];
+  const catalogId = 1;
+  const pagesId = 2;
+  const fontId = 3;
+  let nextId = 4;
+
+  for (let pageIndex = 0; pageIndex < pages.length; pageIndex += 1) {
+    pageObjectIds.push(nextId++);
+    contentObjectIds.push(nextId++);
+  }
+
+  objects[catalogId] = `${catalogId} 0 obj\n<< /Type /Catalog /Pages ${pagesId} 0 R >>\nendobj\n`;
+  objects[pagesId] = `${pagesId} 0 obj\n<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageObjectIds.length} >>\nendobj\n`;
+  objects[fontId] = `${fontId} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n`;
+
+  for (let index = 0; index < pages.length; index += 1) {
+    const pageObjectId = pageObjectIds[index];
+    const contentObjectId = contentObjectIds[index];
+    const page = pages[index];
+
+    const textOperations = [
+      'BT',
+      '/F1 11 Tf',
+      '48 795 Td',
+      '14 TL',
+      ...page.map((line, lineIndex) => `${lineIndex === 0 ? '' : 'T* ' }(${escapePdfString(line)}) Tj`),
+      'ET',
+    ].join('\n');
+
+    const stream = `${textOperations}\n`;
+
+    objects[pageObjectId] = `${pageObjectId} 0 obj\n<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentObjectId} 0 R >>\nendobj\n`;
+    objects[contentObjectId] = `${contentObjectId} 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}endstream\nendobj\n`;
+  }
+
+  const orderedObjectIds = Array.from({ length: objects.length - 1 }, (_, index) => index + 1).filter((id) => Boolean(objects[id]));
+
+  let output = '%PDF-1.4\n';
+  const offsets: number[] = [0];
+
+  for (const id of orderedObjectIds) {
+    offsets[id] = output.length;
+    output += objects[id];
+  }
+
+  const xrefStart = output.length;
+  const totalObjects = Math.max(...orderedObjectIds) + 1;
+  output += `xref\n0 ${totalObjects}\n`;
+  output += '0000000000 65535 f \n';
+
+  for (let id = 1; id < totalObjects; id += 1) {
+    const offset = offsets[id] ?? 0;
+    output += `${offset.toString().padStart(10, '0')} 00000 n \n`;
+  }
+
+  output += `trailer\n<< /Size ${totalObjects} /Root ${catalogId} 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+
+  return encodeLatin1(output);
+}
+
+function buildPdfBlob(template: ReportTemplate, data: PdfTemplatePayload): Blob {
+  const lines = buildPdfLines(template, data);
+  const bytes = composePdfDocument(lines);
+  const blobBytes = new Uint8Array(Array.from(bytes));
+  return new Blob([blobBytes], { type: 'application/pdf' });
 }
 
 function triggerPdfDownload(blob: Blob, filename: string): void {
@@ -237,15 +419,15 @@ function triggerPdfDownload(blob: Blob, filename: string): void {
 }
 
 export async function downloadPatientVisitReportPdf(data: PatientVisitReportData): Promise<void> {
-  const blob = await requestPdfFromServer('patient', data);
+  const blob = buildPdfBlob('patient', data);
   triggerPdfDownload(blob, `informe-paciente-${data.visitId}.pdf`);
 }
 
 export async function downloadClinicianVisitReportPdf(data: ClinicianVisitReportData): Promise<void> {
-  const blob = await requestPdfFromServer('clinician', data);
+  const blob = buildPdfBlob('clinician', data);
   triggerPdfDownload(blob, `informe-medico-${data.visitId}.pdf`);
 }
 
 export function openPrintableHtmlDocument(): never {
-  throw new Error('La impresión HTML local fue retirada. Utilice la generación institucional en /api/reports/pdf.');
+  throw new Error('La impresión HTML local fue retirada. Use la descarga PDF en navegador.');
 }
