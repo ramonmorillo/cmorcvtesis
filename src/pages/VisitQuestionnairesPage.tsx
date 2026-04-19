@@ -241,7 +241,6 @@ export function VisitQuestionnairesPage() {
 
     const payload: QuestionnaireResponseUpsertInput[] = [
       {
-        user_id: visitPatientId,
         visit_id: visitId,
         questionnaire_type: 'iexpac',
         responses: iexpacMetrics.responses,
@@ -249,7 +248,6 @@ export function VisitQuestionnairesPage() {
         secondary_score: iexpacMetrics.secondaryScore,
       },
       {
-        user_id: visitPatientId,
         visit_id: visitId,
         questionnaire_type: 'morisky',
         responses: moriskyMetrics.responses,
@@ -257,7 +255,6 @@ export function VisitQuestionnairesPage() {
         secondary_score: null,
       },
       {
-        user_id: visitPatientId,
         visit_id: visitId,
         questionnaire_type: 'eq5d',
         responses: eq5dMetrics.responses,

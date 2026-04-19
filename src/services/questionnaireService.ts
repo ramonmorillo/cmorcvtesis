@@ -45,7 +45,6 @@ export type QuestionnaireResponseRecord = {
 };
 
 export type QuestionnaireResponseUpsertInput = {
-  user_id: string;
   visit_id: string;
   questionnaire_type: QuestionnaireType;
   responses: Record<string, unknown>;
@@ -289,14 +288,24 @@ export async function saveQuestionnaireBundle(input: QuestionnaireResponseUpsert
     return { data: [], errorMessage: 'Supabase no está configurado. No se pueden guardar cuestionarios.' };
   }
 
+  const authResult = await supabase.auth.getUser();
+  if (authResult.error) {
+    return { data: [], errorMessage: extractErrorMessage(authResult.error) };
+  }
+
+  const authenticatedUser = authResult.data.user;
+  if (!authenticatedUser) {
+    return { data: [], errorMessage: 'No hay un usuario autenticado. Inicia sesión e inténtalo de nuevo.' };
+  }
+
   const measurementMapResult = await resolveQuestionnaireMeasurementMap();
   if (measurementMapResult.errorMessage) {
     return { data: [], errorMessage: measurementMapResult.errorMessage };
   }
 
-  const payload = input.map(({ visit_id, user_id, questionnaire_type, responses }) => ({
+  const payload = input.map(({ visit_id, questionnaire_type, responses }) => ({
     visit_id,
-    user_id,
+    user_id: authenticatedUser.id,
     measurement_id: measurementMapResult.measurementIdByType.get(questionnaire_type) ?? null,
     responses,
   }));
