@@ -136,7 +136,7 @@ function deriveCoordinationRecommendations(cmoPriority: number | null | undefine
 
 function getInstitutionalFooter(): string {
   return [
-    `Proyecto de tesis doctoral: “${THESIS_INSTITUTIONAL_REFERENCE.projectTitle}”.`,
+    `IRIS · Proyecto de tesis doctoral: “${THESIS_INSTITUTIONAL_REFERENCE.projectTitle}”.`,
     `Doctoranda: ${THESIS_INSTITUTIONAL_REFERENCE.doctoralCandidate}.`,
     `Universidad: ${THESIS_INSTITUTIONAL_REFERENCE.university}.`,
     `Referencia institucional: ${THESIS_INSTITUTIONAL_REFERENCE.siceiaCode}.`,

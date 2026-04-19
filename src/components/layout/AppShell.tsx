@@ -90,11 +90,14 @@ export function AppShell() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <Link className="brand" to="/dashboard">
-          CMO-RCV Tesis
-        </Link>
+        <div className="brand-stack">
+          <Link className="brand" to="/dashboard">
+            IRIS
+          </Link>
+          <span className="brand-subtitle">Intelligent Risk & Intervention Suite</span>
+        </div>
         <nav>
-          <span className="session-pill">Conectado</span>
+          <span className="session-pill">Entorno clínico activo</span>
           <NavLink to="/dashboard" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
             Dashboard
           </NavLink>
@@ -102,7 +105,10 @@ export function AppShell() {
             Pacientes
           </NavLink>
           <NavLink to="/patients/new" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-            Alta paciente
+            Nuevo paciente
+          </NavLink>
+          <NavLink to="/project" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+            Proyecto
           </NavLink>
           <button type="button" className="nav-link nav-link-button" onClick={handleSignOut} disabled={isSigningOut}>
             {isSigningOut ? 'Saliendo...' : 'Cerrar sesión'}

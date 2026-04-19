@@ -8,4 +8,4 @@ export const THESIS_INSTITUTIONAL_REFERENCE = {
 } as const;
 
 export const THESIS_SHORT_FOOTER =
-  'Proyecto de tesis doctoral CMO-RCV · Universidad de Sevilla (Facultad de Farmacia) · SICEIA-2025-001663';
+  'IRIS · Proyecto doctoral CMO-RCV · Universidad de Sevilla (Facultad de Farmacia) · SICEIA-2025-001663';

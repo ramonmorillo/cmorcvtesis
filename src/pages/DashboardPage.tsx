@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { EmptyState } from '../components/common/EmptyState';
-import { InstitutionalReference } from '../components/common/InstitutionalReference';
 import { ErrorState } from '../components/common/ErrorState';
 import { getVisitTypeLabel } from '../constants/enums';
 import { loadDashboardData, type DashboardData } from '../services/dashboardService';
@@ -51,21 +50,21 @@ export function DashboardPage() {
 
   return (
     <div className="page-stack">
-      <section className="card">
+      <section className="card iris-hero-card">
         <div className="section-header">
           <div>
-            <h1>Dashboard</h1>
-            <p className="help-text">Vista operacional actual + bloque estratégico Dashboard PRO.</p>
+            <p className="iris-eyebrow">IRIS Insights</p>
+            <h1>Dashboard clínico</h1>
+            <p className="help-text">Panel operativo y estratégico para seguimiento poblacional de riesgo cardiovascular.</p>
           </div>
         </div>
       </section>
 
-      <InstitutionalReference />
 
       <section className="card">
         <div className="section-header">
           <div>
-            <h2>Administración · Exportación de datos para tesis</h2>
+            <h2>Administración · Exportación de datos IRIS</h2>
             <p className="help-text">Genera archivos CSV anonimizados (UTF-8) compatibles con Excel, SPSS y R.</p>
           </div>
           <button type="button" onClick={handleExportData} disabled={exporting}>
@@ -78,7 +77,7 @@ export function DashboardPage() {
 
       <section className="card">
         <div className="section-header">
-          <h2>Dashboard PRO · Cohorte</h2>
+          <h2>IRIS Analytics · Cohorte</h2>
         </div>
         <div className="kpi-grid kpi-grid-pro">
           <article className="kpi-card kpi-card-pro">
@@ -103,7 +102,7 @@ export function DashboardPage() {
       </section>
 
       <section className="card">
-        <h2>Dashboard PRO · Seguimiento</h2>
+        <h2>IRIS Analytics · Seguimiento</h2>
         <div className="kpi-grid kpi-grid-pro">
           <article className="kpi-card kpi-card-pro"><p>Nº visitas basal</p><strong>{data.pro.followup.baselineVisits}</strong></article>
           <article className="kpi-card kpi-card-pro"><p>Nº visitas 3m</p><strong>{data.pro.followup.month3Visits}</strong></article>
@@ -114,7 +113,7 @@ export function DashboardPage() {
       </section>
 
       <section className="card">
-        <h2>Dashboard PRO · Evolución clínica</h2>
+        <h2>IRIS Analytics · Evolución clínica</h2>
         <div className="kpi-grid kpi-grid-pro">
           <article className="kpi-card kpi-card-pro kpi-card-positive"><p>Pacientes mejoran nivel</p><strong>{data.pro.clinicalEvolution.improved}</strong></article>
           <article className="kpi-card kpi-card-pro kpi-card-warning"><p>Pacientes empeoran</p><strong>{data.pro.clinicalEvolution.worsened}</strong></article>
@@ -124,7 +123,7 @@ export function DashboardPage() {
       </section>
 
       <section className="card">
-        <h2>Dashboard PRO · Actividad farmacéutica</h2>
+        <h2>IRIS Analytics · Actividad farmacéutica</h2>
         <div className="kpi-grid kpi-grid-pro">
           <article className="kpi-card kpi-card-pro">
             <p>Intervenciones totales</p>

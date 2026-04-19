@@ -11,9 +11,9 @@ export function InstitutionalReference({ compact = false }: InstitutionalReferen
 
   return (
     <section className="card institutional-block" aria-label="Referencia institucional">
-      <h2>Referencia institucional de tesis</h2>
+      <h2>Referencia institucional · IRIS</h2>
       <p>
-        Proyecto vinculado a la tesis doctoral:
+        Proyecto universitario vinculado:
         <br />
         <strong>“{THESIS_INSTITUTIONAL_REFERENCE.projectTitle}”</strong>
       </p>
