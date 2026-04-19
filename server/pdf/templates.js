@@ -34,40 +34,42 @@ function renderBaseDocument({ title, subtitle, generatedAtLabel, bodySections, i
 
       @page {
         size: A4;
-        margin: 22mm 17mm 24mm 17mm;
+        margin: 20mm 16mm 24mm 16mm;
       }
 
       * { box-sizing: border-box; }
 
       body {
         font-family: 'IRIS Unicode';
-        color: #172033;
+        color: #1a2433;
         margin: 0;
         font-size: 12px;
-        line-height: 1.55;
+        line-height: 1.58;
         letter-spacing: 0.01em;
+        background: #ffffff;
       }
 
       .sheet {
         min-height: 100vh;
         position: relative;
-        padding-bottom: 34mm;
+        padding-bottom: 36mm;
       }
 
       .report-header {
-        border: 1px solid #d8e2ef;
-        border-top: 5px solid #0e5e78;
-        border-radius: 10px;
-        padding: 14px 16px;
-        margin-bottom: 16px;
-        background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+        border: 1px solid #d5dfec;
+        border-top: 4px solid #0a4f66;
+        border-radius: 8px;
+        padding: 13px 15px 12px;
+        margin-bottom: 18px;
+        background: linear-gradient(180deg, #f6f9fd 0%, #ffffff 100%);
+        box-shadow: 0 0 0 1px #eef3f9 inset;
       }
 
       .institution {
-        color: #0e5e78;
-        font-size: 10.5px;
+        color: #0a4f66;
+        font-size: 10px;
         font-weight: 700;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.09em;
         text-transform: uppercase;
         margin: 0;
       }
@@ -75,45 +77,54 @@ function renderBaseDocument({ title, subtitle, generatedAtLabel, bodySections, i
       .brand-row {
         display: flex;
         justify-content: space-between;
-        gap: 12px;
+        gap: 14px;
         align-items: baseline;
-        margin: 8px 0 6px;
+        margin: 9px 0 7px;
       }
 
       h1 {
         margin: 0;
-        font-size: 20px;
-        line-height: 1.25;
+        font-size: 19px;
+        line-height: 1.3;
+        color: #12283b;
+        letter-spacing: 0.01em;
       }
 
       .audience {
-        color: #28516a;
-        font-size: 11px;
+        color: #224a62;
+        font-size: 10.5px;
         font-weight: 600;
+        border: 1px solid #cfdceb;
+        border-radius: 999px;
+        padding: 2px 8px;
+        background: #f6f9fd;
       }
 
       .meta {
         margin: 0;
-        color: #3f4f63;
-        font-size: 11px;
+        color: #3b4c61;
+        font-size: 10.5px;
       }
 
       section {
-        margin-bottom: 13px;
+        margin-bottom: 12px;
         page-break-inside: avoid;
       }
 
       .section-card {
-        border: 1px solid #e4ebf4;
-        border-radius: 8px;
-        padding: 10px 12px;
+        border: 1px solid #dfe7f2;
+        border-radius: 7px;
+        padding: 10px 11px;
         background: #ffffff;
+        box-shadow: 0 1px 0 #f3f6fa;
       }
 
       h2 {
-        font-size: 13px;
-        margin: 0 0 6px;
-        color: #0b4d63;
+        font-size: 12.8px;
+        margin: 0 0 7px;
+        color: #0c4b61;
+        padding-bottom: 4px;
+        border-bottom: 1px solid #e8eef6;
       }
 
       p {
@@ -122,11 +133,11 @@ function renderBaseDocument({ title, subtitle, generatedAtLabel, bodySections, i
 
       ul {
         margin: 0;
-        padding-left: 18px;
+        padding-left: 17px;
       }
 
       li + li {
-        margin-top: 4px;
+        margin-top: 3px;
       }
 
       .footer {
@@ -134,23 +145,25 @@ function renderBaseDocument({ title, subtitle, generatedAtLabel, bodySections, i
         left: 0;
         right: 0;
         bottom: 0;
-        border-top: 1px solid #cbd5e1;
-        padding: 7px 0 0;
-        font-size: 9.5px;
-        color: #425569;
+        border-top: 1px solid #c5d2e2;
+        padding: 8px 0 0;
+        font-size: 9.3px;
+        color: #3f5267;
         background: #fff;
       }
 
       .footer-grid {
         display: grid;
         grid-template-columns: 1fr auto;
-        gap: 10px;
+        gap: 12px;
         align-items: end;
       }
 
       .signature {
         text-align: right;
         white-space: nowrap;
+        padding-left: 12px;
+        border-left: 1px solid #d7e1ed;
       }
 
       .signature-name {
