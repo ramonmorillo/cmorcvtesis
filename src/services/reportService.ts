@@ -57,6 +57,7 @@ const PDF_BODY_COLOR = '0.07 0.11 0.19 rg';
 const PDF_MUTED_COLOR = '0.30 0.35 0.42 rg';
 const PDF_HEADER_COLOR = '0.02 0.24 0.55 rg';
 const PDF_LINE_HEIGHT = 1.35;
+const PDF_DEBUG_LOGS = true;
 
 function toDateLabel(value: string | null): string {
   if (!value) return 'No disponible';
@@ -354,8 +355,7 @@ function createPdfPages(lines: PdfLine[]): string[] {
         y = PDF_PAGE_HEIGHT - PDF_MARGIN_TOP;
       }
 
-      currentCommands.push(line.font === 'bold' ? '/F2 1 Tf' : '/F1 1 Tf');
-      currentCommands.push(`${line.size} Tf`);
+      currentCommands.push(`${line.font === 'bold' ? '/F2' : '/F1'} ${line.size} Tf`);
       currentCommands.push(line.size <= 10 ? PDF_MUTED_COLOR : PDF_BODY_COLOR);
       currentCommands.push(`1 0 0 1 ${(PDF_MARGIN_LEFT + lineIndent).toFixed(2)} ${y.toFixed(2)} Tm`);
       currentCommands.push(`(${escapePdfText(wrappedLine || ' ')}) Tj`);
@@ -422,6 +422,65 @@ function buildPdfBlob(pageStreams: string[]): Blob {
   return new Blob([pdf], { type: 'application/pdf' });
 }
 
+function validatePdfBlobStructure(blob: Blob): Promise<{ hasPdfHeader: boolean; hasXref: boolean; hasTrailer: boolean; hasEOF: boolean }> {
+  return blob.text().then((text) => ({
+    hasPdfHeader: text.startsWith('%PDF-'),
+    hasXref: text.includes('\nxref\n'),
+    hasTrailer: text.includes('\ntrailer\n'),
+    hasEOF: text.trimEnd().endsWith('%%EOF'),
+  }));
+}
+
+function logPdfDebug(context: {
+  reportType: 'patient' | 'clinician';
+  fileName: string;
+  dataPreview: Record<string, unknown>;
+  linesCount: number;
+  pagesCount: number;
+  blob: Blob;
+  renderError?: unknown;
+}): void {
+  if (!PDF_DEBUG_LOGS) return;
+
+  console.info('[PDF DEBUG] report data preview', {
+    reportType: context.reportType,
+    fileName: context.fileName,
+    dataPreview: context.dataPreview,
+    linesCount: context.linesCount,
+    pagesCount: context.pagesCount,
+  });
+  console.info('[PDF DEBUG] blob metadata', {
+    reportType: context.reportType,
+    fileName: context.fileName,
+    blobSize: context.blob.size,
+    blobType: context.blob.type,
+  });
+
+  validatePdfBlobStructure(context.blob)
+    .then((structure) => {
+      console.info('[PDF DEBUG] blob structure', {
+        reportType: context.reportType,
+        fileName: context.fileName,
+        ...structure,
+      });
+    })
+    .catch((error) => {
+      console.error('[PDF DEBUG] structure validation error', {
+        reportType: context.reportType,
+        fileName: context.fileName,
+        error,
+      });
+    });
+
+  if (context.renderError) {
+    console.error('[PDF DEBUG] document build error', {
+      reportType: context.reportType,
+      fileName: context.fileName,
+      error: context.renderError,
+    });
+  }
+}
+
 function triggerPdfDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -450,13 +509,77 @@ export async function generateClinicianVisitReportPdf(data: ClinicianVisitReport
 }
 
 export async function downloadPatientVisitReportPdf(data: PatientVisitReportData): Promise<void> {
-  const pdfBlob = await generatePatientVisitReportPdf(data);
-  triggerPdfDownload(pdfBlob, `informe-paciente-${safeFilePart(data.visitId)}.pdf`);
+  const fileName = `informe-paciente-${safeFilePart(data.visitId)}.pdf`;
+  const dataPreview = {
+    visitId: data.visitId,
+    visitTypeLabel: data.visitTypeLabel,
+    interventionsCount: data.interventions.length,
+    recommendationsCount: data.recommendations.length,
+    hasSummary: Boolean(data.simpleSummary?.trim()),
+  };
+
+  try {
+    const lines = buildPatientReportLines(data);
+    const pages = createPdfPages(lines);
+    const pdfBlob = buildPdfBlob(pages);
+    logPdfDebug({
+      reportType: 'patient',
+      fileName,
+      dataPreview,
+      linesCount: lines.length,
+      pagesCount: pages.length,
+      blob: pdfBlob,
+    });
+    triggerPdfDownload(pdfBlob, fileName);
+  } catch (error) {
+    logPdfDebug({
+      reportType: 'patient',
+      fileName,
+      dataPreview,
+      linesCount: 0,
+      pagesCount: 0,
+      blob: new Blob([], { type: 'application/pdf' }),
+      renderError: error,
+    });
+    throw error;
+  }
 }
 
 export async function downloadClinicianVisitReportPdf(data: ClinicianVisitReportData): Promise<void> {
-  const pdfBlob = await generateClinicianVisitReportPdf(data);
-  triggerPdfDownload(pdfBlob, `informe-medico-${safeFilePart(data.visitId)}.pdf`);
+  const fileName = `informe-medico-${safeFilePart(data.visitId)}.pdf`;
+  const dataPreview = {
+    visitId: data.visitId,
+    visitTypeLabel: data.visitTypeLabel,
+    interventionsCount: data.interventions.length,
+    questionnairesCount: data.relevantQuestionnaires.length,
+    hasClinicalSummary: Boolean(data.clinicalSummary?.trim()),
+  };
+
+  try {
+    const lines = buildClinicianReportLines(data);
+    const pages = createPdfPages(lines);
+    const pdfBlob = buildPdfBlob(pages);
+    logPdfDebug({
+      reportType: 'clinician',
+      fileName,
+      dataPreview,
+      linesCount: lines.length,
+      pagesCount: pages.length,
+      blob: pdfBlob,
+    });
+    triggerPdfDownload(pdfBlob, fileName);
+  } catch (error) {
+    logPdfDebug({
+      reportType: 'clinician',
+      fileName,
+      dataPreview,
+      linesCount: 0,
+      pagesCount: 0,
+      blob: new Blob([], { type: 'application/pdf' }),
+      renderError: error,
+    });
+    throw error;
+  }
 }
 
 /**
