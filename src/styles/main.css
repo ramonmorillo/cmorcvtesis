@@ -176,3 +176,27 @@ th,td { text-align: left; padding: 0.6rem; border-bottom: 1px solid #e5e7eb; }
   color: #334155;
   border: 1px solid #cbd5e1;
 }
+
+.institutional-block h2 {
+  margin-bottom: 0.6rem;
+}
+
+.institutional-block p {
+  margin-bottom: 0.65rem;
+  color: #334155;
+}
+
+.app-footer {
+  width: min(1100px, 94vw);
+  margin: 0 auto 1rem;
+}
+
+.institutional-footer {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.85rem;
+}
