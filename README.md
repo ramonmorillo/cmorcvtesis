@@ -6,6 +6,7 @@ Aplicación web ligera para la tesis doctoral de riesgo cardiovascular en farmac
 
 - **Frontend**: React + Vite (SPA ligera con `createHashRouter` para servir correctamente en GitHub Pages).
 - **Backend real**: Supabase (Auth + tablas `patients`, `visits`, `clinical_assessments`, `interventions`, `cmo_config`).
+- **Motor PDF**: Servicio Node.js con **Playwright + Chromium** (`/api/reports/pdf`) usando plantillas HTML profesionales para informes de paciente y clínico.
 - **Despliegue**: GitHub Pages mediante GitHub Actions, publicando `dist/`.
 
 ## Requisitos
@@ -35,6 +36,37 @@ npm run build
 ```
 
 La configuración `base: '/cmorcvtesis/'` evita rutas rotas en Pages.
+
+## Motor PDF Playwright (producción)
+
+### Dependencias exactas
+
+- `playwright`
+- `express`
+
+### Instalación exacta
+
+```bash
+npm install
+npx playwright install chromium
+```
+
+### Ejecución del servidor PDF
+
+```bash
+npm run reports:server
+```
+
+- Endpoint de salud: `GET http://localhost:4173/api/reports/health`
+- Endpoint de generación: `POST http://localhost:4173/api/reports/pdf`
+- Tipos soportados de plantilla:
+  - `patient` → nombre de archivo: `informe-paciente-[visitId].pdf`
+  - `clinician` → nombre de archivo: `informe-medico-[visitId].pdf`
+
+### Integración frontend
+
+- Configura `VITE_REPORTS_API_BASE_URL` (ejemplo: `http://localhost:4173/api`).
+- Si no se define, el frontend usa `/api` por defecto.
 
 ## GitHub Pages
 
