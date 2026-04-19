@@ -39,12 +39,12 @@ function renderBaseDocument({ title, subtitle, generatedAtLabel, bodySections, i
         line-height: 1.5;
       }
       .report-header {
-        border-bottom: 2px solid #1a4a8a;
+        border-bottom: 2px solid #0e5e78;
         margin-bottom: 18px;
         padding-bottom: 12px;
       }
       .institution {
-        color: #1a4a8a;
+        color: #0e5e78;
         font-size: 12px;
         letter-spacing: 0.04em;
         text-transform: uppercase;
@@ -65,7 +65,7 @@ function renderBaseDocument({ title, subtitle, generatedAtLabel, bodySections, i
       h2 {
         font-size: 14px;
         margin: 0 0 6px;
-        color: #183b6d;
+        color: #0b4d63;
       }
       ul {
         margin: 0;
@@ -99,7 +99,8 @@ function renderBaseDocument({ title, subtitle, generatedAtLabel, bodySections, i
   </head>
   <body>
     <header class="report-header">
-      <p class="institution">Programa doctoral · Atención farmacéutica cardiovascular</p>
+      <p class="institution">IRIS · Plataforma clínica de atención farmacéutica cardiovascular</p>
+      <p class="meta"><strong>Branding:</strong> IRIS</p>
       <h1>${escapeHtml(title)}</h1>
       <p class="meta">${escapeHtml(subtitle)} · Generado: ${escapeHtml(generatedAtLabel)}</p>
       <p class="unicode-proof">Unicode validado: á é í ó ú ñ Ñ ü ¿ ¡</p>

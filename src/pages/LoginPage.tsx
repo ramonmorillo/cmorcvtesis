@@ -73,6 +73,7 @@ export function LoginPage() {
   return (
     <div className="auth-page">
       <section className="card auth-card">
+        <p className="iris-eyebrow">Bienvenido a IRIS</p>
         <h1>Acceso profesional</h1>
         <p>Introduce tus credenciales de Supabase Auth para continuar.</p>
         {checkingSession ? (

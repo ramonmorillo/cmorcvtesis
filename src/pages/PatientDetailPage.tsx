@@ -283,9 +283,12 @@ export function PatientDetailPage() {
 
   return (
     <div className="page-stack">
-      <section className="card">
+      <section className="card iris-hero-card">
         <div className="section-header">
-          <h1>Ficha de paciente</h1>
+          <div>
+            <p className="iris-eyebrow">IRIS Patient View</p>
+            <h1>Ficha de paciente</h1>
+          </div>
           <div className="actions-inline">
             <Link className="button-link" to={`/patients/${patient.id}/visits/new`}>
               Nueva visita
