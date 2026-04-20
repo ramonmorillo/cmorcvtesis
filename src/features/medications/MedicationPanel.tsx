@@ -231,6 +231,8 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
   const [catalogOptions, setCatalogOptions] = useState<MedicationCatalogItem[]>([]);
   const [externalCatalogQuery, setExternalCatalogQuery] = useState('');
   const [externalCatalogOptions, setExternalCatalogOptions] = useState<ExternalMedicationSearchItem[]>([]);
+  const [externalCatalogLoading, setExternalCatalogLoading] = useState(false);
+  const [externalCatalogError, setExternalCatalogError] = useState<string | null>(null);
   const [importingExternalItemId, setImportingExternalItemId] = useState<string | null>(null);
   const [eventSummary, setEventSummary] = useState<VisitMedicationEvent[]>([]);
   const [showCreateCatalogForm, setShowCreateCatalogForm] = useState(false);
@@ -310,12 +312,37 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
   }, [catalogQuery]);
 
   useEffect(() => {
-    void (async () => {
-      const result = await searchExternalMedicationCatalog(externalCatalogQuery);
-      if (!result.errorMessage) {
+    const trimmedQuery = externalCatalogQuery.trim();
+
+    if (trimmedQuery.length < 3) {
+      setExternalCatalogOptions([]);
+      setExternalCatalogLoading(false);
+      setExternalCatalogError(null);
+      return;
+    }
+
+    setExternalCatalogLoading(true);
+    setExternalCatalogError(null);
+
+    const timeoutId = window.setTimeout(() => {
+      void (async () => {
+        const result = await searchExternalMedicationCatalog(trimmedQuery);
+        if (result.errorMessage) {
+          setExternalCatalogOptions([]);
+          setExternalCatalogError(result.errorMessage);
+          setExternalCatalogLoading(false);
+          return;
+        }
+
         setExternalCatalogOptions(result.data);
-      }
-    })();
+        setExternalCatalogError(null);
+        setExternalCatalogLoading(false);
+      })();
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
   }, [externalCatalogQuery]);
 
   const activeCount = useMemo(() => rows.filter((row) => row.is_active).length, [rows]);
@@ -379,6 +406,8 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
     setCatalogInfoMessage(`"${selected.label}" importado desde fuente externa y añadido a la visita actual.`);
     setExternalCatalogQuery('');
     setExternalCatalogOptions([]);
+    setExternalCatalogLoading(false);
+    setExternalCatalogError(null);
     setImportingExternalItemId(null);
   };
 
@@ -552,7 +581,10 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
           Buscar en catálogo externo (CIMA)
           <input
             value={externalCatalogQuery}
-            onChange={(event) => setExternalCatalogQuery(event.target.value)}
+            onChange={(event) => {
+              setExternalCatalogError(null);
+              setExternalCatalogQuery(event.target.value);
+            }}
             placeholder="Ej. atorvastatina, CN..."
           />
         </label>
@@ -577,6 +609,21 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
           </select>
         </label>
       </div>
+      {externalCatalogLoading ? (
+        <p className="help-text" style={{ marginBottom: '0.8rem', color: '#1d4ed8' }}>
+          Buscando en CIMA...
+        </p>
+      ) : null}
+      {!externalCatalogLoading && externalCatalogError ? (
+        <p className="help-text" style={{ marginBottom: '0.8rem', color: '#b91c1c', fontWeight: 600 }}>
+          Error en búsqueda externa: {externalCatalogError}
+        </p>
+      ) : null}
+      {!externalCatalogLoading && !externalCatalogError && externalCatalogQuery.trim().length >= 3 && externalCatalogOptions.length === 0 ? (
+        <p className="help-text" style={{ marginBottom: '0.8rem', color: '#475569' }}>
+          Sin resultados en catálogo externo (CIMA).
+        </p>
+      ) : null}
       {catalogInfoMessage ? (
         <p className="help-text" style={{ marginBottom: '0.8rem', color: '#1d4ed8', fontWeight: 600 }}>
           {catalogInfoMessage}
