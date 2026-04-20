@@ -229,6 +229,8 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
 
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogOptions, setCatalogOptions] = useState<MedicationCatalogItem[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [externalCatalogQuery, setExternalCatalogQuery] = useState('');
   const [externalCatalogOptions, setExternalCatalogOptions] = useState<ExternalMedicationSearchItem[]>([]);
   const [externalCatalogLoading, setExternalCatalogLoading] = useState(false);
@@ -303,11 +305,29 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
   }, [visitId]);
 
   useEffect(() => {
+    const trimmedQuery = catalogQuery.trim();
+
+    if (trimmedQuery.length < 2) {
+      setCatalogOptions([]);
+      setCatalogLoading(false);
+      setCatalogError(null);
+      return;
+    }
+
     void (async () => {
-      const result = await searchMedicationCatalog(catalogQuery);
-      if (!result.errorMessage) {
-        setCatalogOptions(result.data);
+      setCatalogLoading(true);
+      setCatalogError(null);
+
+      const result = await searchMedicationCatalog(trimmedQuery);
+      if (result.errorMessage) {
+        setCatalogOptions([]);
+        setCatalogError(result.errorMessage);
+        setCatalogLoading(false);
+        return;
       }
+
+      setCatalogOptions(result.data);
+      setCatalogLoading(false);
     })();
   }, [catalogQuery]);
 
@@ -367,6 +387,8 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
     setSuccessMessage(null);
     setCatalogInfoMessage(`"${selected.display_name}" añadido a la visita actual.`);
     setCatalogQuery('');
+    setCatalogOptions([]);
+    setCatalogError(null);
   };
 
   const handleImportExternalMedication = async (externalId: string) => {
@@ -566,7 +588,11 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
 
         <label>
           Añadir medicamento
-          <select defaultValue="" onChange={(event) => handleAddCatalogMedication(event.target.value)}>
+          <select
+            defaultValue=""
+            onChange={(event) => handleAddCatalogMedication(event.target.value)}
+            disabled={catalogQuery.trim().length < 2 || catalogLoading}
+          >
             <option value="">Seleccionar medicamento del catálogo</option>
             {catalogOptions.map((item) => (
               <option key={item.id} value={item.id}>
@@ -576,6 +602,26 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
           </select>
         </label>
       </div>
+      {catalogLoading ? (
+        <p className="help-text" style={{ marginBottom: '0.8rem', color: '#1d4ed8' }}>
+          Buscando en catálogo interno...
+        </p>
+      ) : null}
+      {!catalogLoading && catalogError ? (
+        <p className="help-text" style={{ marginBottom: '0.8rem', color: '#b91c1c', fontWeight: 600 }}>
+          Error en búsqueda de catálogo: {catalogError}
+        </p>
+      ) : null}
+      {!catalogLoading && !catalogError && catalogQuery.trim().length > 0 && catalogQuery.trim().length < 2 ? (
+        <p className="help-text" style={{ marginBottom: '0.8rem' }}>
+          Escribe al menos 2 caracteres para buscar en catálogo.
+        </p>
+      ) : null}
+      {!catalogLoading && !catalogError && catalogQuery.trim().length >= 2 && catalogOptions.length === 0 ? (
+        <p className="help-text" style={{ marginBottom: '0.8rem' }}>
+          No se encontraron medicamentos en catálogo para tu búsqueda.
+        </p>
+      ) : null}
       <div className="grid-2" style={{ marginBottom: '0.9rem' }}>
         <label>
           Buscar en catálogo externo (CIMA)
