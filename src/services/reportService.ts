@@ -1,5 +1,8 @@
 import { getVisitTypeLabel } from '../constants/enums';
 import { THESIS_INSTITUTIONAL_REFERENCE } from '../constants/institutional';
+import { normalizeMedicationDisplayName } from '../features/medications/displayFormat';
+import { listVisitMedicationSnapshot } from '../features/medications/medicationsService';
+import type { PatientMedication } from '../features/medications/types';
 import { getCmoScoreByVisit } from './cmoScoreService';
 import { listInterventionsByVisit, type Intervention } from './interventionService';
 import { getPatientById } from './patientService';
@@ -15,6 +18,7 @@ export type PatientVisitReportData = {
   cmoLevelLabel: string;
   interventions: string[];
   recommendations: string[];
+  activeMedications: string[];
   followUp: string;
   institutionalFooter: string;
 };
@@ -27,6 +31,7 @@ export type ClinicianVisitReportData = {
   cmoScoreLabel: string;
   relevantQuestionnaires: string[];
   interventions: string[];
+  activeMedications: string[];
   clinicalSummary: string;
   careCoordinationRecommendations: string[];
   institutionalFooter: string;
@@ -132,6 +137,42 @@ function deriveCoordinationRecommendations(cmoPriority: number | null | undefine
   return ['No existe prioridad CMO registrada para emitir recomendaciones de coordinación específicas.'];
 }
 
+function buildMedicationDisplayName(item: PatientMedication): string {
+  const preferredLabel = item.selected_label_snapshot?.trim() || item.medication_catalog?.display_name?.trim() || '';
+  const normalizedName = normalizeMedicationDisplayName(preferredLabel);
+  return normalizedName || 'Medicamento sin nombre';
+}
+
+function buildMedicationReportLine(item: PatientMedication): string {
+  const fields = [
+    item.dose_text?.trim(),
+    item.frequency_text?.trim(),
+    item.route_text?.trim(),
+    item.notes?.trim(),
+  ].filter((value): value is string => Boolean(value));
+
+  if (fields.length === 0) {
+    return buildMedicationDisplayName(item);
+  }
+
+  return `${buildMedicationDisplayName(item)} · ${fields.join(' · ')}`;
+}
+
+function mapActiveMedicationLines(items: PatientMedication[]): string[] {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+
+  for (const item of items) {
+    const line = buildMedicationReportLine(item);
+    const dedupeKey = line.toLocaleLowerCase('es-ES');
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    lines.push(line);
+  }
+
+  return lines;
+}
+
 function getInstitutionalFooter(): string {
   return [
     `IRIS · Proyecto de tesis doctoral: “${THESIS_INSTITUTIONAL_REFERENCE.projectTitle}”.`,
@@ -153,11 +194,12 @@ export async function loadVisitReportData(visitId: string): Promise<VisitReportL
   }
 
   const visit = visitResult.data;
-  const [patientResult, cmoResult, interventionsResult, questionnairesResult] = await Promise.all([
+  const [patientResult, cmoResult, interventionsResult, questionnairesResult, medicationSnapshotResult] = await Promise.all([
     getPatientById(visit.patient_id),
     getCmoScoreByVisit(visitId),
     listInterventionsByVisit(visitId),
     listQuestionnairesByVisit(visitId),
+    listVisitMedicationSnapshot(visitId),
   ]);
 
   const missingFields: string[] = [];
@@ -170,6 +212,7 @@ export async function loadVisitReportData(visitId: string): Promise<VisitReportL
   const patient = patientResult.data;
   const interventions = interventionsResult.data ?? [];
   const questionnaires = questionnairesResult.data ?? [];
+  const activeMedicationLines = mapActiveMedicationLines(medicationSnapshotResult.data ?? []);
   const cmoScore = cmoResult.data?.score ?? null;
 
   const visitTypeLabel = getVisitTypeLabel(visit.visit_type);
@@ -188,6 +231,7 @@ export async function loadVisitReportData(visitId: string): Promise<VisitReportL
       cmoLevelLabel: cmoLevel,
       interventions: interventions.map(formatInterventionItem),
       recommendations: derivePatientRecommendations(interventions),
+      activeMedications: activeMedicationLines,
       followUp:
         'Plan de seguimiento: acudir a la próxima visita con la medicación actualizada. Si surgen dudas, olvida dosis o aparecen efectos adversos, contacte antes con su equipo de salud para ajustar el plan.',
       institutionalFooter: getInstitutionalFooter(),
@@ -200,12 +244,18 @@ export async function loadVisitReportData(visitId: string): Promise<VisitReportL
       cmoScoreLabel: cmoResult.data ? `${cmoResult.data.score} puntos · ${cmoLevel}` : 'No disponible',
       relevantQuestionnaires: questionnaires.map(formatQuestionnaireItem),
       interventions: interventions.map(formatInterventionItem),
+      activeMedications: activeMedicationLines,
       clinicalSummary: deriveClinicalSummary(visit, cmoScore, questionnaires),
       careCoordinationRecommendations: deriveCoordinationRecommendations(cmoResult.data?.priority),
       institutionalFooter: getInstitutionalFooter(),
     },
     errorMessage:
-      patientResult.errorMessage ?? cmoResult.errorMessage ?? interventionsResult.errorMessage ?? questionnairesResult.errorMessage ?? null,
+      patientResult.errorMessage ??
+      cmoResult.errorMessage ??
+      interventionsResult.errorMessage ??
+      questionnairesResult.errorMessage ??
+      medicationSnapshotResult.errorMessage ??
+      null,
     missingFields,
   };
 }
@@ -274,6 +324,13 @@ function buildPdfLines(template: ReportTemplate, data: PdfTemplatePayload): stri
       'Recomendaciones para el paciente',
       ...(patient.recommendations.length > 0 ? patient.recommendations.map((item) => `- ${item}`) : ['- No disponibles']),
       '',
+      ...(patient.activeMedications.length > 0
+        ? [
+            'Medicación activa en el momento de la visita',
+            ...patient.activeMedications.map((item) => `- ${item}`),
+            '',
+          ]
+        : []),
       'Seguimiento',
       patient.followUp,
       '',
@@ -307,6 +364,13 @@ function buildPdfLines(template: ReportTemplate, data: PdfTemplatePayload): stri
     'Intervenciones registradas',
     ...(clinician.interventions.length > 0 ? clinician.interventions.map((item) => `- ${item}`) : ['- No disponibles']),
     '',
+    ...(clinician.activeMedications.length > 0
+      ? [
+          'Medicación activa en el momento de la visita',
+          ...clinician.activeMedications.map((item) => `- ${item}`),
+          '',
+        ]
+      : []),
     'Recomendaciones de coordinación asistencial',
     ...(clinician.careCoordinationRecommendations.length > 0
       ? clinician.careCoordinationRecommendations.map((item) => `- ${item}`)
