@@ -21,6 +21,13 @@ type ServiceResult<T> = {
   errorMessage: string | null;
 };
 
+function ensureStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean);
+}
+
 const INGREDIENT_SELECT = 'id,source,external_id,name_normalized,name_display,created_at,updated_at';
 const CONCEPT_SELECT =
   'id,canonical_name,fingerprint,strength_text,pharmaceutical_form,pharmaceutical_form_simplified,route_default,is_combination,atc_codes,source_priority,normalization_status,created_at,updated_at';
@@ -113,7 +120,7 @@ async function ensureConcept(candidate: NormalizedMedicationCandidate): Promise<
       pharmaceutical_form_simplified: candidate.pharmaceuticalFormSimplified,
       route_default: candidate.routeDefault,
       is_combination: candidate.ingredientNames.length > 1,
-      atc_codes: candidate.atcCodes,
+      atc_codes: ensureStringArray(candidate.atcCodes),
       source_priority: candidate.sourcePriority,
       normalization_status: candidate.normalizationStatus,
     })
@@ -178,6 +185,9 @@ async function insertProduct(
     return { data: null, errorMessage: 'Supabase no está configurado.' };
   }
 
+  const safeRoutes = ensureStringArray(candidate.routes);
+  const safeAtcCodes = ensureStringArray(candidate.atcCodes);
+
   const { data, error } = await supabase
     .from('med_catalog_products')
     .insert({
@@ -191,8 +201,8 @@ async function insertProduct(
       authorization_status: candidate.authorizationStatus,
       pharmaceutical_form: candidate.pharmaceuticalForm,
       pharmaceutical_form_simplified: candidate.pharmaceuticalFormSimplified,
-      routes: candidate.routes.length > 0 ? candidate.routes : null,
-      atc_codes: candidate.atcCodes,
+      routes: safeRoutes,
+      atc_codes: safeAtcCodes,
       vmpp: candidate.vmpp,
       vmp: candidate.vmp,
       raw_payload: candidate.rawPayload,
