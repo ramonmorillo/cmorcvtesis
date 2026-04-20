@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 import { ErrorState } from '../../components/common/ErrorState';
 import {
+  createMedicationCatalogItem,
   listVisitMedicationEvents,
   listVisitMedicationSnapshot,
   saveVisitMedicationChanges,
@@ -13,6 +14,14 @@ import type { MedicationCatalogItem, PatientMedicationDraft, VisitMedicationEven
 type MedicationPanelProps = {
   visitId: string;
   patientId: string;
+};
+
+type CreateCatalogFormState = {
+  display_name: string;
+  active_ingredient: string;
+  strength: string;
+  form: string;
+  route: string;
 };
 
 type MedicationFormRow = PatientMedicationDraft & {
@@ -218,6 +227,17 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogOptions, setCatalogOptions] = useState<MedicationCatalogItem[]>([]);
   const [eventSummary, setEventSummary] = useState<VisitMedicationEvent[]>([]);
+  const [showCreateCatalogForm, setShowCreateCatalogForm] = useState(false);
+  const [creatingCatalogItem, setCreatingCatalogItem] = useState(false);
+  const [catalogInfoMessage, setCatalogInfoMessage] = useState<string | null>(null);
+  const [catalogDuplicateSuggestion, setCatalogDuplicateSuggestion] = useState<MedicationCatalogItem | null>(null);
+  const [createCatalogForm, setCreateCatalogForm] = useState<CreateCatalogFormState>({
+    display_name: '',
+    active_ingredient: '',
+    strength: '',
+    form: '',
+    route: '',
+  });
 
   useEffect(() => {
     void (async () => {
@@ -299,7 +319,65 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
 
     setRows((prev) => [...prev, emptyDraft(selected)]);
     setSuccessMessage(null);
+    setCatalogInfoMessage(`"${selected.display_name}" añadido a la visita actual.`);
     setCatalogQuery('');
+  };
+
+  const handleSelectDuplicateSuggestion = () => {
+    if (!catalogDuplicateSuggestion) {
+      return;
+    }
+    setRows((prev) => [...prev, emptyDraft(catalogDuplicateSuggestion)]);
+    setCatalogInfoMessage(`Se ha seleccionado "${catalogDuplicateSuggestion.display_name}" del catálogo existente.`);
+    setCatalogDuplicateSuggestion(null);
+    setShowCreateCatalogForm(false);
+  };
+
+  const handleCreateCatalogMedication = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setCatalogInfoMessage(null);
+    setCatalogDuplicateSuggestion(null);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setCreatingCatalogItem(true);
+
+    const result = await createMedicationCatalogItem(createCatalogForm);
+    if (result.errorMessage) {
+      setErrorMessage(result.errorMessage);
+      setCreatingCatalogItem(false);
+      return;
+    }
+
+    if (result.data.duplicate) {
+      setCatalogDuplicateSuggestion(result.data.duplicate);
+      setCatalogInfoMessage(`Ya existe un medicamento muy parecido: "${result.data.duplicate.display_name}".`);
+      setCreatingCatalogItem(false);
+      return;
+    }
+
+    if (!result.data.item) {
+      setErrorMessage('No se pudo crear el medicamento en catálogo.');
+      setCreatingCatalogItem(false);
+      return;
+    }
+
+    const createdItem = result.data.item;
+    const refreshResult = await searchMedicationCatalog(catalogQuery);
+    if (!refreshResult.errorMessage) {
+      setCatalogOptions(refreshResult.data);
+    }
+
+    setRows((prev) => [...prev, emptyDraft(createdItem)]);
+    setCatalogInfoMessage(`Medicamento "${createdItem.display_name}" creado en catálogo interno y añadido a la visita.`);
+    setShowCreateCatalogForm(false);
+    setCreateCatalogForm({
+      display_name: '',
+      active_ingredient: '',
+      strength: '',
+      form: '',
+      route: '',
+    });
+    setCreatingCatalogItem(false);
   };
 
   const handleChange = <K extends keyof MedicationFormRow>(index: number, key: K, value: MedicationFormRow[K]) => {
@@ -434,6 +512,83 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
             ))}
           </select>
         </label>
+      </div>
+      {catalogInfoMessage ? (
+        <p className="help-text" style={{ marginBottom: '0.8rem', color: '#1d4ed8', fontWeight: 600 }}>
+          {catalogInfoMessage}
+        </p>
+      ) : null}
+      <div style={{ marginBottom: '1rem', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '0.75rem' }}>
+        <p className="help-text" style={{ marginBottom: '0.55rem' }}>
+          {catalogOptions.length === 0 && catalogQuery.trim().length > 0
+            ? 'No se encontraron resultados útiles. Puedes añadir un medicamento al catálogo interno.'
+            : '¿No encuentras el medicamento? Puedes añadirlo al catálogo interno.'}
+        </p>
+        <button type="button" onClick={() => setShowCreateCatalogForm((prev) => !prev)} style={{ marginBottom: showCreateCatalogForm ? '0.65rem' : 0 }}>
+          {showCreateCatalogForm ? 'Cancelar alta en catálogo' : 'Añadir al catálogo interno'}
+        </button>
+
+        {catalogDuplicateSuggestion ? (
+          <p className="help-text" style={{ marginTop: '0.55rem', color: '#9a3412' }}>
+            Ya existe "{catalogDuplicateSuggestion.display_name}". Evita duplicados y selecciona el existente.
+            <button type="button" onClick={handleSelectDuplicateSuggestion} style={{ marginLeft: '0.65rem' }}>
+              Seleccionar existente
+            </button>
+          </p>
+        ) : null}
+
+        {showCreateCatalogForm ? (
+          <form onSubmit={handleCreateCatalogMedication} className="form-grid">
+            <div className="grid-2">
+              <label>
+                Nombre del medicamento *
+                <input
+                  value={createCatalogForm.display_name}
+                  onChange={(event) => setCreateCatalogForm((prev) => ({ ...prev, display_name: event.target.value }))}
+                  placeholder="Ej. Enalapril"
+                  required
+                />
+              </label>
+              <label>
+                Principio activo
+                <input
+                  value={createCatalogForm.active_ingredient}
+                  onChange={(event) => setCreateCatalogForm((prev) => ({ ...prev, active_ingredient: event.target.value }))}
+                  placeholder="Opcional"
+                />
+              </label>
+              <label>
+                Concentración
+                <input
+                  value={createCatalogForm.strength}
+                  onChange={(event) => setCreateCatalogForm((prev) => ({ ...prev, strength: event.target.value }))}
+                  placeholder="Opcional"
+                />
+              </label>
+              <label>
+                Forma farmacéutica
+                <input
+                  value={createCatalogForm.form}
+                  onChange={(event) => setCreateCatalogForm((prev) => ({ ...prev, form: event.target.value }))}
+                  placeholder="Opcional"
+                />
+              </label>
+              <label>
+                Vía
+                <input
+                  value={createCatalogForm.route}
+                  onChange={(event) => setCreateCatalogForm((prev) => ({ ...prev, route: event.target.value }))}
+                  placeholder="Opcional"
+                />
+              </label>
+            </div>
+            <div className="actions-inline">
+              <button type="submit" disabled={creatingCatalogItem}>
+                {creatingCatalogItem ? 'Creando medicamento...' : 'Guardar en catálogo interno'}
+              </button>
+            </div>
+          </form>
+        ) : null}
       </div>
 
       <form onSubmit={handleSave} className="form-grid">
