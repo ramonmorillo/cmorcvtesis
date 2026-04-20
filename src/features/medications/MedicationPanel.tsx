@@ -17,6 +17,8 @@ type MedicationFormRow = PatientMedicationDraft & {
   display_name: string;
 };
 
+type MedicationChangeStatus = 'unchanged' | 'modified' | 'stopped' | 'new';
+
 const ROUTE_OPTIONS = [
   { value: 'oral', label: 'Oral' },
   { value: 'subcutánea', label: 'Subcutánea' },
@@ -27,6 +29,15 @@ const ROUTE_OPTIONS = [
 ] as const;
 
 type RouteOptionValue = (typeof ROUTE_OPTIONS)[number]['value'];
+
+const FREQUENCY_SUGGESTIONS = ['1 vez/día', 'cada 12 h', 'cada 8 h', 'noche', 'desayuno/comida/cena', 'según necesidad'] as const;
+
+const STATUS_META: Record<MedicationChangeStatus, { label: string; color: string; background: string; border: string }> = {
+  unchanged: { label: 'Sin cambios', color: '#1d4ed8', background: '#eff6ff', border: '#bfdbfe' },
+  modified: { label: 'Modificado', color: '#7c2d12', background: '#fff7ed', border: '#fdba74' },
+  stopped: { label: 'Suspendido', color: '#991b1b', background: '#fef2f2', border: '#fecaca' },
+  new: { label: 'Nuevo', color: '#166534', background: '#f0fdf4', border: '#bbf7d0' },
+};
 
 function normalizeRouteValue(route: string | null | undefined): RouteOptionValue | '' {
   const normalized = (route ?? '').trim().toLowerCase();
@@ -50,6 +61,31 @@ function emptyDraft(catalog: MedicationCatalogItem): MedicationFormRow {
     notes: '',
     is_active: true,
   };
+}
+
+function normalizeTextValue(value: string | null | undefined): string {
+  return (value ?? '').trim();
+}
+
+function getMedicationStatus(row: MedicationFormRow): MedicationChangeStatus {
+  if (!row.previous) {
+    return 'new';
+  }
+
+  if (!row.is_active) {
+    return 'stopped';
+  }
+
+  const hasChanged =
+    normalizeTextValue(row.dose_text) !== normalizeTextValue(row.previous.dose_text) ||
+    normalizeTextValue(row.frequency_text) !== normalizeTextValue(row.previous.frequency_text) ||
+    normalizeTextValue(row.route_text) !== normalizeTextValue(row.previous.route_text) ||
+    normalizeTextValue(row.indication) !== normalizeTextValue(row.previous.indication) ||
+    normalizeTextValue(row.start_date) !== normalizeTextValue(row.previous.start_date) ||
+    normalizeTextValue(row.notes) !== normalizeTextValue(row.previous.notes) ||
+    row.is_active !== row.previous.is_active;
+
+  return hasChanged ? 'modified' : 'unchanged';
 }
 
 export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
@@ -103,6 +139,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
   }, [catalogQuery]);
 
   const activeCount = useMemo(() => rows.filter((row) => row.is_active).length, [rows]);
+  const hasInheritedTreatments = useMemo(() => rows.some((row) => Boolean(row.previous)), [rows]);
 
   const handleAddCatalogMedication = (catalogId: string) => {
     const selected = catalogOptions.find((item) => item.id === catalogId);
@@ -199,6 +236,11 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
       <p className="help-text" style={{ marginBottom: '1rem' }}>
         Se precarga la medicación activa del paciente. Puedes añadir, ajustar dosis/frecuencia y suspender tratamientos.
       </p>
+      {!loading && hasInheritedTreatments ? (
+        <p className="help-text" style={{ marginBottom: '0.8rem', color: '#1d4ed8', fontWeight: 600 }}>
+          Tratamiento heredado de seguimiento previo
+        </p>
+      ) : null}
       {successMessage ? (
         <p className="help-text" style={{ marginBottom: '0.8rem', color: '#166534', fontWeight: 600 }}>
           ✓ {successMessage}
@@ -248,7 +290,28 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.55rem' }}>
-              <strong>{row.display_name}</strong>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                <strong>{row.display_name}</strong>
+                {(() => {
+                  const status = getMedicationStatus(row);
+                  const meta = STATUS_META[status];
+                  return (
+                    <span
+                      className="help-text"
+                      style={{
+                        color: meta.color,
+                        backgroundColor: meta.background,
+                        border: `1px solid ${meta.border}`,
+                        borderRadius: '999px',
+                        padding: '0.1rem 0.45rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {meta.label}
+                    </span>
+                  );
+                })()}
+              </div>
               <button type="button" onClick={() => handleToggleActive(index)}>
                 {row.is_active ? 'Suspender' : 'Reactivar'}
               </button>
@@ -260,12 +323,13 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
                 <input
                   value={row.dose_text}
                   onChange={(event) => handleChange(index, 'dose_text', event.target.value)}
-                  placeholder="Ej. 100 mg"
+                  placeholder="Ej. 100 mg / 1 comprimido / 20 UI"
                 />
               </label>
               <label>
                 Frecuencia
                 <input
+                  list="medication-frequency-options"
                   value={row.frequency_text}
                   onChange={(event) => handleChange(index, 'frequency_text', event.target.value)}
                   placeholder="Ej. 1 vez/día o cada 12 h"
@@ -305,6 +369,12 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
             </label>
           </article>
         ))}
+
+        <datalist id="medication-frequency-options">
+          {FREQUENCY_SUGGESTIONS.map((option) => (
+            <option key={option} value={option} />
+          ))}
+        </datalist>
 
         <div className="actions-inline">
           <button type="submit" disabled={saving || loading || rows.length === 0}>

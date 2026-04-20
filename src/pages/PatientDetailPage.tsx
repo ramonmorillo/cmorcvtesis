@@ -11,7 +11,7 @@ import {
   type VisitStatus,
 } from '../constants/enums';
 import { PatientMedicationSummary } from '../features/medications/PatientMedicationSummary';
-import { listActivePatientMedications } from '../features/medications/medicationsService';
+import { getLatestMedicationReviewDate, listActivePatientMedications } from '../features/medications/medicationsService';
 import type { PatientMedication } from '../features/medications/types';
 import { getLatestCmoScoreByPatient, listCmoScoresByPatient, type CmoScoreHistoryEntry, type CmoScoreRecord } from '../services/cmoScoreService';
 import { listInterventionsByPatient, type PriorityLevel } from '../services/interventionService';
@@ -110,6 +110,7 @@ export function PatientDetailPage() {
   const [interventions, setInterventions] = useState<Array<{ id: string; visit_id: string; intervention_type: string; priority_level: PriorityLevel | null }>>([]);
   const [questionnaires, setQuestionnaires] = useState<QuestionnaireResponseRecord[]>([]);
   const [activeMedications, setActiveMedications] = useState<PatientMedication[]>([]);
+  const [latestMedicationReviewDate, setLatestMedicationReviewDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [questionnaireWarning, setQuestionnaireWarning] = useState<string | null>(null);
@@ -134,12 +135,20 @@ export function PatientDetailPage() {
         setPatient(patientResult.data);
         setVisits(visitsResult.data);
 
-        const [cmoResult, cmoHistoryResult, interventionsResult, questionnairesResult, medicationsResult] = await Promise.allSettled([
+        const [
+          cmoResult,
+          cmoHistoryResult,
+          interventionsResult,
+          questionnairesResult,
+          medicationsResult,
+          latestMedicationReviewResult,
+        ] = await Promise.allSettled([
           getLatestCmoScoreByPatient(id),
           listCmoScoresByPatient(id),
           listInterventionsByPatient(id),
           getQuestionnairesByPatient(id),
           listActivePatientMedications(id),
+          getLatestMedicationReviewDate(id),
         ]);
 
         if (cmoResult.status === 'fulfilled') {
@@ -185,6 +194,15 @@ export function PatientDetailPage() {
         } else {
           setActiveMedications([]);
           setMedicationWarning('Medicación no disponible temporalmente. La ficha base se cargó correctamente.');
+        }
+
+        if (latestMedicationReviewResult.status === 'fulfilled') {
+          setLatestMedicationReviewDate(latestMedicationReviewResult.value.data);
+          if (latestMedicationReviewResult.value.errorMessage) {
+            setMedicationWarning(`Medicación no disponible temporalmente: ${latestMedicationReviewResult.value.errorMessage}`);
+          }
+        } else {
+          setLatestMedicationReviewDate(null);
         }
       } catch {
         setErrorMessage('No se pudo cargar la ficha.');
@@ -422,7 +440,11 @@ export function PatientDetailPage() {
         )}
       </section>
 
-      <PatientMedicationSummary medications={activeMedications} warning={medicationWarning} />
+      <PatientMedicationSummary
+        medications={activeMedications}
+        warning={medicationWarning}
+        latestReviewDate={latestMedicationReviewDate}
+      />
 
       <section className="card">
         <h2>Resumen de cuestionarios (tesis)</h2>
