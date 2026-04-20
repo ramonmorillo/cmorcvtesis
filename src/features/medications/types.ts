@@ -24,6 +24,23 @@ export type MedicationOrigin =
 
 export type MedicationSelectionSource = 'internal' | 'external_cima' | 'external_other' | 'manual';
 
+export type ExternalMedicationSearchItem = {
+  external_id: string;
+  source: 'external_cima';
+  source_code: string | null;
+  display_name: string;
+  active_ingredient: string | null;
+  strength: string | null;
+  form: string | null;
+  route: string | null;
+  atc_code: string | null;
+  authorization_status: string | null;
+  commercialized: boolean | null;
+  labtitular: string | null;
+  cima_nregistro: string | null;
+  raw_payload: Record<string, unknown>;
+};
+
 export type PatientMedication = {
   id: string;
   patient_id: string;
