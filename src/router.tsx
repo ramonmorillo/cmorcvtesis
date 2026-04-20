@@ -10,6 +10,7 @@ import { PatientDetailPage } from './pages/PatientDetailPage';
 import { PatientsPage } from './pages/PatientsPage';
 import { ProjectPage } from './pages/ProjectPage';
 import { VisitInterventionsPage } from './pages/VisitInterventionsPage';
+import { VisitMedicationsPage } from './pages/VisitMedicationsPage';
 import { VisitQuestionnairesPage } from './pages/VisitQuestionnairesPage';
 import { VisitDocumentsPage } from './pages/VisitDocumentsPage';
 import { VisitReportsPage } from './pages/VisitReportsPage';
@@ -34,6 +35,7 @@ export const router = createHashRouter([
       { path: '/patients/:id', element: <PatientDetailPage /> },
       { path: '/patients/:id/visits/new', element: <NewVisitPage /> },
       { path: '/visits/:visitId/stratification', element: <BaselineStratificationPage /> },
+      { path: '/visits/:visitId/medications', element: <VisitMedicationsPage /> },
       { path: '/visits/:visitId/interventions', element: <VisitInterventionsPage /> },
       { path: '/visits/:visitId/questionnaires', element: <VisitQuestionnairesPage /> },
       { path: '/visits/:visitId/documents', element: <VisitDocumentsPage /> },
