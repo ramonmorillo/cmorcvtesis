@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { getVisitById } from '../../services/visitService';
+import { normalizeMedicationCatalogSource } from './catalogSource';
 import type { MedicationCatalogItem, MedicationEventType, PatientMedication, PatientMedicationDraft, VisitMedicationEvent } from './types';
 
 type ServiceResult<T> = { data: T; errorMessage: string | null };
@@ -54,7 +55,19 @@ function normalizePatientMedication(record: PatientMedication & { medication_cat
   const medicationCatalog = Array.isArray(record.medication_catalog) ? record.medication_catalog[0] : record.medication_catalog;
   return {
     ...record,
-    medication_catalog: medicationCatalog,
+    medication_catalog: medicationCatalog
+      ? {
+          ...medicationCatalog,
+          source: normalizeMedicationCatalogSource(medicationCatalog.source),
+        }
+      : undefined,
+  };
+}
+
+function normalizeMedicationCatalogItem(record: MedicationCatalogItem): MedicationCatalogItem {
+  return {
+    ...record,
+    source: normalizeMedicationCatalogSource(record.source),
   };
 }
 
@@ -123,7 +136,10 @@ export async function searchMedicationCatalog(query: string): Promise<ServiceRes
     };
   }
 
-  return { data: (data ?? []) as MedicationCatalogItem[], errorMessage: null };
+  return {
+    data: ((data ?? []) as MedicationCatalogItem[]).map(normalizeMedicationCatalogItem),
+    errorMessage: null,
+  };
 }
 
 export async function listActivePatientMedications(patientId: string): Promise<ServiceResult<PatientMedication[]>> {
