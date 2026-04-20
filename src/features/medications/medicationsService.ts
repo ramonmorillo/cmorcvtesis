@@ -11,6 +11,19 @@ type SaveVisitMedicationInput = {
   rows: PatientMedicationDraft[];
 };
 
+type CreateMedicationCatalogItemInput = {
+  display_name: string;
+  active_ingredient?: string;
+  strength?: string;
+  form?: string;
+  route?: string;
+};
+
+type CreateMedicationCatalogItemResult = {
+  item: MedicationCatalogItem | null;
+  duplicate: MedicationCatalogItem | null;
+};
+
 const PATIENT_MEDICATION_SELECT =
   'id,patient_id,medication_catalog_id,dose_text,frequency_text,route_text,indication,start_date,end_date,is_active,notes,created_at,updated_at,medication_catalog:medication_catalog_id(id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at)';
 
@@ -69,6 +82,15 @@ function normalizeMedicationCatalogItem(record: MedicationCatalogItem): Medicati
     ...record,
     source: normalizeMedicationCatalogSource(record.source),
   };
+}
+
+function normalizeMedicationName(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
 }
 
 function normalizeVisitMedicationEvent(
@@ -138,6 +160,76 @@ export async function searchMedicationCatalog(query: string): Promise<ServiceRes
 
   return {
     data: ((data ?? []) as MedicationCatalogItem[]).map(normalizeMedicationCatalogItem),
+    errorMessage: null,
+  };
+}
+
+export async function createMedicationCatalogItem(
+  input: CreateMedicationCatalogItemInput,
+): Promise<ServiceResult<CreateMedicationCatalogItemResult>> {
+  if (!supabase) {
+    return {
+      data: { item: null, duplicate: null },
+      errorMessage: 'Supabase no está configurado. No se puede crear el medicamento en catálogo.',
+    };
+  }
+
+  const displayName = input.display_name.trim();
+  if (displayName.length < 2) {
+    return {
+      data: { item: null, duplicate: null },
+      errorMessage: 'El nombre del medicamento debe tener al menos 2 caracteres.',
+    };
+  }
+
+  const normalizedDisplayName = normalizeMedicationName(displayName);
+  const { data: possibleDuplicates, error: duplicateError } = await supabase
+    .from('medication_catalog')
+    .select('id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at')
+    .ilike('display_name', `%${displayName}%`)
+    .limit(40);
+
+  if (duplicateError) {
+    return {
+      data: { item: null, duplicate: null },
+      errorMessage: extractErrorMessage(duplicateError, 'No fue posible verificar duplicados en el catálogo.'),
+    };
+  }
+
+  const duplicate = ((possibleDuplicates ?? []) as MedicationCatalogItem[])
+    .map(normalizeMedicationCatalogItem)
+    .find((candidate) => normalizeMedicationName(candidate.display_name) === normalizedDisplayName);
+
+  if (duplicate) {
+    return { data: { item: null, duplicate }, errorMessage: null };
+  }
+
+  const { data, error } = await supabase
+    .from('medication_catalog')
+    .insert({
+      source: 'internal',
+      source_code: null,
+      display_name: displayName,
+      active_ingredient: trimOrNull(input.active_ingredient ?? ''),
+      strength: trimOrNull(input.strength ?? ''),
+      form: trimOrNull(input.form ?? ''),
+      route: trimOrNull(input.route ?? ''),
+    })
+    .select('id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at')
+    .maybeSingle();
+
+  if (error) {
+    return {
+      data: { item: null, duplicate: null },
+      errorMessage: extractErrorMessage(error, 'No fue posible crear el medicamento en el catálogo interno.'),
+    };
+  }
+
+  return {
+    data: {
+      item: data ? normalizeMedicationCatalogItem(data as MedicationCatalogItem) : null,
+      duplicate: null,
+    },
     errorMessage: null,
   };
 }
