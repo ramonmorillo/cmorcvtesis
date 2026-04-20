@@ -2,14 +2,16 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 import { ErrorState } from '../../components/common/ErrorState';
 import {
+  addExternalMedicationToPatient,
   createMedicationCatalogItem,
   listVisitMedicationEvents,
   listVisitMedicationSnapshot,
   saveVisitMedicationChanges,
+  searchCimaMedications,
   searchMedicationCatalog,
 } from './medicationsService';
 import { resolveMedicationOrigin } from './catalogSource';
-import type { MedicationCatalogItem, PatientMedicationDraft, VisitMedicationEvent } from './types';
+import type { ExternalMedicationSearchItem, MedicationCatalogItem, PatientMedication, PatientMedicationDraft, VisitMedicationEvent } from './types';
 
 type MedicationPanelProps = {
   visitId: string;
@@ -217,6 +219,33 @@ function getMedicationStatus(row: MedicationFormRow): MedicationChangeStatus {
   return hasChanged ? 'modified' : 'unchanged';
 }
 
+function patientMedicationToFormRow(item: PatientMedication): MedicationFormRow {
+  return {
+    ...(item.medication_catalog
+      ? (() => {
+          const origin = resolveMedicationOrigin(item.medication_catalog);
+          return {
+            source_label: origin.kind === 'external' ? `Fuente externa (${origin.source})` : 'Catálogo interno',
+            source_code: origin.kind === 'external' ? origin.source_code ?? '' : '',
+          };
+        })()
+      : { source_label: 'Catálogo interno', source_code: '' }),
+    id: item.id,
+    medication_catalog_id: item.medication_catalog_id,
+    display_name: item.medication_catalog?.display_name ?? 'Medicamento',
+    dose_text: item.dose_text ?? '',
+    dose_amount: inferDoseAmount(item.dose_text),
+    frequency_text: item.frequency_text ?? '',
+    route_text: item.route_text ?? '',
+    indication: item.indication ?? '',
+    start_date: item.start_date ?? '',
+    notes: item.notes ?? '',
+    is_active: item.is_active,
+    dose_unit_hint: inferDoseUnitHint(item.dose_text),
+    previous: item,
+  };
+}
+
 export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
   const [rows, setRows] = useState<MedicationFormRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -226,6 +255,8 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
 
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogOptions, setCatalogOptions] = useState<MedicationCatalogItem[]>([]);
+  const [externalCatalogOptions, setExternalCatalogOptions] = useState<ExternalMedicationSearchItem[]>([]);
+  const [searchingExternalCatalog, setSearchingExternalCatalog] = useState(false);
   const [eventSummary, setEventSummary] = useState<VisitMedicationEvent[]>([]);
   const [showCreateCatalogForm, setShowCreateCatalogForm] = useState(false);
   const [creatingCatalogItem, setCreatingCatalogItem] = useState(false);
@@ -251,32 +282,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
         return;
       }
 
-      setRows(
-        result.data.map((item) => ({
-          ...(item.medication_catalog
-            ? (() => {
-                const origin = resolveMedicationOrigin(item.medication_catalog);
-                return {
-                  source_label: origin.kind === 'external' ? `Fuente externa (${origin.source})` : 'Catálogo interno',
-                  source_code: origin.kind === 'external' ? origin.source_code ?? '' : '',
-                };
-              })()
-            : { source_label: 'Catálogo interno', source_code: '' }),
-          id: item.id,
-          medication_catalog_id: item.medication_catalog_id,
-          display_name: item.medication_catalog?.display_name ?? 'Medicamento',
-          dose_text: item.dose_text ?? '',
-          dose_amount: inferDoseAmount(item.dose_text),
-          frequency_text: item.frequency_text ?? '',
-          route_text: item.route_text ?? '',
-          indication: item.indication ?? '',
-          start_date: item.start_date ?? '',
-          notes: item.notes ?? '',
-          is_active: item.is_active,
-          dose_unit_hint: inferDoseUnitHint(item.dose_text),
-          previous: item,
-        })),
-      );
+      setRows(result.data.map(patientMedicationToFormRow));
       setLoading(false);
     })();
   }, [visitId]);
@@ -292,9 +298,16 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
 
   useEffect(() => {
     void (async () => {
-      const result = await searchMedicationCatalog(catalogQuery);
-      if (!result.errorMessage) {
-        setCatalogOptions(result.data);
+      const internalResult = await searchMedicationCatalog(catalogQuery);
+      if (!internalResult.errorMessage) {
+        setCatalogOptions(internalResult.data);
+      }
+
+      setSearchingExternalCatalog(true);
+      const externalResult = await searchCimaMedications(catalogQuery);
+      setSearchingExternalCatalog(false);
+      if (!externalResult.errorMessage) {
+        setExternalCatalogOptions(externalResult.data);
       }
     })();
   }, [catalogQuery]);
@@ -311,15 +324,47 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
     [eventSummary],
   );
 
-  const handleAddCatalogMedication = (catalogId: string) => {
-    const selected = catalogOptions.find((item) => item.id === catalogId);
-    if (!selected) {
+  const handleAddCatalogMedication = async (selectionValue: string) => {
+    if (selectionValue.startsWith('internal:')) {
+      const catalogId = selectionValue.replace('internal:', '');
+      const selected = catalogOptions.find((item) => item.id === catalogId);
+      if (!selected) {
+        return;
+      }
+
+      setRows((prev) => [...prev, emptyDraft(selected)]);
+      setSuccessMessage(null);
+      setCatalogInfoMessage(`"${selected.display_name}" añadido a la visita actual.`);
+      setCatalogQuery('');
       return;
     }
 
-    setRows((prev) => [...prev, emptyDraft(selected)]);
+    if (!selectionValue.startsWith('external:')) {
+      return;
+    }
+
+    const externalId = selectionValue.replace('external:', '');
+    const externalSelection = externalCatalogOptions.find((item) => item.external_id === externalId);
+    if (!externalSelection) {
+      return;
+    }
+
     setSuccessMessage(null);
-    setCatalogInfoMessage(`"${selected.display_name}" añadido a la visita actual.`);
+    setCatalogInfoMessage(`Importando "${externalSelection.display_name}" desde CIMA...`);
+    const addResult = await addExternalMedicationToPatient({ patientId, item: externalSelection });
+    if (addResult.errorMessage) {
+      setErrorMessage(addResult.errorMessage);
+      return;
+    }
+
+    const refreshResult = await listVisitMedicationSnapshot(visitId);
+    if (refreshResult.errorMessage) {
+      setErrorMessage(refreshResult.errorMessage);
+      return;
+    }
+
+    setRows(refreshResult.data.map(patientMedicationToFormRow));
+    setCatalogInfoMessage(`"${externalSelection.display_name}" importado desde CIMA y añadido como medicación activa.`);
     setCatalogQuery('');
   };
 
@@ -434,32 +479,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
       return;
     }
 
-    setRows(
-      result.data.map((item) => ({
-        ...(item.medication_catalog
-          ? (() => {
-              const origin = resolveMedicationOrigin(item.medication_catalog);
-              return {
-                source_label: origin.kind === 'external' ? `Fuente externa (${origin.source})` : 'Catálogo interno',
-                source_code: origin.kind === 'external' ? origin.source_code ?? '' : '',
-              };
-            })()
-          : { source_label: 'Catálogo interno', source_code: '' }),
-        id: item.id,
-        medication_catalog_id: item.medication_catalog_id,
-        display_name: item.medication_catalog?.display_name ?? 'Medicamento',
-        dose_text: item.dose_text ?? '',
-        dose_amount: inferDoseAmount(item.dose_text),
-        frequency_text: item.frequency_text ?? '',
-        route_text: item.route_text ?? '',
-        indication: item.indication ?? '',
-        start_date: item.start_date ?? '',
-        notes: item.notes ?? '',
-        is_active: item.is_active,
-        dose_unit_hint: inferDoseUnitHint(item.dose_text),
-        previous: item,
-      })),
-    );
+    setRows(result.data.map(patientMedicationToFormRow));
 
     const eventResult = await listVisitMedicationEvents(visitId);
     if (!eventResult.errorMessage) {
@@ -506,13 +526,19 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
           <select defaultValue="" onChange={(event) => handleAddCatalogMedication(event.target.value)}>
             <option value="">Seleccionar medicamento del catálogo</option>
             {catalogOptions.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.display_name}
+              <option key={item.id} value={`internal:${item.id}`}>
+                {item.display_name} · Catálogo interno
+              </option>
+            ))}
+            {externalCatalogOptions.map((item) => (
+              <option key={item.external_id} value={`external:${item.external_id}`}>
+                {item.display_name} · CIMA (externo)
               </option>
             ))}
           </select>
         </label>
       </div>
+      {searchingExternalCatalog ? <p className="help-text">Buscando también en CIMA…</p> : null}
       {catalogInfoMessage ? (
         <p className="help-text" style={{ marginBottom: '0.8rem', color: '#1d4ed8', fontWeight: 600 }}>
           {catalogInfoMessage}
