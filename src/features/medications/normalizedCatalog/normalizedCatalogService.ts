@@ -147,20 +147,51 @@ async function ensureConceptIngredientLinks(conceptId: string, ingredientIds: st
     return null;
   }
 
-  const rows = ingredientIds.map((ingredientId, index) => ({
-    concept_id: conceptId,
-    ingredient_id: ingredientId,
-    amount_text: null,
-    unit: null,
-    sort_order: index + 1,
-  }));
+  for (const [index, ingredientId] of ingredientIds.entries()) {
+    const sortOrder = index + 1;
+    const { data: existing, error: readError } = await supabase
+      .from('med_catalog_concept_ingredients')
+      .select('id,amount_text,unit,sort_order')
+      .eq('concept_id', conceptId)
+      .eq('ingredient_id', ingredientId)
+      .maybeSingle();
 
-  const { error } = await supabase.from('med_catalog_concept_ingredients').upsert(rows, {
-    onConflict: 'concept_id,ingredient_id',
-    ignoreDuplicates: true,
-  });
+    if (readError) {
+      return asErrorMessage(readError, 'No fue posible validar relación concepto-ingrediente.');
+    }
 
-  return error ? asErrorMessage(error, 'No fue posible relacionar concepto e ingredientes.') : null;
+    if (existing) {
+      if (existing.amount_text !== null || existing.unit !== null || existing.sort_order !== sortOrder) {
+        const { error: updateError } = await supabase
+          .from('med_catalog_concept_ingredients')
+          .update({
+            amount_text: null,
+            unit: null,
+            sort_order: sortOrder,
+          })
+          .eq('id', existing.id);
+
+        if (updateError) {
+          return asErrorMessage(updateError, 'No fue posible actualizar relación concepto-ingrediente.');
+        }
+      }
+      continue;
+    }
+
+    const { error: insertError } = await supabase.from('med_catalog_concept_ingredients').insert({
+      concept_id: conceptId,
+      ingredient_id: ingredientId,
+      amount_text: null,
+      unit: null,
+      sort_order: sortOrder,
+    });
+
+    if (insertError) {
+      return asErrorMessage(insertError, 'No fue posible crear relación concepto-ingrediente.');
+    }
+  }
+
+  return null;
 }
 
 async function findProductByCimaCn(cimaCn: string): Promise<MedCatalogProduct | null> {
@@ -249,12 +280,42 @@ async function ensureAliases(
     alias_type: aliasType,
   }));
 
-  const { error } = await supabase.from('med_catalog_aliases').upsert(rows, {
-    onConflict: 'concept_id,alias_normalized',
-    ignoreDuplicates: true,
-  });
+  for (const row of rows) {
+    const { data: existing, error: readError } = await supabase
+      .from('med_catalog_aliases')
+      .select('id,alias_text,alias_type')
+      .eq('concept_id', row.concept_id)
+      .eq('alias_normalized', row.alias_normalized)
+      .maybeSingle();
 
-  return error ? asErrorMessage(error, 'No fue posible crear aliases normalizados.') : null;
+    if (readError) {
+      return asErrorMessage(readError, 'No fue posible validar aliases normalizados.');
+    }
+
+    if (existing) {
+      if (existing.alias_text !== row.alias_text || existing.alias_type !== row.alias_type) {
+        const { error: updateError } = await supabase
+          .from('med_catalog_aliases')
+          .update({
+            alias_text: row.alias_text,
+            alias_type: row.alias_type,
+          })
+          .eq('id', existing.id);
+
+        if (updateError) {
+          return asErrorMessage(updateError, 'No fue posible actualizar aliases normalizados.');
+        }
+      }
+      continue;
+    }
+
+    const { error: insertError } = await supabase.from('med_catalog_aliases').insert(row);
+    if (insertError) {
+      return asErrorMessage(insertError, 'No fue posible crear aliases normalizados.');
+    }
+  }
+
+  return null;
 }
 
 export async function upsertNormalizedMedicationFromExternal(
