@@ -10,6 +10,9 @@ import {
   getVisitTypeSortOrder,
   type VisitStatus,
 } from '../constants/enums';
+import { PatientMedicationSummary } from '../features/medications/PatientMedicationSummary';
+import { listActivePatientMedications } from '../features/medications/medicationsService';
+import type { PatientMedication } from '../features/medications/types';
 import { getLatestCmoScoreByPatient, listCmoScoresByPatient, type CmoScoreHistoryEntry, type CmoScoreRecord } from '../services/cmoScoreService';
 import { listInterventionsByPatient, type PriorityLevel } from '../services/interventionService';
 import { getPatientById, type Patient } from '../services/patientService';
@@ -106,9 +109,11 @@ export function PatientDetailPage() {
   const [cmoHistory, setCmoHistory] = useState<CmoScoreHistoryEntry[]>([]);
   const [interventions, setInterventions] = useState<Array<{ id: string; visit_id: string; intervention_type: string; priority_level: PriorityLevel | null }>>([]);
   const [questionnaires, setQuestionnaires] = useState<QuestionnaireResponseRecord[]>([]);
+  const [activeMedications, setActiveMedications] = useState<PatientMedication[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [questionnaireWarning, setQuestionnaireWarning] = useState<string | null>(null);
+  const [medicationWarning, setMedicationWarning] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadData() {
@@ -116,6 +121,7 @@ export function PatientDetailPage() {
         setLoading(true);
         setErrorMessage(null);
         setQuestionnaireWarning(null);
+        setMedicationWarning(null);
 
         const [patientResult, visitsResult] = await Promise.all([getPatientById(id), listVisitsByPatient(id)]);
 
@@ -128,11 +134,12 @@ export function PatientDetailPage() {
         setPatient(patientResult.data);
         setVisits(visitsResult.data);
 
-        const [cmoResult, cmoHistoryResult, interventionsResult, questionnairesResult] = await Promise.allSettled([
+        const [cmoResult, cmoHistoryResult, interventionsResult, questionnairesResult, medicationsResult] = await Promise.allSettled([
           getLatestCmoScoreByPatient(id),
           listCmoScoresByPatient(id),
           listInterventionsByPatient(id),
           getQuestionnairesByPatient(id),
+          listActivePatientMedications(id),
         ]);
 
         if (cmoResult.status === 'fulfilled') {
@@ -168,6 +175,16 @@ export function PatientDetailPage() {
         } else {
           setQuestionnaires([]);
           setQuestionnaireWarning('Cuestionarios no disponibles temporalmente. La ficha base se cargó correctamente.');
+        }
+
+        if (medicationsResult.status === 'fulfilled') {
+          setActiveMedications(medicationsResult.value.data);
+          if (medicationsResult.value.errorMessage) {
+            setMedicationWarning(`Medicación no disponible temporalmente: ${medicationsResult.value.errorMessage}`);
+          }
+        } else {
+          setActiveMedications([]);
+          setMedicationWarning('Medicación no disponible temporalmente. La ficha base se cargó correctamente.');
         }
       } catch {
         setErrorMessage('No se pudo cargar la ficha.');
@@ -391,6 +408,7 @@ export function PatientDetailPage() {
                       <td>
                         <div className="actions-inline">
                           <Link to={`/visits/${visit.id}/stratification`}>Evaluación clínica</Link>
+                          <Link to={`/visits/${visit.id}/medications`}>Medicación</Link>
                           <Link to={`/visits/${visit.id}/interventions`}>Intervenciones</Link>
                           {isQuestionnaireVisitType(visit.visit_type) ? <Link to={`/visits/${visit.id}/questionnaires`}>Cuestionarios</Link> : null}
                         </div>
@@ -403,6 +421,8 @@ export function PatientDetailPage() {
           </div>
         )}
       </section>
+
+      <PatientMedicationSummary medications={activeMedications} warning={medicationWarning} />
 
       <section className="card">
         <h2>Resumen de cuestionarios (tesis)</h2>
