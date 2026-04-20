@@ -17,13 +17,34 @@ type MedicationFormRow = PatientMedicationDraft & {
   display_name: string;
 };
 
+const ROUTE_OPTIONS = [
+  { value: 'oral', label: 'Oral' },
+  { value: 'subcutánea', label: 'Subcutánea' },
+  { value: 'intravenosa', label: 'Intravenosa' },
+  { value: 'inhalada', label: 'Inhalada' },
+  { value: 'tópica', label: 'Tópica' },
+  { value: 'otra', label: 'Otra' },
+] as const;
+
+type RouteOptionValue = (typeof ROUTE_OPTIONS)[number]['value'];
+
+function normalizeRouteValue(route: string | null | undefined): RouteOptionValue | '' {
+  const normalized = (route ?? '').trim().toLowerCase();
+  if (!normalized) {
+    return '';
+  }
+
+  const knownRoute = ROUTE_OPTIONS.find((option) => option.value === normalized);
+  return knownRoute ? knownRoute.value : 'otra';
+}
+
 function emptyDraft(catalog: MedicationCatalogItem): MedicationFormRow {
   return {
     medication_catalog_id: catalog.id,
     display_name: catalog.display_name,
     dose_text: '',
     frequency_text: '',
-    route_text: catalog.route ?? '',
+    route_text: normalizeRouteValue(catalog.route),
     indication: '',
     start_date: '',
     notes: '',
@@ -99,6 +120,21 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
     setRows((prev) => prev.map((row, rowIndex) => (rowIndex === index ? { ...row, [key]: value } : row)));
   };
 
+  const handleToggleActive = (index: number) => {
+    const selectedRow = rows[index];
+    if (!selectedRow) {
+      return;
+    }
+
+    const nextIsActive = !selectedRow.is_active;
+    setSuccessMessage(
+      nextIsActive
+        ? `Tratamiento "${selectedRow.display_name}" marcado como activo. Guarda para confirmar.`
+        : `Tratamiento "${selectedRow.display_name}" marcado como suspendido. Guarda para confirmar.`,
+    );
+    setRows((prev) => prev.map((row, rowIndex) => (rowIndex === index ? { ...row, is_active: nextIsActive } : row)));
+  };
+
   const handleSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -169,7 +205,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
         </p>
       ) : null}
 
-      <div className="grid-2" style={{ marginBottom: '1rem' }}>
+      <div className="grid-2" style={{ marginBottom: '0.9rem' }}>
         <label>
           Buscar en catálogo
           <input
@@ -208,12 +244,12 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
               padding: '0.8rem',
               opacity: row.is_active ? 1 : 0.65,
               background: row.is_active ? '#ffffff' : '#f9fafb',
-              marginBottom: '0.5rem',
+              marginBottom: '0.45rem',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.55rem' }}>
               <strong>{row.display_name}</strong>
-              <button type="button" onClick={() => handleChange(index, 'is_active', !row.is_active)}>
+              <button type="button" onClick={() => handleToggleActive(index)}>
                 {row.is_active ? 'Suspender' : 'Reactivar'}
               </button>
             </div>
@@ -221,22 +257,41 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
             <div className="grid-2">
               <label>
                 Dosis
-                <input value={row.dose_text} onChange={(event) => handleChange(index, 'dose_text', event.target.value)} />
+                <input
+                  value={row.dose_text}
+                  onChange={(event) => handleChange(index, 'dose_text', event.target.value)}
+                  placeholder="Ej. 100 mg"
+                />
               </label>
               <label>
                 Frecuencia
                 <input
                   value={row.frequency_text}
                   onChange={(event) => handleChange(index, 'frequency_text', event.target.value)}
+                  placeholder="Ej. 1 vez/día o cada 12 h"
                 />
               </label>
               <label>
                 Vía
-                <input value={row.route_text} onChange={(event) => handleChange(index, 'route_text', event.target.value)} />
+                <select
+                  value={normalizeRouteValue(row.route_text)}
+                  onChange={(event) => handleChange(index, 'route_text', event.target.value)}
+                >
+                  <option value="">Seleccionar vía de administración</option>
+                  {ROUTE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
                 Indicación
-                <input value={row.indication} onChange={(event) => handleChange(index, 'indication', event.target.value)} />
+                <input
+                  value={row.indication}
+                  onChange={(event) => handleChange(index, 'indication', event.target.value)}
+                  placeholder="Ej. prevención secundaria"
+                />
               </label>
               <label>
                 Fecha inicio
