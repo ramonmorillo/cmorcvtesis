@@ -65,7 +65,7 @@ export function DashboardPage() {
         <div className="section-header">
           <div>
             <h2>Administración · Exportación de datos IRIS</h2>
-            <p className="help-text">Genera archivos CSV anonimizados (UTF-8) compatibles con Excel, SPSS y R.</p>
+            <p className="help-text">Genera archivos anonimizados CSV (UTF-8) y sintaxis .sps para importación en SPSS.</p>
           </div>
           <button type="button" onClick={handleExportData} disabled={exporting}>
             {exporting ? 'Exportando...' : 'Exportar datos'}

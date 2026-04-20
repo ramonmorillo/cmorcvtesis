@@ -94,6 +94,46 @@ type QuestionnaireRow = {
   secondary_score: number | null;
 };
 
+type PatientMedicationRow = {
+  id: string;
+  patient_id: string;
+  medication_catalog_id: string;
+  catalog_concept_id: string | null;
+  catalog_product_id: string | null;
+  selection_source: string | null;
+  selected_label_snapshot: string | null;
+  dose_text: string | null;
+  frequency_text: string | null;
+  route_text: string | null;
+  indication: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  is_active: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  medication_catalog:
+    | {
+        display_name: string;
+        active_ingredient: string | null;
+        atc_code: string | null;
+      }
+    | {
+        display_name: string;
+        active_ingredient: string | null;
+        atc_code: string | null;
+      }[]
+    | null;
+};
+
+type NormalizedPatientMedicationRow = Omit<PatientMedicationRow, 'medication_catalog'> & {
+  medication_catalog: {
+    display_name: string;
+    active_ingredient: string | null;
+    atc_code: string | null;
+  } | null;
+};
+
 function toCsvValue(value: unknown): string {
   if (value === null || value === undefined) return '';
   const stringValue = String(value);
@@ -111,6 +151,18 @@ function toCsv(headers: string[], rows: Array<Record<string, unknown>>): string 
 
 function downloadCsv(fileName: string, csvContent: string) {
   const blob = new Blob(['\uFEFF', csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', fileName);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function downloadTextFile(fileName: string, content: string, mime = 'text/plain;charset=utf-8;') {
+  const blob = new Blob(['\uFEFF', content], { type: mime });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -154,6 +206,132 @@ function getVisitOutcome(interventions: InterventionRow[]): string {
   return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
 }
 
+function normalizeAtcGroup(atcCode: string | null | undefined): string | null {
+  if (!atcCode) return null;
+  const normalized = atcCode.trim().toUpperCase();
+  if (!normalized) return null;
+  return /^[A-Z]/.test(normalized) ? normalized[0] : null;
+}
+
+function normalizeMedicationCatalogRelation(
+  value:
+    | {
+        display_name: string;
+        active_ingredient: string | null;
+        atc_code: string | null;
+      }
+    | {
+        display_name: string;
+        active_ingredient: string | null;
+        atc_code: string | null;
+      }[]
+    | null,
+) {
+  if (!value) return null;
+  return Array.isArray(value) ? value[0] ?? null : value;
+}
+
+function escapeSpsLabel(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
+function inferSpsFormatByHeader(header: string): { format: string; type: 'numeric' | 'string' } {
+  if (header.endsWith('_date') || header.startsWith('fecha_') || header === 'visit_date' || header === 'scheduled_date' || header === 'inclusion_date') {
+    return { format: 'ADATE10', type: 'numeric' };
+  }
+
+  if (
+    header.includes('score') ||
+    header.includes('nivel') ||
+    header.includes('count') ||
+    header.includes('number') ||
+    header.includes('edad') ||
+    header.includes('weight') ||
+    header.includes('height') ||
+    header.includes('bmi') ||
+    header.includes('waist') ||
+    header.includes('glucose') ||
+    header.includes('hba1c') ||
+    header.includes('ldl') ||
+    header.includes('hdl') ||
+    header.includes('risk') ||
+    header.includes('delta') ||
+    header.includes('intervenciones')
+  ) {
+    return { format: 'F8.2', type: 'numeric' };
+  }
+
+  if (header.startsWith('is_') || header.startsWith('has_') || header.endsWith('_present') || header.endsWith('_active') || header === 'polypharmacy') {
+    return { format: 'F1.0', type: 'numeric' };
+  }
+
+  return { format: 'A120', type: 'string' };
+}
+
+function buildSpsSyntax(options: {
+  csvFileName: string;
+  datasetName: string;
+  headers: string[];
+  variableLabels?: Record<string, string>;
+  categoricalValueLabels?: Record<string, Record<string, string>>;
+}): string {
+  const variableDefs = options.headers
+    .map((header) => {
+      const inferred = inferSpsFormatByHeader(header);
+      return `  ${header} ${inferred.type === 'string' ? '(A120)' : ''}`.trimEnd();
+    })
+    .join('\n');
+
+  const formats = options.headers
+    .map((header) => {
+      const inferred = inferSpsFormatByHeader(header);
+      return `  ${header} (${inferred.format})`;
+    })
+    .join('\n');
+
+  const variableLabelLines = Object.entries(options.variableLabels ?? {})
+    .map(([variable, label]) => `  ${variable} '${escapeSpsLabel(label)}'`)
+    .join('\n');
+
+  const valueLabelBlocks = Object.entries(options.categoricalValueLabels ?? {})
+    .map(([variable, labels]) => {
+      const labelLines = Object.entries(labels)
+        .map(([rawValue, label]) => `    '${escapeSpsLabel(rawValue)}' '${escapeSpsLabel(label)}'`)
+        .join('\n');
+      return `VALUE LABELS ${variable}\n${labelLines}\n.`;
+    })
+    .join('\n\n');
+
+  return [
+    `* Archivo de sintaxis SPSS para ${options.datasetName}.`,
+    `* Recomendación: definir codificación UTF-8 en IBM SPSS antes de ejecutar.`,
+    'SET UNICODE ON.',
+    `GET DATA`,
+    `  /TYPE=TXT`,
+    `  /FILE='${options.csvFileName}'`,
+    `  /ENCODING='UTF8'`,
+    `  /DELCASE=LINE`,
+    `  /DELIMITERS=','`,
+    `  /QUALIFIER='\"'`,
+    `  /ARRANGEMENT=DELIMITED`,
+    `  /FIRSTCASE=2`,
+    `  /VARIABLES=`,
+    variableDefs,
+    '.',
+    'CACHE.',
+    'EXECUTE.',
+    'FORMATS',
+    formats,
+    '.',
+    'MISSING VALUES ALL ("").',
+    variableLabelLines ? `VARIABLE LABELS\n${variableLabelLines}\n.` : '',
+    valueLabelBlocks,
+    'EXECUTE.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 function isBaselineVisitType(visitType: string | null): boolean {
   return visitType === 'baseline';
 }
@@ -186,6 +364,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
     interventionsResult,
     assessmentsResult,
     questionnairesResult,
+    patientMedicationsResult,
   ] = await Promise.all([
     supabase.from('patients').select('id,study_code,inclusion_date,age_at_inclusion,sex,created_at').order('created_at', { ascending: true }),
     supabase.from('visits').select('id,patient_id,visit_type,visit_number,visit_date,scheduled_date,created_at').order('created_at', { ascending: true }),
@@ -193,6 +372,12 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
     supabase.from('interventions').select('id,visit_id,intervention_type,intervention_domain,priority_level,delivered,linked_to_cmo_level,outcome,created_at').order('created_at', { ascending: true }),
     supabase.from('clinical_assessments').select('visit_id,education_level,pregnancy_postpartum,biological_sex,race_ethnicity_risk,hypertension_present,cv_pathology_present,comorbidities_present,recent_cvd_12m,hospital_er_use_12m,physical_activity_pattern,social_support_absent,psychosocial_stress,chronic_med_count,recent_regimen_change,regimen_complexity_present,adherence_problem,systolic_bp,diastolic_bp,heart_rate,weight_kg,height_cm,bmi,waist_cm,ldl_mg_dl,hdl_mg_dl,non_hdl_mg_dl,fasting_glucose_mg_dl,hba1c_pct,score2_value,framingham_value,cv_risk_level,smoker_status,diet_score,adverse_events_count,high_risk_medication_present'),
     listAllQuestionnaires(),
+    supabase
+      .from('patient_medications')
+      .select(
+        'id,patient_id,medication_catalog_id,catalog_concept_id,catalog_product_id,selection_source,selected_label_snapshot,dose_text,frequency_text,route_text,indication,start_date,end_date,is_active,notes,created_at,updated_at,medication_catalog:medication_catalog_id(display_name,active_ingredient,atc_code)',
+      )
+      .order('created_at', { ascending: true }),
   ]);
 
   const firstError = [
@@ -202,6 +387,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
     interventionsResult.error,
     assessmentsResult.error,
     questionnairesResult.errorMessage ? { message: questionnairesResult.errorMessage } : null,
+    patientMedicationsResult.error,
   ].find(Boolean);
 
   if (firstError) {
@@ -214,6 +400,10 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
   const interventions = (interventionsResult.data ?? []) as InterventionRow[];
   const assessments = (assessmentsResult.data ?? []) as AssessmentRow[];
   const questionnaires = (questionnairesResult.data ?? []) as QuestionnaireRow[];
+  const patientMedications = ((patientMedicationsResult.data ?? []) as PatientMedicationRow[]).map((row) => ({
+    ...row,
+    medication_catalog: normalizeMedicationCatalogRelation(row.medication_catalog),
+  })) as NormalizedPatientMedicationRow[];
 
   const anonymizedPatientIdByRawId = buildAnonymousPatientIds(patients);
   const anonymizedVisitIdByRawId = new Map(visits.map((visit, index) => [visit.id, `V${String(index + 1).padStart(5, '0')}`]));
@@ -230,6 +420,14 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
   const questionnaireByVisitAndType = questionnaires.reduce<Map<string, Map<string, QuestionnaireRow>>>((acc, item) => {
     if (!acc.has(item.visit_id)) acc.set(item.visit_id, new Map());
     acc.get(item.visit_id)?.set(item.questionnaire_type, item);
+    return acc;
+  }, new Map());
+
+  const activeMedicationByPatientId = patientMedications.reduce<Map<string, NormalizedPatientMedicationRow[]>>((acc, medication) => {
+    if (!medication.is_active) return acc;
+    const list = acc.get(medication.patient_id) ?? [];
+    list.push(medication);
+    acc.set(medication.patient_id, list);
     return acc;
   }, new Map());
 
@@ -354,6 +552,8 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
     const assessment = assessmentByVisitId.get(visit.id);
     const visitInterventions = interventionsByVisitId.get(visit.id) ?? [];
     const qByType = questionnaireByVisitAndType.get(visit.id);
+    const activeMedicationList = activeMedicationByPatientId.get(visit.patient_id) ?? [];
+    const atcGroups = new Set(activeMedicationList.map((medication) => normalizeAtcGroup(medication.medication_catalog?.atc_code)).filter(Boolean));
 
     return {
       study_code: patient?.study_code ?? '',
@@ -408,7 +608,43 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
       pilar_principal: getMainPillar(visitInterventions),
       outcome: getVisitOutcome(visitInterventions),
       fecha_inclusion: patient?.inclusion_date ?? '',
+      active_medications_count: activeMedicationList.length,
+      polypharmacy: activeMedicationList.length >= 5 ? 1 : 0,
+      therapeutic_groups_active: [...atcGroups].sort().join('|'),
     };
+  });
+
+  let medicationRowCounter = 0;
+  const medicationByVisitRows = visits.flatMap((visit) => {
+    const patient = patients.find((row) => row.id === visit.patient_id);
+    const activeMedicationList = (activeMedicationByPatientId.get(visit.patient_id) ?? []).filter((medication) => {
+      const visitDate = visit.visit_date ?? visit.scheduled_date;
+      if (!visitDate) return true;
+      const started = !medication.start_date || medication.start_date <= visitDate;
+      const notEnded = !medication.end_date || medication.end_date >= visitDate;
+      return started && notEnded;
+    });
+
+    return activeMedicationList.map((medication) => ({
+      medication_row_id: `M${String((medicationRowCounter += 1)).padStart(6, '0')}`,
+      visit_id: anonymizedVisitIdByRawId.get(visit.id) ?? '',
+      patient_id: anonymizedPatientIdByRawId.get(visit.patient_id) ?? '',
+      study_code: patient?.study_code ?? '',
+      visit_type: getVisitTypeLabel(visit.visit_type),
+      visit_date: visit.visit_date ?? visit.scheduled_date ?? '',
+      medication_name: medication.medication_catalog?.display_name ?? medication.selected_label_snapshot ?? '',
+      active_ingredient: medication.medication_catalog?.active_ingredient ?? '',
+      atc_code: medication.medication_catalog?.atc_code ?? '',
+      atc_group: normalizeAtcGroup(medication.medication_catalog?.atc_code) ?? '',
+      dose_text: medication.dose_text ?? '',
+      frequency_text: medication.frequency_text ?? '',
+      route_text: medication.route_text ?? '',
+      indication: medication.indication ?? '',
+      start_date: medication.start_date ?? '',
+      end_date: medication.end_date ?? '',
+      is_active: medication.is_active ? 1 : 0,
+      selection_source: medication.selection_source ?? '',
+    }));
   });
 
   const patientsCsv = toCsv(Object.keys(patientsCsvRows[0] ?? { patient_id: '' }), patientsCsvRows);
@@ -417,6 +653,45 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
   const interventionsCsv = toCsv(['intervention_id', 'visit_id', 'intervention_type', 'intervention_domain', 'priority_level', 'delivered', 'linked_to_cmo_level', 'outcome'], interventionsCsvRows);
   const questionnairesCsv = toCsv(Object.keys(questionnairesCsvRows[0] ?? { patient_id: '' }), questionnairesCsvRows);
   const datasetMaestroCsv = toCsv(Object.keys(datasetMaestroRows[0] ?? {}), datasetMaestroRows);
+  const medicationByVisitCsv = toCsv(Object.keys(medicationByVisitRows[0] ?? { visit_id: '', patient_id: '' }), medicationByVisitRows);
+
+  const datasetMaestroSps = buildSpsSyntax({
+    csvFileName: 'dataset_maestro.csv',
+    datasetName: 'Dataset maestro IRIS',
+    headers: Object.keys(datasetMaestroRows[0] ?? {}),
+    variableLabels: {
+      patient_id: 'Identificador anonimizado del paciente',
+      visit_date: 'Fecha de visita',
+      active_medications_count: 'Número de medicamentos activos',
+      polypharmacy: 'Indicador de polifarmacia (>=5)',
+      therapeutic_groups_active: 'Grupos terapéuticos ATC activos en la visita',
+    },
+    categoricalValueLabels: {
+      polypharmacy: {
+        '0': 'No',
+        '1': 'Sí',
+      },
+    },
+  });
+
+  const medicationByVisitSps = buildSpsSyntax({
+    csvFileName: 'medicacion_por_visita.csv',
+    datasetName: 'Medicacion relacional por visita',
+    headers: Object.keys(medicationByVisitRows[0] ?? { visit_id: '', patient_id: '' }),
+    variableLabels: {
+      visit_id: 'Identificador anonimizado de visita',
+      patient_id: 'Identificador anonimizado de paciente',
+      medication_name: 'Nombre del medicamento registrado',
+      atc_group: 'Grupo terapéutico ATC (primer nivel)',
+      is_active: 'Medicamento activo en la fecha de la visita',
+    },
+    categoricalValueLabels: {
+      is_active: {
+        '0': 'No',
+        '1': 'Sí',
+      },
+    },
+  });
 
   downloadCsv('pacientes.csv', patientsCsv);
   downloadCsv('visitas.csv', visitsCsv);
@@ -424,10 +699,23 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
   downloadCsv('intervenciones.csv', interventionsCsv);
   downloadCsv('cuestionarios.csv', questionnairesCsv);
   downloadCsv('dataset_maestro.csv', datasetMaestroCsv);
+  downloadCsv('medicacion_por_visita.csv', medicationByVisitCsv);
+  downloadTextFile('dataset_maestro.sps', datasetMaestroSps);
+  downloadTextFile('medicacion_por_visita.sps', medicationByVisitSps);
 
   return {
     success: true,
     errorMessage: null,
-    generatedFiles: ['pacientes.csv', 'visitas.csv', 'estratificaciones.csv', 'intervenciones.csv', 'cuestionarios.csv', 'dataset_maestro.csv'],
+    generatedFiles: [
+      'pacientes.csv',
+      'visitas.csv',
+      'estratificaciones.csv',
+      'intervenciones.csv',
+      'cuestionarios.csv',
+      'dataset_maestro.csv',
+      'medicacion_por_visita.csv',
+      'dataset_maestro.sps',
+      'medicacion_por_visita.sps',
+    ],
   };
 }
