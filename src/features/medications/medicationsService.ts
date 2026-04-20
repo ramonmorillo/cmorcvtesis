@@ -98,8 +98,7 @@ function normalizeMedicationCatalogItem(record: MedicationCatalogItem): Medicati
 
 function buildExternalMedicationLabel(payload: Record<string, unknown>): string {
   const name = typeof payload.cima_name === 'string' && payload.cima_name.trim().length > 0 ? payload.cima_name.trim() : 'Medicamento externo';
-  const cn = typeof payload.cima_cn === 'string' && payload.cima_cn.trim().length > 0 ? payload.cima_cn.trim() : null;
-  return cn ? `${name} (CN ${cn})` : name;
+  return name;
 }
 
 function normalizeMedicationName(value: string): string {
