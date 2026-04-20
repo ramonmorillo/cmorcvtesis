@@ -8,7 +8,6 @@ import {
   listVisitMedicationSnapshot,
   saveVisitMedicationChanges,
   searchExternalMedicationCatalog,
-  searchMedicationCatalog,
   type ExternalMedicationSearchItem,
 } from './medicationsService';
 import { resolveMedicationOrigin } from './catalogSource';
@@ -231,10 +230,6 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const [catalogQuery, setCatalogQuery] = useState('');
-  const [catalogOptions, setCatalogOptions] = useState<MedicationCatalogItem[]>([]);
-  const [catalogLoading, setCatalogLoading] = useState(false);
-  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [externalCatalogQuery, setExternalCatalogQuery] = useState('');
   const [externalCatalogOptions, setExternalCatalogOptions] = useState<ExternalMedicationSearchItem[]>([]);
   const [externalCatalogLoading, setExternalCatalogLoading] = useState(false);
@@ -321,33 +316,6 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
   }, [visitId]);
 
   useEffect(() => {
-    const trimmedQuery = catalogQuery.trim();
-
-    if (trimmedQuery.length < 2) {
-      setCatalogOptions([]);
-      setCatalogLoading(false);
-      setCatalogError(null);
-      return;
-    }
-
-    void (async () => {
-      setCatalogLoading(true);
-      setCatalogError(null);
-
-      const result = await searchMedicationCatalog(trimmedQuery);
-      if (result.errorMessage) {
-        setCatalogOptions([]);
-        setCatalogError(result.errorMessage);
-        setCatalogLoading(false);
-        return;
-      }
-
-      setCatalogOptions(result.data);
-      setCatalogLoading(false);
-    })();
-  }, [catalogQuery]);
-
-  useEffect(() => {
     const trimmedQuery = externalCatalogQuery.trim();
 
     if (trimmedQuery.length < 3) {
@@ -392,20 +360,6 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
     }),
     [eventSummary],
   );
-
-  const handleAddCatalogMedication = (catalogId: string) => {
-    const selected = catalogOptions.find((item) => item.id === catalogId);
-    if (!selected) {
-      return;
-    }
-
-    setRows((prev) => [...prev, emptyDraft(selected)]);
-    setSuccessMessage(null);
-    setCatalogInfoMessage(`"${normalizeMedicationDisplayName(selected.display_name)}" añadido a la visita actual.`);
-    setCatalogQuery('');
-    setCatalogOptions([]);
-    setCatalogError(null);
-  };
 
   const handleImportExternalMedication = async (externalId: string) => {
     if (!externalId) {
@@ -488,10 +442,6 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
     }
 
     const createdItem = result.data.item;
-    const refreshResult = await searchMedicationCatalog(catalogQuery);
-    if (!refreshResult.errorMessage) {
-      setCatalogOptions(refreshResult.data);
-    }
 
     setRows((prev) => [...prev, emptyDraft(createdItem)]);
     setCatalogInfoMessage(`Medicamento "${normalizeMedicationDisplayName(createdItem.display_name)}" creado en catálogo interno y añadido a la visita.`);
@@ -594,52 +544,6 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
 
       <div className="grid-2" style={{ marginBottom: '0.9rem' }}>
         <label>
-          Buscar en catálogo
-          <input
-            value={catalogQuery}
-            onChange={(event) => setCatalogQuery(event.target.value)}
-            placeholder="Ej. atorvastatina"
-          />
-        </label>
-
-        <label>
-          Añadir medicamento
-          <select
-            defaultValue=""
-            onChange={(event) => handleAddCatalogMedication(event.target.value)}
-            disabled={catalogQuery.trim().length < 2 || catalogLoading}
-          >
-            <option value="">Seleccionar medicamento del catálogo</option>
-            {catalogOptions.map((item) => (
-              <option key={item.id} value={item.id}>
-                {normalizeMedicationDisplayName(item.display_name)}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      {catalogLoading ? (
-        <p className="help-text" style={{ marginBottom: '0.8rem', color: '#1d4ed8' }}>
-          Buscando en catálogo interno...
-        </p>
-      ) : null}
-      {!catalogLoading && catalogError ? (
-        <p className="help-text" style={{ marginBottom: '0.8rem', color: '#b91c1c', fontWeight: 600 }}>
-          Error en búsqueda de catálogo: {catalogError}
-        </p>
-      ) : null}
-      {!catalogLoading && !catalogError && catalogQuery.trim().length > 0 && catalogQuery.trim().length < 2 ? (
-        <p className="help-text" style={{ marginBottom: '0.8rem' }}>
-          Escribe al menos 2 caracteres para buscar en catálogo.
-        </p>
-      ) : null}
-      {!catalogLoading && !catalogError && catalogQuery.trim().length >= 2 && catalogOptions.length === 0 ? (
-        <p className="help-text" style={{ marginBottom: '0.8rem' }}>
-          No se encontraron medicamentos en catálogo para tu búsqueda.
-        </p>
-      ) : null}
-      <div className="grid-2" style={{ marginBottom: '0.9rem' }}>
-        <label>
           Buscar en catálogo externo (CIMA)
           <input
             value={externalCatalogQuery}
@@ -693,9 +597,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
       ) : null}
       <div style={{ marginBottom: '1rem', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '0.75rem' }}>
         <p className="help-text" style={{ marginBottom: '0.55rem' }}>
-          {catalogOptions.length === 0 && catalogQuery.trim().length > 0
-            ? 'No se encontraron resultados útiles. Puedes añadir un medicamento al catálogo interno.'
-            : '¿No encuentras el medicamento? Puedes añadirlo al catálogo interno.'}
+          ¿No encuentras el medicamento en CIMA? Puedes añadirlo al catálogo interno.
         </p>
         <button type="button" onClick={() => setShowCreateCatalogForm((prev) => !prev)} style={{ marginBottom: showCreateCatalogForm ? '0.65rem' : 0 }}>
           {showCreateCatalogForm ? 'Cancelar alta en catálogo' : 'Añadir al catálogo interno'}
@@ -768,7 +670,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
         {loading ? <p>Cargando medicación activa...</p> : null}
 
         {!loading && rows.length === 0 ? (
-          <p className="help-text">No hay medicación activa. Usa el catálogo para añadir tratamientos.</p>
+          <p className="help-text">No hay medicación activa. Usa CIMA o el alta al catálogo interno para añadir tratamientos.</p>
         ) : null}
 
         {rows.map((row, index) => (
