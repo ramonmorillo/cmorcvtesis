@@ -26,6 +26,70 @@ type SearchResult<T> = {
   errorMessage: string | null;
 };
 
+function readString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => readString(entry))
+    .filter((entry): entry is string => Boolean(entry));
+}
+
+function mapRemoteItem(item: unknown): CimaMedicationSearchDto | null {
+  const record = readRecord(item);
+  if (!record) {
+    return null;
+  }
+
+  const rawPayload =
+    readRecord(record.raw_payload) ??
+    readRecord(record.raw) ??
+    record;
+
+  const option = readRecord(record.option);
+  const raw = readRecord(record.raw) ?? rawPayload;
+
+  const cimaName =
+    readString(record.cima_name) ??
+    readString(option?.label) ??
+    readString(raw?.nombre) ??
+    'Medicamento externo';
+
+  return {
+    id: readString(record.id) ?? readString(record.cima_cn) ?? readString(record.cima_nregistro) ?? cimaName,
+    source: 'external_cima_remote',
+    source_label: readString(record.source_label) ?? 'CIMA remoto',
+    cima_cn: readString(record.cima_cn),
+    cima_nregistro: readString(record.cima_nregistro),
+    cima_name: cimaName,
+    labtitular: readString(record.labtitular),
+    pharmaceutical_form: readString(record.pharmaceutical_form),
+    pharmaceutical_form_simplified: readString(record.pharmaceutical_form_simplified),
+    routes: readStringArray(record.routes),
+    atc_codes: readStringArray(record.atc_codes),
+    authorization_status: readString(record.authorization_status),
+    commercialized: typeof record.commercialized === 'boolean' ? record.commercialized : null,
+    vmpp: readString(record.vmpp),
+    vmp: readString(record.vmp),
+    dose: readString(record.dose),
+    raw_payload: rawPayload,
+    fetched_at: readString(record.fetched_at) ?? new Date().toISOString(),
+  };
+}
+
 function asErrorMessage(error: unknown, fallback: string): string {
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
     return error.message;
@@ -68,7 +132,9 @@ export async function searchRemoteCimaMedications(query: string): Promise<Search
   }
 
   return {
-    data: ((data as { items: unknown[] }).items ?? []) as CimaMedicationSearchDto[],
+    data: ((data as { items: unknown[] }).items ?? [])
+      .map(mapRemoteItem)
+      .filter((item): item is CimaMedicationSearchDto => Boolean(item)),
     errorMessage: null,
   };
 }
