@@ -141,6 +141,29 @@ export async function listVisitMedicationSnapshot(visitId: string): Promise<Serv
   return listActivePatientMedications(visitResponse.data.patient_id);
 }
 
+export async function getLatestMedicationReviewDate(patientId: string): Promise<ServiceResult<string | null>> {
+  if (!supabase) {
+    return { data: null, errorMessage: 'Supabase no está configurado. No se puede consultar la última revisión.' };
+  }
+
+  const { data, error } = await supabase
+    .from('patient_medications')
+    .select('updated_at')
+    .eq('patient_id', patientId)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    return {
+      data: null,
+      errorMessage: extractErrorMessage(error, 'No fue posible consultar la fecha de última revisión de medicación.'),
+    };
+  }
+
+  return { data: data?.updated_at ?? null, errorMessage: null };
+}
+
 export async function saveVisitMedicationChanges(input: SaveVisitMedicationInput): Promise<ServiceResult<PatientMedication[]>> {
   if (!supabase) {
     return { data: [], errorMessage: 'Supabase no está configurado. No se puede guardar la medicación.' };
