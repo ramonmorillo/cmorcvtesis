@@ -7,7 +7,16 @@ type PatientMedicationSummaryProps = {
 
 function formatStartDate(value: string | null): string {
   if (!value) return '';
-  return value;
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat('es-ES', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(parsed);
 }
 
 export function PatientMedicationSummary({ medications, warning }: PatientMedicationSummaryProps) {
@@ -29,12 +38,29 @@ export function PatientMedicationSummary({ medications, warning }: PatientMedica
             <li key={item.id}>
               <div style={{ width: '100%' }}>
                 <strong>{item.medication_catalog?.display_name ?? 'Medicamento sin nombre'}</strong>
-                <div style={{ marginTop: '0.25rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                  {item.dose_text ? <span className="help-text">Dosis: {item.dose_text}</span> : null}
-                  {item.frequency_text ? <span className="help-text">Frecuencia: {item.frequency_text}</span> : null}
-                  {item.route_text ? <span className="help-text">Vía: {item.route_text}</span> : null}
-                  {formatStartDate(item.start_date) ? <span className="help-text">Inicio: {formatStartDate(item.start_date)}</span> : null}
-                </div>
+                {(() => {
+                  const startDate = formatStartDate(item.start_date);
+                  const details = [
+                    item.dose_text ? `Dosis: ${item.dose_text}` : null,
+                    item.frequency_text ? `Frecuencia: ${item.frequency_text}` : null,
+                    item.route_text ? `Vía: ${item.route_text}` : null,
+                    startDate ? `Inicio: ${startDate}` : null,
+                  ].filter((detail): detail is string => detail !== null);
+
+                  if (details.length === 0) {
+                    return null;
+                  }
+
+                  return (
+                    <div style={{ marginTop: '0.2rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                      {details.map((detail) => (
+                        <span key={detail} className="help-text">
+                          {detail}
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             </li>
           ))}
