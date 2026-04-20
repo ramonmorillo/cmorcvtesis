@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 
-type VisitTab = 'clinical' | 'interventions' | 'questionnaires' | 'documents' | 'reports';
+type VisitTab = 'clinical' | 'medications' | 'interventions' | 'questionnaires' | 'documents' | 'reports';
 
 type VisitTabsProps = {
   visitId: string;
@@ -12,6 +12,9 @@ export function VisitTabs({ visitId, active }: VisitTabsProps) {
     <nav className="visit-tabs" aria-label="Navegación de visita">
       <Link className={active === 'clinical' ? 'visit-tab active' : 'visit-tab'} to={`/visits/${visitId}/stratification`}>
         Datos clínicos
+      </Link>
+      <Link className={active === 'medications' ? 'visit-tab active' : 'visit-tab'} to={`/visits/${visitId}/medications`}>
+        Medicación
       </Link>
       <Link className={active === 'interventions' ? 'visit-tab active' : 'visit-tab'} to={`/visits/${visitId}/interventions`}>
         Intervenciones
