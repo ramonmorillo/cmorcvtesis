@@ -12,6 +12,7 @@ import {
   type ExternalMedicationSearchItem,
 } from './medicationsService';
 import { resolveMedicationOrigin } from './catalogSource';
+import { normalizeMedicationDisplayName } from './displayFormat';
 import type { MedicationCatalogItem, PatientMedicationDraft, VisitMedicationEvent } from './types';
 
 type MedicationPanelProps = {
@@ -30,6 +31,7 @@ type CreateCatalogFormState = {
 type MedicationFormRow = PatientMedicationDraft & {
   display_name: string;
   source_label: string;
+  source_badge: 'internal' | 'cima' | 'external';
   source_code: string;
   dose_amount: string;
   dose_unit_hint: DoseUnitOptionValue | '';
@@ -93,10 +95,12 @@ function normalizeRouteValue(route: string | null | undefined): RouteOptionValue
 
 function emptyDraft(catalog: MedicationCatalogItem): MedicationFormRow {
   const origin = resolveMedicationOrigin(catalog);
+  const sourceBadge = origin.kind === 'external' ? (origin.source === 'external_cima' ? 'cima' : 'external') : 'internal';
   return {
     medication_catalog_id: catalog.id,
-    display_name: catalog.display_name,
-    source_label: origin.kind === 'external' ? `Fuente externa (${origin.source})` : 'Catálogo interno',
+    display_name: normalizeMedicationDisplayName(catalog.display_name),
+    source_label: sourceBadge === 'cima' ? 'CIMA' : sourceBadge === 'external' ? 'Catálogo externo' : 'Catálogo interno',
+    source_badge: sourceBadge,
     source_code: origin.kind === 'external' ? origin.source_code ?? '' : '',
     dose_text: '',
     dose_amount: '',
@@ -248,6 +252,16 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
     form: '',
     route: '',
   });
+  const showTechnicalMetadata = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.get('debug') === '1' || searchParams.get('admin') === '1') {
+      return true;
+    }
+    return window.localStorage.getItem('cmorcv:medication-debug') === '1';
+  }, []);
 
   const hydrateRowsFromSnapshot = (items: Awaited<ReturnType<typeof listVisitMedicationSnapshot>>['data']) => {
     setRows(
@@ -255,15 +269,17 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
         ...(item.medication_catalog
           ? (() => {
               const origin = resolveMedicationOrigin(item.medication_catalog);
+              const sourceBadge = origin.kind === 'external' ? (origin.source === 'external_cima' ? 'cima' : 'external') : 'internal';
               return {
-                source_label: origin.kind === 'external' ? `Fuente externa (${origin.source})` : 'Catálogo interno',
+                source_label: sourceBadge === 'cima' ? 'CIMA' : sourceBadge === 'external' ? 'Catálogo externo' : 'Catálogo interno',
+                source_badge: sourceBadge,
                 source_code: origin.kind === 'external' ? origin.source_code ?? '' : '',
               };
             })()
-          : { source_label: 'Catálogo interno', source_code: '' }),
+          : { source_label: 'Catálogo interno', source_badge: 'internal', source_code: '' }),
         id: item.id,
         medication_catalog_id: item.medication_catalog_id,
-        display_name: item.medication_catalog?.display_name ?? 'Medicamento',
+        display_name: normalizeMedicationDisplayName(item.medication_catalog?.display_name ?? 'Medicamento'),
         dose_text: item.dose_text ?? '',
         dose_amount: inferDoseAmount(item.dose_text),
         frequency_text: item.frequency_text ?? '',
@@ -385,7 +401,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
 
     setRows((prev) => [...prev, emptyDraft(selected)]);
     setSuccessMessage(null);
-    setCatalogInfoMessage(`"${selected.display_name}" añadido a la visita actual.`);
+    setCatalogInfoMessage(`"${normalizeMedicationDisplayName(selected.display_name)}" añadido a la visita actual.`);
     setCatalogQuery('');
     setCatalogOptions([]);
     setCatalogError(null);
@@ -425,7 +441,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
       setEventSummary(eventResult.data);
     }
 
-    setCatalogInfoMessage(`"${selected.label}" importado desde fuente externa y añadido a la visita actual.`);
+    setCatalogInfoMessage(`"${normalizeMedicationDisplayName(selected.label)}" importado desde CIMA y añadido a la visita actual.`);
     setExternalCatalogQuery('');
     setExternalCatalogOptions([]);
     setExternalCatalogLoading(false);
@@ -438,7 +454,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
       return;
     }
     setRows((prev) => [...prev, emptyDraft(catalogDuplicateSuggestion)]);
-    setCatalogInfoMessage(`Se ha seleccionado "${catalogDuplicateSuggestion.display_name}" del catálogo existente.`);
+    setCatalogInfoMessage(`Se ha seleccionado "${normalizeMedicationDisplayName(catalogDuplicateSuggestion.display_name)}" del catálogo existente.`);
     setCatalogDuplicateSuggestion(null);
     setShowCreateCatalogForm(false);
   };
@@ -460,7 +476,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
 
     if (result.data.duplicate) {
       setCatalogDuplicateSuggestion(result.data.duplicate);
-      setCatalogInfoMessage(`Ya existe un medicamento muy parecido: "${result.data.duplicate.display_name}".`);
+      setCatalogInfoMessage(`Ya existe un medicamento muy parecido: "${normalizeMedicationDisplayName(result.data.duplicate.display_name)}".`);
       setCreatingCatalogItem(false);
       return;
     }
@@ -478,7 +494,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
     }
 
     setRows((prev) => [...prev, emptyDraft(createdItem)]);
-    setCatalogInfoMessage(`Medicamento "${createdItem.display_name}" creado en catálogo interno y añadido a la visita.`);
+    setCatalogInfoMessage(`Medicamento "${normalizeMedicationDisplayName(createdItem.display_name)}" creado en catálogo interno y añadido a la visita.`);
     setShowCreateCatalogForm(false);
     setCreateCatalogForm({
       display_name: '',
@@ -596,7 +612,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
             <option value="">Seleccionar medicamento del catálogo</option>
             {catalogOptions.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.display_name}
+                {normalizeMedicationDisplayName(item.display_name)}
               </option>
             ))}
           </select>
@@ -645,11 +661,11 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
             disabled={importingExternalItemId !== null}
           >
             <option value="">
-              {importingExternalItemId ? 'Importando medicamento externo...' : 'Seleccionar resultado externo'}
+              {importingExternalItemId ? 'Importando medicamento CIMA...' : 'Seleccionar resultado CIMA'}
             </option>
             {externalCatalogOptions.map((item) => (
               <option key={item.id} value={item.id}>
-                [{item.sourceLabel}] {item.label}
+                {normalizeMedicationDisplayName(item.label)}
               </option>
             ))}
           </select>
@@ -770,8 +786,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.55rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
                 <strong>{row.display_name}</strong>
-                <span className="help-text">{row.source_label}</span>
-                {row.source_code ? <span className="help-text">Código fuente: {row.source_code}</span> : null}
+                <span className={row.source_badge === 'cima' ? 'badge-success' : 'badge-muted'}>{row.source_label}</span>
                 {(() => {
                   const status = getMedicationStatus(row);
                   const meta = STATUS_META[status];
@@ -791,6 +806,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
                     </span>
                   );
                 })()}
+                {showTechnicalMetadata && row.source_code ? <span className="help-text">Código técnico: {row.source_code}</span> : null}
               </div>
               <button type="button" onClick={() => handleToggleActive(index)}>
                 {row.is_active ? 'Suspender' : 'Reactivar'}

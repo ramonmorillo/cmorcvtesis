@@ -1,4 +1,5 @@
 import type { PatientMedication } from './types';
+import { normalizeMedicationDisplayName } from './displayFormat';
 
 type PatientMedicationSummaryProps = {
   medications: PatientMedication[];
@@ -41,7 +42,12 @@ export function PatientMedicationSummary({ medications, warning, latestReviewDat
             {medications.map((item) => (
               <li key={item.id}>
                 <div style={{ width: '100%' }}>
-                  <strong>{item.medication_catalog?.display_name ?? 'Medicamento sin nombre'}</strong>
+                  <strong>{normalizeMedicationDisplayName(item.medication_catalog?.display_name ?? 'Medicamento sin nombre')}</strong>
+                  {item.medication_catalog?.source === 'external_cima' ? (
+                    <span className="badge-success" style={{ marginLeft: '0.45rem' }}>
+                      CIMA
+                    </span>
+                  ) : null}
                   {(() => {
                     const startDate = formatStartDate(item.start_date);
                     const details = [
