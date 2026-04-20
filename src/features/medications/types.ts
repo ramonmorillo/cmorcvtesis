@@ -39,6 +39,12 @@ export type VisitMedicationEvent = {
   old_value: Record<string, unknown> | null;
   new_value: Record<string, unknown> | null;
   created_at: string;
+  patient_medication?: {
+    id: string;
+    medication_catalog?: {
+      display_name: string;
+    } | null;
+  } | null;
 };
 
 export type PatientMedicationDraft = {
