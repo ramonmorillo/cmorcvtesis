@@ -1,6 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { getVisitById } from '../../services/visitService';
-import type { MedicationCatalogItem, MedicationEventType, PatientMedication, PatientMedicationDraft } from './types';
+import type { MedicationCatalogItem, MedicationEventType, PatientMedication, PatientMedicationDraft, VisitMedicationEvent } from './types';
 
 type ServiceResult<T> = { data: T; errorMessage: string | null };
 
@@ -55,6 +55,30 @@ function normalizePatientMedication(record: PatientMedication & { medication_cat
   return {
     ...record,
     medication_catalog: medicationCatalog,
+  };
+}
+
+function normalizeVisitMedicationEvent(
+  record: VisitMedicationEvent & {
+    patient_medication?: { id: string; medication_catalog?: { display_name: string } | { display_name: string }[] } | Array<{
+      id: string;
+      medication_catalog?: { display_name: string } | { display_name: string }[];
+    }>;
+  },
+): VisitMedicationEvent {
+  const normalizedMedication = Array.isArray(record.patient_medication) ? record.patient_medication[0] : record.patient_medication;
+  const normalizedCatalog = Array.isArray(normalizedMedication?.medication_catalog)
+    ? normalizedMedication.medication_catalog[0]
+    : normalizedMedication?.medication_catalog;
+
+  return {
+    ...record,
+    patient_medication: normalizedMedication
+      ? {
+          id: normalizedMedication.id,
+          medication_catalog: normalizedCatalog ?? null,
+        }
+      : null,
   };
 }
 
@@ -280,4 +304,36 @@ export async function saveVisitMedicationChanges(input: SaveVisitMedicationInput
   }
 
   return { data: refreshed.data, errorMessage: null };
+}
+
+export async function listVisitMedicationEvents(visitId: string): Promise<ServiceResult<VisitMedicationEvent[]>> {
+  if (!supabase) {
+    return { data: [], errorMessage: 'Supabase no está configurado. No se puede consultar la trazabilidad de medicación.' };
+  }
+
+  const { data, error } = await supabase
+    .from('visit_medication_events')
+    .select(
+      'id,visit_id,patient_medication_id,event_type,old_value,new_value,created_at,patient_medication:patient_medication_id(id,medication_catalog:medication_catalog_id(display_name))',
+    )
+    .eq('visit_id', visitId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    return {
+      data: [],
+      errorMessage: extractErrorMessage(error, 'No fue posible consultar los cambios de medicación de la visita.'),
+    };
+  }
+
+  return {
+    data: ((data ?? []) as Array<
+      VisitMedicationEvent & {
+        patient_medication?:
+          | { id: string; medication_catalog?: { display_name: string } | { display_name: string }[] }
+          | Array<{ id: string; medication_catalog?: { display_name: string } | { display_name: string }[] }>;
+      }
+    >).map(normalizeVisitMedicationEvent),
+    errorMessage: null,
+  };
 }

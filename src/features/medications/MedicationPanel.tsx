@@ -2,11 +2,12 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 import { ErrorState } from '../../components/common/ErrorState';
 import {
+  listVisitMedicationEvents,
   listVisitMedicationSnapshot,
   saveVisitMedicationChanges,
   searchMedicationCatalog,
 } from './medicationsService';
-import type { MedicationCatalogItem, PatientMedicationDraft } from './types';
+import type { MedicationCatalogItem, PatientMedicationDraft, VisitMedicationEvent } from './types';
 
 type MedicationPanelProps = {
   visitId: string;
@@ -15,6 +16,7 @@ type MedicationPanelProps = {
 
 type MedicationFormRow = PatientMedicationDraft & {
   display_name: string;
+  dose_unit_hint: DoseUnitOptionValue | '';
 };
 
 type MedicationChangeStatus = 'unchanged' | 'modified' | 'stopped' | 'new';
@@ -30,7 +32,31 @@ const ROUTE_OPTIONS = [
 
 type RouteOptionValue = (typeof ROUTE_OPTIONS)[number]['value'];
 
-const FREQUENCY_SUGGESTIONS = ['1 vez/día', 'cada 12 h', 'cada 8 h', 'noche', 'desayuno/comida/cena', 'según necesidad'] as const;
+const FREQUENCY_SUGGESTIONS = [
+  '1 vez/día',
+  'cada 12 h',
+  'cada 8 h',
+  'cada 24 h',
+  'desayuno',
+  'comida',
+  'cena',
+  'desayuno y cena',
+  'según necesidad',
+  'otra',
+] as const;
+const INDICATION_SUGGESTIONS = [
+  'prevención secundaria',
+  'HTA',
+  'diabetes',
+  'dislipidemia',
+  'insuficiencia cardiaca',
+  'fibrilación auricular',
+  'dolor',
+  'otra',
+] as const;
+const DOSE_UNIT_OPTIONS = ['mg', 'g', 'UI', 'ml', 'comprimido(s)', 'cápsula(s)', 'gota(s)', 'puff(s)', 'otra'] as const;
+
+type DoseUnitOptionValue = (typeof DOSE_UNIT_OPTIONS)[number];
 
 const STATUS_META: Record<MedicationChangeStatus, { label: string; color: string; background: string; border: string }> = {
   unchanged: { label: 'Sin cambios', color: '#1d4ed8', background: '#eff6ff', border: '#bfdbfe' },
@@ -60,11 +86,59 @@ function emptyDraft(catalog: MedicationCatalogItem): MedicationFormRow {
     start_date: '',
     notes: '',
     is_active: true,
+    dose_unit_hint: '',
   };
 }
 
 function normalizeTextValue(value: string | null | undefined): string {
   return (value ?? '').trim();
+}
+
+function inferDoseUnitHint(doseText: string | null | undefined): DoseUnitOptionValue | '' {
+  const normalized = normalizeTextValue(doseText).toLowerCase();
+  const matched = DOSE_UNIT_OPTIONS.find((unit) => unit !== 'otra' && normalized.includes(unit.toLowerCase()));
+  return matched ?? '';
+}
+
+function buildDoseTextForSave(row: MedicationFormRow): string {
+  const dose = normalizeTextValue(row.dose_text);
+  if (!dose) {
+    return '';
+  }
+
+  if (!row.dose_unit_hint || row.dose_unit_hint === 'otra') {
+    return dose;
+  }
+
+  const isMostlyNumeric = /^[0-9]+([.,][0-9]+)?$/.test(dose);
+  const hasKnownUnit = DOSE_UNIT_OPTIONS.some((unit) => unit !== 'otra' && dose.toLowerCase().includes(unit.toLowerCase()));
+  if (isMostlyNumeric && !hasKnownUnit) {
+    return `${dose} ${row.dose_unit_hint}`;
+  }
+  return dose;
+}
+
+function getSemanticWarnings(row: MedicationFormRow): string[] {
+  const warnings: string[] = [];
+  const frequency = normalizeTextValue(row.frequency_text).toLowerCase();
+  const route = normalizeTextValue(row.route_text).toLowerCase();
+  const dose = normalizeTextValue(row.dose_text);
+  const isDoseNumeric = /^[0-9]+([.,][0-9]+)?$/.test(dose);
+
+  const routeKeywords = ROUTE_OPTIONS.map((option) => option.value);
+  if (frequency && routeKeywords.some((keyword) => frequency === keyword || frequency.includes(`${keyword} `))) {
+    warnings.push('La frecuencia parece una vía de administración. Revisa la diferenciación entre frecuencia y vía.');
+  }
+
+  if (isDoseNumeric && !row.dose_unit_hint) {
+    warnings.push('La dosis parece numérica sin unidad. Sugerencia: añade unidad (mg, g, UI, ml, comprimido(s), etc.).');
+  }
+
+  if (frequency && route && frequency === route) {
+    warnings.push('Frecuencia y vía tienen el mismo valor. Verifica si el dato está en el campo correcto.');
+  }
+
+  return warnings;
 }
 
 function getMedicationStatus(row: MedicationFormRow): MedicationChangeStatus {
@@ -97,6 +171,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
 
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogOptions, setCatalogOptions] = useState<MedicationCatalogItem[]>([]);
+  const [eventSummary, setEventSummary] = useState<VisitMedicationEvent[]>([]);
 
   useEffect(() => {
     void (async () => {
@@ -122,10 +197,20 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
           start_date: item.start_date ?? '',
           notes: item.notes ?? '',
           is_active: item.is_active,
+          dose_unit_hint: inferDoseUnitHint(item.dose_text),
           previous: item,
         })),
       );
       setLoading(false);
+    })();
+  }, [visitId]);
+
+  useEffect(() => {
+    void (async () => {
+      const result = await listVisitMedicationEvents(visitId);
+      if (!result.errorMessage) {
+        setEventSummary(result.data);
+      }
     })();
   }, [visitId]);
 
@@ -184,7 +269,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
     const payload = rows.map((row) => ({
       id: row.id,
       medication_catalog_id: row.medication_catalog_id,
-      dose_text: row.dose_text,
+      dose_text: buildDoseTextForSave(row),
       frequency_text: row.frequency_text,
       route_text: row.route_text,
       indication: row.indication,
@@ -218,9 +303,15 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
         start_date: item.start_date ?? '',
         notes: item.notes ?? '',
         is_active: item.is_active,
+        dose_unit_hint: inferDoseUnitHint(item.dose_text),
         previous: item,
       })),
     );
+
+    const eventResult = await listVisitMedicationEvents(visitId);
+    if (!eventResult.errorMessage) {
+      setEventSummary(eventResult.data);
+    }
 
     const saveMessage =
       suspendedCount > 0
@@ -323,8 +414,22 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
                 <input
                   value={row.dose_text}
                   onChange={(event) => handleChange(index, 'dose_text', event.target.value)}
-                  placeholder="Ej. 100 mg / 1 comprimido / 20 UI"
+                  placeholder="Ej. 850 mg, 1 comprimido(s), 20 UI"
                 />
+              </label>
+              <label>
+                Unidad (opcional)
+                <select
+                  value={row.dose_unit_hint}
+                  onChange={(event) => handleChange(index, 'dose_unit_hint', event.target.value as DoseUnitOptionValue | '')}
+                >
+                  <option value="">Sin unidad guiada</option>
+                  {DOSE_UNIT_OPTIONS.map((unit) => (
+                    <option key={unit} value={unit}>
+                      {unit}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
                 Frecuencia
@@ -352,6 +457,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
               <label>
                 Indicación
                 <input
+                  list="medication-indication-options"
                   value={row.indication}
                   onChange={(event) => handleChange(index, 'indication', event.target.value)}
                   placeholder="Ej. prevención secundaria"
@@ -367,11 +473,21 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
               Notas
               <textarea rows={2} value={row.notes} onChange={(event) => handleChange(index, 'notes', event.target.value)} />
             </label>
+            {getSemanticWarnings(row).map((warning) => (
+              <p key={`${row.medication_catalog_id}-${index}-${warning}`} className="help-text" style={{ marginTop: '0.4rem', color: '#9a3412' }}>
+                ⚠ {warning}
+              </p>
+            ))}
           </article>
         ))}
 
         <datalist id="medication-frequency-options">
           {FREQUENCY_SUGGESTIONS.map((option) => (
+            <option key={option} value={option} />
+          ))}
+        </datalist>
+        <datalist id="medication-indication-options">
+          {INDICATION_SUGGESTIONS.map((option) => (
             <option key={option} value={option} />
           ))}
         </datalist>
@@ -383,6 +499,42 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
           <span className="help-text">Tratamientos activos: {activeCount}</span>
         </div>
       </form>
+
+      <article style={{ marginTop: '1rem', borderTop: '1px solid #e5e7eb', paddingTop: '0.8rem' }}>
+        <h3 style={{ marginBottom: '0.45rem' }}>Resumen de cambios de medicación en esta visita</h3>
+        {eventSummary.length === 0 ? (
+          <p className="help-text">Aún no hay eventos guardados para esta visita.</p>
+        ) : (
+          <>
+            <p className="help-text" style={{ marginBottom: '0.6rem' }}>
+              Nuevos: {eventSummary.filter((event) => event.event_type === 'added').length} · Modificados:{' '}
+              {eventSummary.filter((event) => event.event_type === 'modified').length} · Suspendidos:{' '}
+              {eventSummary.filter((event) => event.event_type === 'stopped').length} · Sin cambios:{' '}
+              {eventSummary.filter((event) => event.event_type === 'confirmed_no_change').length}
+            </p>
+            <ul className="simple-list">
+              {eventSummary.slice(0, 8).map((event) => (
+                <li key={event.id}>
+                  <span>
+                    {event.patient_medication?.medication_catalog?.display_name ?? 'Medicamento'}
+                    {' · '}
+                    {STATUS_META[
+                      event.event_type === 'added'
+                        ? 'new'
+                        : event.event_type === 'modified'
+                          ? 'modified'
+                          : event.event_type === 'stopped'
+                            ? 'stopped'
+                            : 'unchanged'
+                    ].label}
+                  </span>
+                  <span className="help-text">{new Date(event.created_at).toLocaleString('es-ES')}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </article>
 
       {errorMessage ? <ErrorState title="No se pudo gestionar la medicación" message={errorMessage} /> : null}
     </section>
