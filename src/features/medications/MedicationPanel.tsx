@@ -312,8 +312,9 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
   useEffect(() => {
     void (async () => {
       const result = await searchExternalMedicationCatalog(externalCatalogQuery);
-      if (!result.errorMessage) {
-        setExternalCatalogOptions(result.data);
+      setExternalCatalogOptions(result.data);
+      if (result.errorMessage) {
+        setCatalogInfoMessage(result.errorMessage);
       }
     })();
   }, [externalCatalogQuery]);
@@ -571,7 +572,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
             </option>
             {externalCatalogOptions.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.label}
+                [{item.sourceLabel}] {item.label}
               </option>
             ))}
           </select>
