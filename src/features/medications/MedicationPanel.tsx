@@ -36,6 +36,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogOptions, setCatalogOptions] = useState<MedicationCatalogItem[]>([]);
@@ -89,10 +90,12 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
     }
 
     setRows((prev) => [...prev, emptyDraft(selected)]);
+    setSuccessMessage(null);
     setCatalogQuery('');
   };
 
   const handleChange = <K extends keyof MedicationFormRow>(index: number, key: K, value: MedicationFormRow[K]) => {
+    setSuccessMessage(null);
     setRows((prev) => prev.map((row, rowIndex) => (rowIndex === index ? { ...row, [key]: value } : row)));
   };
 
@@ -101,6 +104,9 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
 
     setSaving(true);
     setErrorMessage(null);
+    setSuccessMessage(null);
+
+    const suspendedCount = rows.filter((row) => row.previous?.is_active && !row.is_active).length;
 
     const payload = rows.map((row) => ({
       id: row.id,
@@ -143,6 +149,11 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
       })),
     );
 
+    const saveMessage =
+      suspendedCount > 0
+        ? `Cambios guardados correctamente. ${suspendedCount} tratamiento(s) suspendido(s).`
+        : 'Cambios de medicación guardados correctamente.';
+    setSuccessMessage(saveMessage);
     setSaving(false);
   };
 
@@ -152,6 +163,11 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
       <p className="help-text" style={{ marginBottom: '1rem' }}>
         Se precarga la medicación activa del paciente. Puedes añadir, ajustar dosis/frecuencia y suspender tratamientos.
       </p>
+      {successMessage ? (
+        <p className="help-text" style={{ marginBottom: '0.8rem', color: '#166534', fontWeight: 600 }}>
+          ✓ {successMessage}
+        </p>
+      ) : null}
 
       <div className="grid-2" style={{ marginBottom: '1rem' }}>
         <label>
@@ -189,9 +205,10 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
             style={{
               border: '1px solid #e5e7eb',
               borderRadius: '10px',
-              padding: '1rem',
+              padding: '0.8rem',
               opacity: row.is_active ? 1 : 0.65,
               background: row.is_active ? '#ffffff' : '#f9fafb',
+              marginBottom: '0.5rem',
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
@@ -227,7 +244,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
               </label>
             </div>
 
-            <label style={{ marginTop: '0.75rem', display: 'block' }}>
+            <label style={{ marginTop: '0.5rem', display: 'block' }}>
               Notas
               <textarea rows={2} value={row.notes} onChange={(event) => handleChange(index, 'notes', event.target.value)} />
             </label>

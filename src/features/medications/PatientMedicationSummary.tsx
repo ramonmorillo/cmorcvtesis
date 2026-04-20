@@ -6,7 +6,7 @@ type PatientMedicationSummaryProps = {
 };
 
 function formatStartDate(value: string | null): string {
-  if (!value) return '-';
+  if (!value) return '';
   return value;
 }
 
@@ -27,11 +27,14 @@ export function PatientMedicationSummary({ medications, warning }: PatientMedica
         <ul className="simple-list">
           {medications.map((item) => (
             <li key={item.id}>
-              <div>
+              <div style={{ width: '100%' }}>
                 <strong>{item.medication_catalog?.display_name ?? 'Medicamento sin nombre'}</strong>
-                <p className="help-text" style={{ marginTop: '0.25rem' }}>
-                  Dosis: {item.dose_text || '-'} · Frecuencia: {item.frequency_text || '-'} · Vía: {item.route_text || '-'} · Inicio: {formatStartDate(item.start_date)}
-                </p>
+                <div style={{ marginTop: '0.25rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                  {item.dose_text ? <span className="help-text">Dosis: {item.dose_text}</span> : null}
+                  {item.frequency_text ? <span className="help-text">Frecuencia: {item.frequency_text}</span> : null}
+                  {item.route_text ? <span className="help-text">Vía: {item.route_text}</span> : null}
+                  {formatStartDate(item.start_date) ? <span className="help-text">Inicio: {formatStartDate(item.start_date)}</span> : null}
+                </div>
               </div>
             </li>
           ))}
