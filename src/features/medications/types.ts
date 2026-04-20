@@ -1,8 +1,10 @@
 export type MedicationEventType = 'added' | 'modified' | 'stopped' | 'confirmed_no_change';
 
+export type MedicationCatalogSource = 'internal' | 'external_cima' | 'external_other';
+
 export type MedicationCatalogItem = {
   id: string;
-  source: string;
+  source: MedicationCatalogSource;
   source_code: string | null;
   display_name: string;
   active_ingredient: string | null;
@@ -13,6 +15,10 @@ export type MedicationCatalogItem = {
   created_at: string;
   updated_at: string;
 };
+
+export type MedicationOrigin =
+  | { kind: 'internal'; source: 'internal' }
+  | { kind: 'external'; source: 'external_cima' | 'external_other'; source_code: string | null };
 
 export type PatientMedication = {
   id: string;

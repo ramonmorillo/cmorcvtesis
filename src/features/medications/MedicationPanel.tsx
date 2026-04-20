@@ -7,6 +7,7 @@ import {
   saveVisitMedicationChanges,
   searchMedicationCatalog,
 } from './medicationsService';
+import { resolveMedicationOrigin } from './catalogSource';
 import type { MedicationCatalogItem, PatientMedicationDraft, VisitMedicationEvent } from './types';
 
 type MedicationPanelProps = {
@@ -16,6 +17,9 @@ type MedicationPanelProps = {
 
 type MedicationFormRow = PatientMedicationDraft & {
   display_name: string;
+  source_label: string;
+  source_code: string;
+  dose_amount: string;
   dose_unit_hint: DoseUnitOptionValue | '';
 };
 
@@ -76,10 +80,14 @@ function normalizeRouteValue(route: string | null | undefined): RouteOptionValue
 }
 
 function emptyDraft(catalog: MedicationCatalogItem): MedicationFormRow {
+  const origin = resolveMedicationOrigin(catalog);
   return {
     medication_catalog_id: catalog.id,
     display_name: catalog.display_name,
+    source_label: origin.kind === 'external' ? `Fuente externa (${origin.source})` : 'Catálogo interno',
+    source_code: origin.kind === 'external' ? origin.source_code ?? '' : '',
     dose_text: '',
+    dose_amount: '',
     frequency_text: '',
     route_text: normalizeRouteValue(catalog.route),
     indication: '',
@@ -100,29 +108,44 @@ function inferDoseUnitHint(doseText: string | null | undefined): DoseUnitOptionV
   return matched ?? '';
 }
 
+function inferDoseAmount(doseText: string | null | undefined): string {
+  const normalized = normalizeTextValue(doseText).replace(',', '.');
+  const matched = normalized.match(/^([0-9]+(?:\.[0-9]+)?)\b/);
+  return matched?.[1]?.replace('.', ',') ?? '';
+}
+
 function buildDoseTextForSave(row: MedicationFormRow): string {
-  const dose = normalizeTextValue(row.dose_text);
-  if (!dose) {
+  const freeDoseText = normalizeTextValue(row.dose_text);
+  const normalizedAmount = normalizeTextValue(row.dose_amount);
+
+  if (normalizedAmount) {
+    if (!row.dose_unit_hint || row.dose_unit_hint === 'otra') {
+      return normalizedAmount;
+    }
+    return `${normalizedAmount} ${row.dose_unit_hint}`;
+  }
+
+  if (!freeDoseText) {
     return '';
   }
 
   if (!row.dose_unit_hint || row.dose_unit_hint === 'otra') {
-    return dose;
+    return freeDoseText;
   }
 
-  const isMostlyNumeric = /^[0-9]+([.,][0-9]+)?$/.test(dose);
-  const hasKnownUnit = DOSE_UNIT_OPTIONS.some((unit) => unit !== 'otra' && dose.toLowerCase().includes(unit.toLowerCase()));
+  const isMostlyNumeric = /^[0-9]+([.,][0-9]+)?$/.test(freeDoseText);
+  const hasKnownUnit = DOSE_UNIT_OPTIONS.some((unit) => unit !== 'otra' && freeDoseText.toLowerCase().includes(unit.toLowerCase()));
   if (isMostlyNumeric && !hasKnownUnit) {
-    return `${dose} ${row.dose_unit_hint}`;
+    return `${freeDoseText} ${row.dose_unit_hint}`;
   }
-  return dose;
+  return freeDoseText;
 }
 
 function getSemanticWarnings(row: MedicationFormRow): string[] {
   const warnings: string[] = [];
   const frequency = normalizeTextValue(row.frequency_text).toLowerCase();
   const route = normalizeTextValue(row.route_text).toLowerCase();
-  const dose = normalizeTextValue(row.dose_text);
+  const dose = normalizeTextValue(row.dose_amount || row.dose_text);
   const isDoseNumeric = /^[0-9]+([.,][0-9]+)?$/.test(dose);
 
   const routeKeywords = ROUTE_OPTIONS.map((option) => option.value);
@@ -139,6 +162,29 @@ function getSemanticWarnings(row: MedicationFormRow): string[] {
   }
 
   return warnings;
+}
+
+function normalizeSuggestionToken(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function toSuggestionSet(values: readonly string[]): Set<string> {
+  return new Set(values.filter((value) => value !== 'otra').map(normalizeSuggestionToken));
+}
+
+const FREQUENCY_SET = toSuggestionSet(FREQUENCY_SUGGESTIONS);
+const INDICATION_SET = toSuggestionSet(INDICATION_SUGGESTIONS);
+
+function isSuggestedValue(value: string, suggestionSet: ReadonlySet<string>): boolean {
+  const normalized = normalizeSuggestionToken(value);
+  return normalized.length === 0 || suggestionSet.has(normalized);
+}
+
+function eventTypeToStatus(eventType: VisitMedicationEvent['event_type']): MedicationChangeStatus {
+  if (eventType === 'added') return 'new';
+  if (eventType === 'modified') return 'modified';
+  if (eventType === 'stopped') return 'stopped';
+  return 'unchanged';
 }
 
 function getMedicationStatus(row: MedicationFormRow): MedicationChangeStatus {
@@ -187,10 +233,20 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
 
       setRows(
         result.data.map((item) => ({
+          ...(item.medication_catalog
+            ? (() => {
+                const origin = resolveMedicationOrigin(item.medication_catalog);
+                return {
+                  source_label: origin.kind === 'external' ? `Fuente externa (${origin.source})` : 'Catálogo interno',
+                  source_code: origin.kind === 'external' ? origin.source_code ?? '' : '',
+                };
+              })()
+            : { source_label: 'Catálogo interno', source_code: '' }),
           id: item.id,
           medication_catalog_id: item.medication_catalog_id,
           display_name: item.medication_catalog?.display_name ?? 'Medicamento',
           dose_text: item.dose_text ?? '',
+          dose_amount: inferDoseAmount(item.dose_text),
           frequency_text: item.frequency_text ?? '',
           route_text: item.route_text ?? '',
           indication: item.indication ?? '',
@@ -225,6 +281,15 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
 
   const activeCount = useMemo(() => rows.filter((row) => row.is_active).length, [rows]);
   const hasInheritedTreatments = useMemo(() => rows.some((row) => Boolean(row.previous)), [rows]);
+  const visitEventStats = useMemo(
+    () => ({
+      added: eventSummary.filter((event) => event.event_type === 'added'),
+      modified: eventSummary.filter((event) => event.event_type === 'modified'),
+      stopped: eventSummary.filter((event) => event.event_type === 'stopped'),
+      unchanged: eventSummary.filter((event) => event.event_type === 'confirmed_no_change'),
+    }),
+    [eventSummary],
+  );
 
   const handleAddCatalogMedication = (catalogId: string) => {
     const selected = catalogOptions.find((item) => item.id === catalogId);
@@ -293,10 +358,20 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
 
     setRows(
       result.data.map((item) => ({
+        ...(item.medication_catalog
+          ? (() => {
+              const origin = resolveMedicationOrigin(item.medication_catalog);
+              return {
+                source_label: origin.kind === 'external' ? `Fuente externa (${origin.source})` : 'Catálogo interno',
+                source_code: origin.kind === 'external' ? origin.source_code ?? '' : '',
+              };
+            })()
+          : { source_label: 'Catálogo interno', source_code: '' }),
         id: item.id,
         medication_catalog_id: item.medication_catalog_id,
         display_name: item.medication_catalog?.display_name ?? 'Medicamento',
         dose_text: item.dose_text ?? '',
+        dose_amount: inferDoseAmount(item.dose_text),
         frequency_text: item.frequency_text ?? '',
         route_text: item.route_text ?? '',
         indication: item.indication ?? '',
@@ -383,6 +458,8 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.55rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
                 <strong>{row.display_name}</strong>
+                <span className="help-text">{row.source_label}</span>
+                {row.source_code ? <span className="help-text">Código fuente: {row.source_code}</span> : null}
                 {(() => {
                   const status = getMedicationStatus(row);
                   const meta = STATUS_META[status];
@@ -410,26 +487,35 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
 
             <div className="grid-2">
               <label>
-                Dosis
+                Dosis (cantidad)
                 <input
-                  value={row.dose_text}
-                  onChange={(event) => handleChange(index, 'dose_text', event.target.value)}
-                  placeholder="Ej. 850 mg, 1 comprimido(s), 20 UI"
+                  value={row.dose_amount}
+                  onChange={(event) => handleChange(index, 'dose_amount', event.target.value)}
+                  inputMode="decimal"
+                  placeholder="Ej. 850"
                 />
               </label>
               <label>
-                Unidad (opcional)
+                Unidad
                 <select
                   value={row.dose_unit_hint}
                   onChange={(event) => handleChange(index, 'dose_unit_hint', event.target.value as DoseUnitOptionValue | '')}
                 >
-                  <option value="">Sin unidad guiada</option>
+                  <option value="">Seleccionar unidad</option>
                   {DOSE_UNIT_OPTIONS.map((unit) => (
                     <option key={unit} value={unit}>
                       {unit}
                     </option>
                   ))}
                 </select>
+              </label>
+              <label>
+                Dosis (texto libre, opcional)
+                <input
+                  value={row.dose_text}
+                  onChange={(event) => handleChange(index, 'dose_text', event.target.value)}
+                  placeholder="Si necesitas más detalle: 1 comprimido tras desayuno"
+                />
               </label>
               <label>
                 Frecuencia
@@ -439,6 +525,11 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
                   onChange={(event) => handleChange(index, 'frequency_text', event.target.value)}
                   placeholder="Ej. 1 vez/día o cada 12 h"
                 />
+                {!isSuggestedValue(row.frequency_text, FREQUENCY_SET) ? (
+                  <span className="help-text" style={{ color: '#9a3412' }}>
+                    ⚠ Valor fuera de sugerencias. Se guardará como texto libre.
+                  </span>
+                ) : null}
               </label>
               <label>
                 Vía
@@ -462,6 +553,11 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
                   onChange={(event) => handleChange(index, 'indication', event.target.value)}
                   placeholder="Ej. prevención secundaria"
                 />
+                {!isSuggestedValue(row.indication, INDICATION_SET) ? (
+                  <span className="help-text" style={{ color: '#9a3412' }}>
+                    ⚠ Indicación no estandarizada. Se permite texto libre.
+                  </span>
+                ) : null}
               </label>
               <label>
                 Fecha inicio
@@ -473,6 +569,14 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
               Notas
               <textarea rows={2} value={row.notes} onChange={(event) => handleChange(index, 'notes', event.target.value)} />
             </label>
+            {(() => {
+              const preview = buildDoseTextForSave(row);
+              return preview ? (
+                <p className="help-text" style={{ marginTop: '0.35rem' }}>
+                  Dosis final a guardar: <strong>{preview}</strong>
+                </p>
+              ) : null;
+            })()}
             {getSemanticWarnings(row).map((warning) => (
               <p key={`${row.medication_catalog_id}-${index}-${warning}`} className="help-text" style={{ marginTop: '0.4rem', color: '#9a3412' }}>
                 ⚠ {warning}
@@ -507,26 +611,34 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
         ) : (
           <>
             <p className="help-text" style={{ marginBottom: '0.6rem' }}>
-              Nuevos: {eventSummary.filter((event) => event.event_type === 'added').length} · Modificados:{' '}
-              {eventSummary.filter((event) => event.event_type === 'modified').length} · Suspendidos:{' '}
-              {eventSummary.filter((event) => event.event_type === 'stopped').length} · Sin cambios:{' '}
-              {eventSummary.filter((event) => event.event_type === 'confirmed_no_change').length}
+              Nuevos: {visitEventStats.added.length} · Modificados: {visitEventStats.modified.length} · Suspendidos:{' '}
+              {visitEventStats.stopped.length} · Sin cambios: {visitEventStats.unchanged.length}
             </p>
+            <div className="grid-2" style={{ marginBottom: '0.7rem' }}>
+              <div>
+                <p className="help-text" style={{ fontWeight: 600 }}>Nuevos</p>
+                <p className="help-text">{visitEventStats.added.slice(0, 3).map((event) => event.patient_medication?.medication_catalog?.display_name ?? 'Medicamento').join(' · ') || '—'}</p>
+              </div>
+              <div>
+                <p className="help-text" style={{ fontWeight: 600 }}>Modificados</p>
+                <p className="help-text">{visitEventStats.modified.slice(0, 3).map((event) => event.patient_medication?.medication_catalog?.display_name ?? 'Medicamento').join(' · ') || '—'}</p>
+              </div>
+              <div>
+                <p className="help-text" style={{ fontWeight: 600 }}>Suspendidos</p>
+                <p className="help-text">{visitEventStats.stopped.slice(0, 3).map((event) => event.patient_medication?.medication_catalog?.display_name ?? 'Medicamento').join(' · ') || '—'}</p>
+              </div>
+              <div>
+                <p className="help-text" style={{ fontWeight: 600 }}>Sin cambios</p>
+                <p className="help-text">{visitEventStats.unchanged.slice(0, 3).map((event) => event.patient_medication?.medication_catalog?.display_name ?? 'Medicamento').join(' · ') || '—'}</p>
+              </div>
+            </div>
             <ul className="simple-list">
               {eventSummary.slice(0, 8).map((event) => (
                 <li key={event.id}>
                   <span>
                     {event.patient_medication?.medication_catalog?.display_name ?? 'Medicamento'}
                     {' · '}
-                    {STATUS_META[
-                      event.event_type === 'added'
-                        ? 'new'
-                        : event.event_type === 'modified'
-                          ? 'modified'
-                          : event.event_type === 'stopped'
-                            ? 'stopped'
-                            : 'unchanged'
-                    ].label}
+                    {STATUS_META[eventTypeToStatus(event.event_type)].label}
                   </span>
                   <span className="help-text">{new Date(event.created_at).toLocaleString('es-ES')}</span>
                 </li>
