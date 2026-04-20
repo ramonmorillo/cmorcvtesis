@@ -156,16 +156,18 @@ export async function searchMedicationCatalog(query: string): Promise<ServiceRes
     return { data: [], errorMessage: 'Supabase no está configurado. No se puede consultar el catálogo.' };
   }
 
+  const trimmed = query.trim();
+  if (trimmed.length < 2) {
+    return { data: [], errorMessage: null };
+  }
+
   let request = supabase
     .from('medication_catalog')
     .select('id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at')
     .order('display_name', { ascending: true })
     .limit(20);
 
-  const trimmed = query.trim();
-  if (trimmed.length > 0) {
-    request = request.or(`display_name.ilike.%${trimmed}%,active_ingredient.ilike.%${trimmed}%`);
-  }
+  request = request.or(`display_name.ilike.%${trimmed}%,active_ingredient.ilike.%${trimmed}%`);
 
   const { data, error } = await request;
 
