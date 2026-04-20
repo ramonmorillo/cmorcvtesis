@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { getVisitById } from '../../services/visitService';
+import { searchRemoteCimaMedications } from './cimaSearchService';
 import { normalizeMedicationCatalogSource } from './catalogSource';
 import { mapExternalMedicationPayloadToNormalizedCandidate, upsertNormalizedMedicationFromExternal } from './normalizedCatalog';
 import type { MedicationCatalogItem, MedicationEventType, PatientMedication, PatientMedicationDraft, VisitMedicationEvent } from './types';
@@ -33,6 +34,7 @@ export type ExternalMedicationSearchItem = {
   id: string;
   label: string;
   source: 'external_cima';
+  sourceLabel: 'CIMA (cache local)' | 'CIMA (remoto)';
   sourceCode: string | null;
   payload: Record<string, unknown>;
 };
@@ -190,7 +192,7 @@ export async function searchExternalMedicationCatalog(query: string): Promise<Se
     return { data: [], errorMessage: null };
   }
 
-  let request = supabase
+  const request = supabase
     .from('med_catalog_products')
     .select(
       'id,source,cima_cn,cima_nregistro,cima_name,labtitular,pharmaceutical_form,routes,atc_codes,authorization_status,commercialized,raw_payload,last_synced_at',
@@ -209,7 +211,7 @@ export async function searchExternalMedicationCatalog(query: string): Promise<Se
     };
   }
 
-  const mapped = ((data ?? []) as Array<Record<string, unknown>>).map((item) => {
+  const localMapped = ((data ?? []) as Array<Record<string, unknown>>).map((item) => {
     const payload: Record<string, unknown> = {
       ...(typeof item.raw_payload === 'object' && item.raw_payload ? (item.raw_payload as Record<string, unknown>) : {}),
       source: 'external_cima',
@@ -226,15 +228,65 @@ export async function searchExternalMedicationCatalog(query: string): Promise<Se
     };
 
     return {
-      id: String(item.id),
+      id: `local:${String(item.id)}`,
       label: buildExternalMedicationLabel(payload),
       source: 'external_cima' as const,
+      sourceLabel: 'CIMA (cache local)' as const,
       sourceCode: typeof payload.cima_cn === 'string' ? payload.cima_cn : null,
       payload,
     };
   });
 
-  return { data: mapped, errorMessage: null };
+  const remoteResult = await searchRemoteCimaMedications(trimmed);
+  if (remoteResult.errorMessage) {
+    return {
+      data: localMapped,
+      errorMessage:
+        localMapped.length > 0
+          ? `CIMA remoto no disponible ahora mismo. Mostrando solo caché local. Detalle: ${remoteResult.errorMessage}`
+          : remoteResult.errorMessage,
+    };
+  }
+
+  const knownExternalCodes = new Set(
+    localMapped
+      .map((item) => (typeof item.payload.cima_cn === 'string' ? item.payload.cima_cn.trim() : ''))
+      .filter((value) => value.length > 0),
+  );
+
+  const remoteMapped: ExternalMedicationSearchItem[] = remoteResult.data
+    .filter((item) => !item.cima_cn || !knownExternalCodes.has(item.cima_cn.trim()))
+    .map((item) => {
+      const payload: Record<string, unknown> = {
+        ...item.raw_payload,
+        source: 'external_cima',
+        cima_cn: item.cima_cn,
+        cima_nregistro: item.cima_nregistro,
+        cima_name: item.cima_name,
+        labtitular: item.labtitular,
+        pharmaceutical_form: item.pharmaceutical_form,
+        pharmaceutical_form_simplified: item.pharmaceutical_form_simplified,
+        routes: item.routes,
+        atc_codes: item.atc_codes,
+        authorization_status: item.authorization_status,
+        commercialized: item.commercialized,
+        vmpp: item.vmpp,
+        vmp: item.vmp,
+        dose: item.dose,
+        fetched_at: item.fetched_at,
+      };
+
+      return {
+        id: `remote:${item.id}`,
+        label: buildExternalMedicationLabel(payload),
+        source: 'external_cima',
+        sourceLabel: 'CIMA (remoto)',
+        sourceCode: item.cima_cn,
+        payload,
+      };
+    });
+
+  return { data: [...localMapped, ...remoteMapped], errorMessage: null };
 }
 
 async function ensureExternalMedicationCatalogItem(params: {

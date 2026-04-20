@@ -603,7 +603,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
             </option>
             {externalCatalogOptions.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.label}
+                [{item.sourceLabel}] {item.label}
               </option>
             ))}
           </select>
