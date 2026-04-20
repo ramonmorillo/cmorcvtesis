@@ -1,9 +1,11 @@
 import { supabase } from '../../lib/supabase';
 import { getVisitById } from '../../services/visitService';
 import { normalizeMedicationCatalogSource } from './catalogSource';
+import { mapExternalMedicationPayloadToNormalizedCandidate, upsertNormalizedMedicationFromExternal } from './normalizedCatalog';
 import type { MedicationCatalogItem, MedicationEventType, PatientMedication, PatientMedicationDraft, VisitMedicationEvent } from './types';
 
 type ServiceResult<T> = { data: T; errorMessage: string | null };
+type NullableServiceResult<T> = { data: T | null; errorMessage: string | null };
 
 type SaveVisitMedicationInput = {
   visitId: string;
@@ -25,7 +27,15 @@ type CreateMedicationCatalogItemResult = {
 };
 
 const PATIENT_MEDICATION_SELECT =
-  'id,patient_id,medication_catalog_id,dose_text,frequency_text,route_text,indication,start_date,end_date,is_active,notes,created_at,updated_at,medication_catalog:medication_catalog_id(id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at)';
+  'id,patient_id,medication_catalog_id,catalog_concept_id,catalog_product_id,selection_source,selected_label_snapshot,selected_source_payload,dose_text,frequency_text,route_text,indication,start_date,end_date,is_active,notes,created_at,updated_at,medication_catalog:medication_catalog_id(id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at)';
+
+export type ExternalMedicationSearchItem = {
+  id: string;
+  label: string;
+  source: 'external_cima';
+  sourceCode: string | null;
+  payload: Record<string, unknown>;
+};
 
 function extractErrorMessage(error: unknown, fallback: string): string {
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
@@ -82,6 +92,12 @@ function normalizeMedicationCatalogItem(record: MedicationCatalogItem): Medicati
     ...record,
     source: normalizeMedicationCatalogSource(record.source),
   };
+}
+
+function buildExternalMedicationLabel(payload: Record<string, unknown>): string {
+  const name = typeof payload.cima_name === 'string' && payload.cima_name.trim().length > 0 ? payload.cima_name.trim() : 'Medicamento externo';
+  const cn = typeof payload.cima_cn === 'string' && payload.cima_cn.trim().length > 0 ? payload.cima_cn.trim() : null;
+  return cn ? `${name} (CN ${cn})` : name;
 }
 
 function normalizeMedicationName(value: string): string {
@@ -162,6 +178,194 @@ export async function searchMedicationCatalog(query: string): Promise<ServiceRes
     data: ((data ?? []) as MedicationCatalogItem[]).map(normalizeMedicationCatalogItem),
     errorMessage: null,
   };
+}
+
+export async function searchExternalMedicationCatalog(query: string): Promise<ServiceResult<ExternalMedicationSearchItem[]>> {
+  if (!supabase) {
+    return { data: [], errorMessage: 'Supabase no está configurado. No se puede consultar catálogo externo.' };
+  }
+
+  const trimmed = query.trim();
+  if (trimmed.length < 2) {
+    return { data: [], errorMessage: null };
+  }
+
+  let request = supabase
+    .from('med_catalog_products')
+    .select(
+      'id,source,cima_cn,cima_nregistro,cima_name,labtitular,pharmaceutical_form,routes,atc_codes,authorization_status,commercialized,raw_payload,last_synced_at',
+    )
+    .eq('source', 'external_cima')
+    .order('cima_name', { ascending: true })
+    .limit(20)
+    .or(`cima_name.ilike.%${trimmed}%,cima_cn.ilike.%${trimmed}%,cima_nregistro.ilike.%${trimmed}%`);
+
+  const { data, error } = await request;
+
+  if (error) {
+    return {
+      data: [],
+      errorMessage: extractErrorMessage(error, 'No fue posible buscar medicamentos externos.'),
+    };
+  }
+
+  const mapped = ((data ?? []) as Array<Record<string, unknown>>).map((item) => {
+    const payload: Record<string, unknown> = {
+      ...(typeof item.raw_payload === 'object' && item.raw_payload ? (item.raw_payload as Record<string, unknown>) : {}),
+      source: 'external_cima',
+      cima_cn: typeof item.cima_cn === 'string' ? item.cima_cn : null,
+      cima_nregistro: typeof item.cima_nregistro === 'string' ? item.cima_nregistro : null,
+      cima_name: typeof item.cima_name === 'string' ? item.cima_name : null,
+      labtitular: typeof item.labtitular === 'string' ? item.labtitular : null,
+      pharmaceutical_form: typeof item.pharmaceutical_form === 'string' ? item.pharmaceutical_form : null,
+      routes: Array.isArray(item.routes) ? item.routes : [],
+      atc_codes: Array.isArray(item.atc_codes) ? item.atc_codes : [],
+      authorization_status: typeof item.authorization_status === 'string' ? item.authorization_status : null,
+      commercialized: typeof item.commercialized === 'boolean' ? item.commercialized : null,
+      last_synced_at: typeof item.last_synced_at === 'string' ? item.last_synced_at : null,
+    };
+
+    return {
+      id: String(item.id),
+      label: buildExternalMedicationLabel(payload),
+      source: 'external_cima' as const,
+      sourceCode: typeof payload.cima_cn === 'string' ? payload.cima_cn : null,
+      payload,
+    };
+  });
+
+  return { data: mapped, errorMessage: null };
+}
+
+async function ensureExternalMedicationCatalogItem(params: {
+  sourceCode: string | null;
+  displayName: string;
+  candidate: ReturnType<typeof mapExternalMedicationPayloadToNormalizedCandidate>;
+}): Promise<NullableServiceResult<MedicationCatalogItem>> {
+  if (!supabase) {
+    return { data: null, errorMessage: 'Supabase no está configurado.' };
+  }
+
+  if (params.sourceCode) {
+    const { data: existingBySourceCode } = await supabase
+      .from('medication_catalog')
+      .select('id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at')
+      .eq('source', 'external_cima')
+      .eq('source_code', params.sourceCode)
+      .maybeSingle();
+
+    if (existingBySourceCode) {
+      return { data: normalizeMedicationCatalogItem(existingBySourceCode as MedicationCatalogItem), errorMessage: null };
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('medication_catalog')
+    .insert({
+      source: 'external_cima',
+      source_code: params.sourceCode,
+      display_name: params.displayName,
+      active_ingredient: params.candidate.ingredientNames.join(' + ') || null,
+      strength: params.candidate.strengthText,
+      form: params.candidate.pharmaceuticalForm,
+      route: params.candidate.routeDefault,
+      atc_code: params.candidate.atcCodes[0] ?? null,
+    })
+    .select('id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at')
+    .maybeSingle();
+
+  if (error) {
+    return { data: null, errorMessage: extractErrorMessage(error, 'No fue posible crear el medicamento externo en catálogo local.') };
+  }
+
+  return {
+    data: data ? normalizeMedicationCatalogItem(data as MedicationCatalogItem) : null,
+    errorMessage: null,
+  };
+}
+
+export async function importExternalMedicationToVisit(input: {
+  visitId: string;
+  patientId: string;
+  selectedLabel: string;
+  sourcePayload: Record<string, unknown>;
+}): Promise<ServiceResult<PatientMedication[]>> {
+  if (!supabase) {
+    return { data: [], errorMessage: 'Supabase no está configurado. No se puede importar medicación externa.' };
+  }
+
+  const candidate = mapExternalMedicationPayloadToNormalizedCandidate(input.sourcePayload);
+  const normalizedResult = await upsertNormalizedMedicationFromExternal(candidate);
+  if (normalizedResult.errorMessage || !normalizedResult.data) {
+    return { data: [], errorMessage: normalizedResult.errorMessage ?? 'No se pudo normalizar el medicamento externo.' };
+  }
+
+  const sourceCode = candidate.cimaCn ?? normalizedResult.data.productId;
+  const localCatalogResult = await ensureExternalMedicationCatalogItem({
+    sourceCode,
+    displayName: input.selectedLabel,
+    candidate,
+  });
+  if (localCatalogResult.errorMessage || !localCatalogResult.data) {
+    return { data: [], errorMessage: localCatalogResult.errorMessage ?? 'No se pudo enlazar el catálogo local.' };
+  }
+
+  const insertPayload = {
+    patient_id: input.patientId,
+    medication_catalog_id: localCatalogResult.data.id,
+    catalog_concept_id: normalizedResult.data.conceptId,
+    catalog_product_id: normalizedResult.data.productId,
+    selection_source: 'external_cima',
+    selected_label_snapshot: input.selectedLabel,
+    selected_source_payload: input.sourcePayload,
+    dose_text: null,
+    frequency_text: null,
+    route_text: null,
+    indication: null,
+    start_date: null,
+    end_date: null,
+    is_active: true,
+    notes: null,
+  };
+
+  const { data, error } = await supabase
+    .from('patient_medications')
+    .insert(insertPayload)
+    .select(PATIENT_MEDICATION_SELECT)
+    .maybeSingle();
+
+  if (error) {
+    return { data: [], errorMessage: extractErrorMessage(error, 'No fue posible añadir la medicación externa al paciente.') };
+  }
+
+  const persisted = data
+    ? normalizePatientMedication(data as PatientMedication & { medication_catalog?: MedicationCatalogItem | MedicationCatalogItem[] })
+    : null;
+
+  if (persisted) {
+    const { error: eventError } = await supabase.from('visit_medication_events').insert({
+      visit_id: input.visitId,
+      patient_medication_id: persisted.id,
+      event_type: 'added',
+      old_value: null,
+      new_value: {
+        medication_catalog_id: persisted.medication_catalog_id,
+        catalog_concept_id: persisted.catalog_concept_id ?? null,
+        catalog_product_id: persisted.catalog_product_id ?? null,
+        selection_source: persisted.selection_source ?? null,
+      },
+    });
+
+    if (eventError) {
+      return { data: [], errorMessage: extractErrorMessage(eventError, 'No fue posible registrar el evento de importación externa.') };
+    }
+  }
+
+  const refreshed = await listActivePatientMedications(input.patientId);
+  if (refreshed.errorMessage) {
+    return { data: [], errorMessage: refreshed.errorMessage };
+  }
+  return refreshed;
 }
 
 export async function createMedicationCatalogItem(
