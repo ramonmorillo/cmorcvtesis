@@ -4,11 +4,20 @@ const KNOWN_SOURCES: ReadonlySet<MedicationCatalogSource> = new Set(['internal',
 
 export function normalizeMedicationCatalogSource(source: string | null | undefined): MedicationCatalogSource {
   const normalized = (source ?? '').trim().toLowerCase();
+
+  if (!normalized) {
+    return 'internal';
+  }
+
   if (KNOWN_SOURCES.has(normalized as MedicationCatalogSource)) {
     return normalized as MedicationCatalogSource;
   }
 
-  return normalized.includes('cima') ? 'external_cima' : 'internal';
+  if (normalized.includes('cima')) {
+    return 'external_cima';
+  }
+
+  return 'external_other';
 }
 
 export function resolveMedicationOrigin(item: Pick<MedicationCatalogItem, 'source' | 'source_code'>): MedicationOrigin {
