@@ -119,7 +119,59 @@ input:focus,textarea:focus,select:focus { outline: 2px solid #b9dcea; border-col
 .help-text { color: var(--iris-muted); }
 .success-state { border: 1px solid #95e7bb; background: #effdf5; color: #166534; border-radius: 10px; padding: 0.7rem; }
 .error-state { border: 1px solid #f9b8b8; background: #fff6f6; color: #9a1f1f; border-radius: 10px; padding: 0.7rem; }
-.auth-page { width: min(520px, 94vw); margin: 2.2rem auto; display: grid; gap: 1rem; }
+.auth-page {
+  width: min(560px, 94vw);
+  margin: clamp(1.8rem, 6vh, 4.2rem) auto;
+  display: grid;
+  gap: 1rem;
+}
+.auth-card-professional {
+  border: 1px solid #c9dce7;
+  border-radius: 16px;
+  padding: clamp(1.15rem, 3.4vw, 2rem);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fcff 100%);
+  box-shadow: 0 16px 38px rgba(8, 55, 72, 0.1);
+}
+.auth-card-header { display: grid; gap: 0.22rem; margin-bottom: 0.7rem; }
+.auth-brand-title {
+  margin: 0;
+  font-size: 1.06rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #0b4b5e;
+}
+.auth-brand-subtitle {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #476470;
+  line-height: 1.45;
+}
+.auth-supporting-copy { color: #385761; margin-bottom: 0.85rem; }
+.auth-card-professional label { gap: 0.42rem; font-size: 0.95rem; }
+.auth-card-professional input {
+  min-height: 44px;
+  border-color: #b9d0dc;
+  border-radius: 10px;
+  background: #fcfeff;
+}
+.auth-card-professional input:focus {
+  outline: 2px solid #c0deeb;
+  border-color: #78abc0;
+}
+.auth-card-professional button {
+  min-height: 44px;
+  margin-top: 0.25rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  background: linear-gradient(180deg, #0f6580 0%, #0c556d 100%);
+}
+.auth-card-professional button:hover { background: #0b4f66; }
+.auth-note {
+  margin: 0.95rem 0 0;
+  color: #4a6773;
+  font-size: 0.82rem;
+  text-align: center;
+}
 
 .table-wrap {
   overflow-x: auto;

@@ -72,10 +72,16 @@ export function LoginPage() {
 
   return (
     <div className="auth-page">
-      <section className="card auth-card">
-        <p className="iris-eyebrow">Bienvenido a IRIS</p>
+      <section className="card auth-card auth-card-professional">
+        <header className="auth-card-header">
+          <p className="iris-eyebrow">Bienvenido a IRIS</p>
+          <p className="auth-brand-title">IRIS</p>
+          <p className="auth-brand-subtitle">
+            Plataforma de Atención Farmacéutica CMO a pacientes con Riesgo Cardiovascular en farmacia comunitaria
+          </p>
+        </header>
         <h1>Acceso profesional</h1>
-        <p>Introduce tus credenciales de Supabase Auth para continuar.</p>
+        <p className="auth-supporting-copy">Introduce tus credenciales para continuar.</p>
         {checkingSession ? (
           <p>Comprobando sesión activa...</p>
         ) : (
@@ -106,6 +112,7 @@ export function LoginPage() {
             </button>
           </form>
         )}
+        <p className="auth-note">Acceso exclusivo para personal autorizado</p>
       </section>
       {errorMessage ? <ErrorState title="No se pudo iniciar sesión" message={errorMessage} /> : null}
     </div>
