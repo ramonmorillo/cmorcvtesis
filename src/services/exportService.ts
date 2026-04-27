@@ -149,6 +149,39 @@ function toCsv(headers: string[], rows: Array<Record<string, unknown>>): string 
   return [headerLine, ...bodyLines].join('\n');
 }
 
+function normalizeTextValue(value: string): string {
+  return value.replace(/\r?\n|\r/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeDateValue(value: string): string {
+  const normalized = normalizeTextValue(value);
+  if (!normalized) return '';
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return normalized;
+  return parsed.toISOString().slice(0, 10);
+}
+
+function normalizeValueForExport(header: string, value: unknown): string | number {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : '';
+  if (typeof value === 'string') {
+    if (header.endsWith('_date') || header.startsWith('fecha_') || header === 'visit_date' || header === 'scheduled_date' || header === 'inclusion_date') {
+      return normalizeDateValue(value);
+    }
+    return normalizeTextValue(value);
+  }
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return normalizeTextValue(JSON.stringify(value));
+}
+
+function normalizeRowsForExport(rows: Array<Record<string, unknown>>): Array<Record<string, string | number>> {
+  return rows.map((row) => {
+    const entries = Object.entries(row).map(([header, value]) => [header, normalizeValueForExport(header, value)]);
+    return Object.fromEntries(entries);
+  });
+}
+
 function downloadCsv(fileName: string, csvContent: string) {
   const blob = new Blob(['\uFEFF', csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -171,6 +204,228 @@ function downloadTextFile(fileName: string, content: string, mime = 'text/plain;
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+function downloadBinaryFile(fileName: string, data: Uint8Array, mime = 'application/octet-stream') {
+  const binary = Uint8Array.from(data);
+  const blob = new Blob([binary], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', fileName);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function xmlEscape(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+function columnNameFromIndex(index: number): string {
+  let n = index + 1;
+  let result = '';
+  while (n > 0) {
+    const remainder = (n - 1) % 26;
+    result = String.fromCharCode(65 + remainder) + result;
+    n = Math.floor((n - 1) / 26);
+  }
+  return result;
+}
+
+function encodeUtf8(value: string): Uint8Array {
+  return new TextEncoder().encode(value);
+}
+
+function buildSheetXml(rows: Array<Record<string, string | number>>): string {
+  if (rows.length === 0) {
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData/></worksheet>';
+  }
+
+  const headers = Object.keys(rows[0]);
+  const allRows = [Object.fromEntries(headers.map((header) => [header, header])) as Record<string, string | number>, ...rows];
+  const xmlRows = allRows
+    .map((row, rowIndex) => {
+      const cells = headers
+        .map((header, colIndex) => {
+          const cellRef = `${columnNameFromIndex(colIndex)}${rowIndex + 1}`;
+          const value = row[header];
+          if (typeof value === 'number') return `<c r="${cellRef}"><v>${value}</v></c>`;
+          return `<c r="${cellRef}" t="inlineStr"><is><t>${xmlEscape(String(value ?? ''))}</t></is></c>`;
+        })
+        .join('');
+      return `<row r="${rowIndex + 1}">${cells}</row>`;
+    })
+    .join('');
+
+  return [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',
+    '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>',
+    `<dimension ref="A1:${columnNameFromIndex(headers.length - 1)}${allRows.length}"/>`,
+    `<sheetData>${xmlRows}</sheetData>`,
+    '</worksheet>',
+  ].join('');
+}
+
+function writeUInt16LE(target: Uint8Array, offset: number, value: number) {
+  target[offset] = value & 0xff;
+  target[offset + 1] = (value >>> 8) & 0xff;
+}
+
+function writeUInt32LE(target: Uint8Array, offset: number, value: number) {
+  target[offset] = value & 0xff;
+  target[offset + 1] = (value >>> 8) & 0xff;
+  target[offset + 2] = (value >>> 16) & 0xff;
+  target[offset + 3] = (value >>> 24) & 0xff;
+}
+
+function crc32(data: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (let i = 0; i < data.length; i += 1) {
+    crc ^= data[i];
+    for (let bit = 0; bit < 8; bit += 1) {
+      const mask = -(crc & 1);
+      crc = (crc >>> 1) ^ (0xedb88320 & mask);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function buildZip(entries: Array<{ path: string; data: Uint8Array }>): Uint8Array {
+  const files: Array<{ localHeader: Uint8Array; pathBytes: Uint8Array; data: Uint8Array; centralHeader: Uint8Array }> = [];
+  let offset = 0;
+
+  entries.forEach((entry) => {
+    const pathBytes = encodeUtf8(entry.path);
+    const checksum = crc32(entry.data);
+    const size = entry.data.length;
+
+    const localHeader = new Uint8Array(30);
+    writeUInt32LE(localHeader, 0, 0x04034b50);
+    writeUInt16LE(localHeader, 4, 20);
+    writeUInt16LE(localHeader, 8, 0);
+    writeUInt32LE(localHeader, 14, checksum);
+    writeUInt32LE(localHeader, 18, size);
+    writeUInt32LE(localHeader, 22, size);
+    writeUInt16LE(localHeader, 26, pathBytes.length);
+
+    const centralHeader = new Uint8Array(46);
+    writeUInt32LE(centralHeader, 0, 0x02014b50);
+    writeUInt16LE(centralHeader, 4, 20);
+    writeUInt16LE(centralHeader, 6, 20);
+    writeUInt32LE(centralHeader, 16, checksum);
+    writeUInt32LE(centralHeader, 20, size);
+    writeUInt32LE(centralHeader, 24, size);
+    writeUInt16LE(centralHeader, 28, pathBytes.length);
+    writeUInt32LE(centralHeader, 42, offset);
+
+    files.push({ localHeader, pathBytes, data: entry.data, centralHeader });
+    offset += localHeader.length + pathBytes.length + size;
+  });
+
+  const centralDirectorySize = files.reduce((total, file) => total + file.centralHeader.length + file.pathBytes.length, 0);
+  const endOfCentralDirectory = new Uint8Array(22);
+  writeUInt32LE(endOfCentralDirectory, 0, 0x06054b50);
+  writeUInt16LE(endOfCentralDirectory, 8, files.length);
+  writeUInt16LE(endOfCentralDirectory, 10, files.length);
+  writeUInt32LE(endOfCentralDirectory, 12, centralDirectorySize);
+  writeUInt32LE(endOfCentralDirectory, 16, offset);
+
+  const output = new Uint8Array(offset + centralDirectorySize + endOfCentralDirectory.length);
+  let cursor = 0;
+
+  files.forEach((file) => {
+    output.set(file.localHeader, cursor);
+    cursor += file.localHeader.length;
+    output.set(file.pathBytes, cursor);
+    cursor += file.pathBytes.length;
+    output.set(file.data, cursor);
+    cursor += file.data.length;
+  });
+
+  files.forEach((file) => {
+    output.set(file.centralHeader, cursor);
+    cursor += file.centralHeader.length;
+    output.set(file.pathBytes, cursor);
+    cursor += file.pathBytes.length;
+  });
+
+  output.set(endOfCentralDirectory, cursor);
+  return output;
+}
+
+function buildWorkbookXlsx(sheetEntries: Array<{ name: string; rows: Array<Record<string, string | number>> }>): Uint8Array {
+  const contentTypes = [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>',
+    '<Default Extension="xml" ContentType="application/xml"/>',
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>',
+    '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>',
+    '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>',
+    ...sheetEntries.map(
+      (_, index) =>
+        `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
+    ),
+    '</Types>',
+  ].join('');
+
+  const workbookXml = [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">',
+    '<sheets>',
+    ...sheetEntries.map((sheet, index) => `<sheet name="${xmlEscape(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`),
+    '</sheets>',
+    '</workbook>',
+  ].join('');
+
+  const workbookRels = [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
+    ...sheetEntries.map(
+      (_, index) =>
+        `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`,
+    ),
+    '</Relationships>',
+  ].join('');
+
+  const rootRels = [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>',
+    '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>',
+    '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>',
+    '</Relationships>',
+  ].join('');
+
+  const createdAt = new Date().toISOString();
+  const coreProps = [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">',
+    '<dc:creator>IRIS</dc:creator>',
+    '<cp:lastModifiedBy>IRIS</cp:lastModifiedBy>',
+    `<dcterms:created xsi:type="dcterms:W3CDTF">${createdAt}</dcterms:created>`,
+    `<dcterms:modified xsi:type="dcterms:W3CDTF">${createdAt}</dcterms:modified>`,
+    '</cp:coreProperties>',
+  ].join('');
+
+  const appProps =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>IRIS</Application></Properties>';
+
+  return buildZip([
+    { path: '[Content_Types].xml', data: encodeUtf8(contentTypes) },
+    { path: '_rels/.rels', data: encodeUtf8(rootRels) },
+    { path: 'docProps/core.xml', data: encodeUtf8(coreProps) },
+    { path: 'docProps/app.xml', data: encodeUtf8(appProps) },
+    { path: 'xl/workbook.xml', data: encodeUtf8(workbookXml) },
+    { path: 'xl/_rels/workbook.xml.rels', data: encodeUtf8(workbookRels) },
+    ...sheetEntries.map((sheet, index) => ({
+      path: `xl/worksheets/sheet${index + 1}.xml`,
+      data: encodeUtf8(buildSheetXml(sheet.rows)),
+    })),
+  ]);
 }
 
 function buildAnonymousPatientIds(patients: PatientRow[]): Map<string, string> {
@@ -237,7 +492,7 @@ function escapeSpsLabel(value: string): string {
 
 function inferSpsFormatByHeader(header: string): { format: string; type: 'numeric' | 'string' } {
   if (header.endsWith('_date') || header.startsWith('fecha_') || header === 'visit_date' || header === 'scheduled_date' || header === 'inclusion_date') {
-    return { format: 'ADATE10', type: 'numeric' };
+    return { format: 'EDATE10', type: 'numeric' };
   }
 
   if (
@@ -647,18 +902,26 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
     }));
   });
 
-  const patientsCsv = toCsv(Object.keys(patientsCsvRows[0] ?? { patient_id: '' }), patientsCsvRows);
-  const visitsCsv = toCsv(['visit_id', 'patient_id', 'visit_type', 'visit_number', 'visit_date', 'scheduled_date'], visitsCsvRows);
-  const stratificationCsv = toCsv(Object.keys(stratificationCsvRows[0] ?? { visit_id: '', patient_id: '' }), stratificationCsvRows);
-  const interventionsCsv = toCsv(['intervention_id', 'visit_id', 'intervention_type', 'intervention_domain', 'priority_level', 'delivered', 'linked_to_cmo_level', 'outcome'], interventionsCsvRows);
-  const questionnairesCsv = toCsv(Object.keys(questionnairesCsvRows[0] ?? { patient_id: '' }), questionnairesCsvRows);
-  const datasetMaestroCsv = toCsv(Object.keys(datasetMaestroRows[0] ?? {}), datasetMaestroRows);
-  const medicationByVisitCsv = toCsv(Object.keys(medicationByVisitRows[0] ?? { visit_id: '', patient_id: '' }), medicationByVisitRows);
+  const normalizedPatientsRows = normalizeRowsForExport(patientsCsvRows);
+  const normalizedVisitsRows = normalizeRowsForExport(visitsCsvRows);
+  const normalizedStratificationRows = normalizeRowsForExport(stratificationCsvRows);
+  const normalizedInterventionsRows = normalizeRowsForExport(interventionsCsvRows);
+  const normalizedQuestionnairesRows = normalizeRowsForExport(questionnairesCsvRows);
+  const normalizedDatasetMaestroRows = normalizeRowsForExport(datasetMaestroRows);
+  const normalizedMedicationByVisitRows = normalizeRowsForExport(medicationByVisitRows);
+
+  const patientsCsv = toCsv(Object.keys(normalizedPatientsRows[0] ?? { patient_id: '' }), normalizedPatientsRows);
+  const visitsCsv = toCsv(['visit_id', 'patient_id', 'visit_type', 'visit_number', 'visit_date', 'scheduled_date'], normalizedVisitsRows);
+  const stratificationCsv = toCsv(Object.keys(normalizedStratificationRows[0] ?? { visit_id: '', patient_id: '' }), normalizedStratificationRows);
+  const interventionsCsv = toCsv(['intervention_id', 'visit_id', 'intervention_type', 'intervention_domain', 'priority_level', 'delivered', 'linked_to_cmo_level', 'outcome'], normalizedInterventionsRows);
+  const questionnairesCsv = toCsv(Object.keys(normalizedQuestionnairesRows[0] ?? { patient_id: '' }), normalizedQuestionnairesRows);
+  const datasetMaestroCsv = toCsv(Object.keys(normalizedDatasetMaestroRows[0] ?? {}), normalizedDatasetMaestroRows);
+  const medicationByVisitCsv = toCsv(Object.keys(normalizedMedicationByVisitRows[0] ?? { visit_id: '', patient_id: '' }), normalizedMedicationByVisitRows);
 
   const datasetMaestroSps = buildSpsSyntax({
     csvFileName: 'dataset_maestro.csv',
     datasetName: 'Dataset maestro IRIS',
-    headers: Object.keys(datasetMaestroRows[0] ?? {}),
+    headers: Object.keys(normalizedDatasetMaestroRows[0] ?? {}),
     variableLabels: {
       patient_id: 'Identificador anonimizado del paciente',
       visit_date: 'Fecha de visita',
@@ -677,7 +940,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
   const medicationByVisitSps = buildSpsSyntax({
     csvFileName: 'medicacion_por_visita.csv',
     datasetName: 'Medicacion relacional por visita',
-    headers: Object.keys(medicationByVisitRows[0] ?? { visit_id: '', patient_id: '' }),
+    headers: Object.keys(normalizedMedicationByVisitRows[0] ?? { visit_id: '', patient_id: '' }),
     variableLabels: {
       visit_id: 'Identificador anonimizado de visita',
       patient_id: 'Identificador anonimizado de paciente',
@@ -703,6 +966,22 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
   downloadTextFile('dataset_maestro.sps', datasetMaestroSps);
   downloadTextFile('medicacion_por_visita.sps', medicationByVisitSps);
 
+  /**
+   * .sav:
+   * En frontend/browser no existe en este stack una vía robusta y mantenida para escribir SAV binario estándar.
+   * Se mantiene la estrategia estable de investigación: CSV UTF-8 + sintaxis .sps para importación reproducible en SPSS.
+   */
+  const xlsxBinary = buildWorkbookXlsx([
+    { name: 'Pacientes', rows: normalizedPatientsRows },
+    { name: 'Visitas', rows: normalizedVisitsRows },
+    { name: 'Estratificacion', rows: normalizedStratificationRows },
+    { name: 'Intervenciones', rows: normalizedInterventionsRows },
+    { name: 'Medicacion', rows: normalizedMedicationByVisitRows },
+    { name: 'Cuestionarios', rows: normalizedQuestionnairesRows },
+    { name: 'DatasetMaestro', rows: normalizedDatasetMaestroRows },
+  ]);
+  downloadBinaryFile('investigacion_iris.xlsx', xlsxBinary, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
   return {
     success: true,
     errorMessage: null,
@@ -716,6 +995,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
       'medicacion_por_visita.csv',
       'dataset_maestro.sps',
       'medicacion_por_visita.sps',
+      'investigacion_iris.xlsx',
     ],
   };
 }
