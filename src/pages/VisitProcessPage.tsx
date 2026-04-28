@@ -20,14 +20,14 @@ type ProcessForm = {
   stratification_performed: YesNo;
   stratification_level: string;
   stratification_completed_correctly: YesNo;
-  pharmacist_intervention_recorded: YesNo;
-  interventions_count: string;
-  recommendation_to_other_professional: YesNo;
+  intervention_registered: YesNo;
+  intervention_count: string;
+  recommendation_to_professional: YesNo;
   recommendation_status: RecommendationStatus | '';
-  continues_in_program: YesNo;
+  patient_continues_program: YesNo;
   dropout_reason: string;
   operational_incidents: string;
-  administrative_time_minutes: string;
+  additional_admin_minutes: string;
 };
 
 const INITIAL_FORM: ProcessForm = {
@@ -35,14 +35,14 @@ const INITIAL_FORM: ProcessForm = {
   stratification_performed: '',
   stratification_level: '',
   stratification_completed_correctly: '',
-  pharmacist_intervention_recorded: '',
-  interventions_count: '',
-  recommendation_to_other_professional: '',
+  intervention_registered: '',
+  intervention_count: '',
+  recommendation_to_professional: '',
   recommendation_status: '',
-  continues_in_program: '',
+  patient_continues_program: '',
   dropout_reason: '',
   operational_incidents: '',
-  administrative_time_minutes: '',
+  additional_admin_minutes: '',
 };
 
 function toNullableNumber(value: string): number | null {
@@ -69,14 +69,14 @@ function mapRecordToForm(record: VisitProcessRecord): ProcessForm {
     stratification_performed: fromNullableBoolean(record.stratification_performed),
     stratification_level: record.stratification_level ?? '',
     stratification_completed_correctly: fromNullableBoolean(record.stratification_completed_correctly),
-    pharmacist_intervention_recorded: fromNullableBoolean(record.pharmacist_intervention_recorded),
-    interventions_count: String(record.interventions_count ?? ''),
-    recommendation_to_other_professional: fromNullableBoolean(record.recommendation_to_other_professional),
+    intervention_registered: fromNullableBoolean(record.intervention_registered),
+    intervention_count: String(record.intervention_count ?? ''),
+    recommendation_to_professional: fromNullableBoolean(record.recommendation_to_professional),
     recommendation_status: record.recommendation_status ?? '',
-    continues_in_program: fromNullableBoolean(record.continues_in_program),
+    patient_continues_program: fromNullableBoolean(record.patient_continues_program),
     dropout_reason: record.dropout_reason ?? '',
     operational_incidents: record.operational_incidents ?? '',
-    administrative_time_minutes: String(record.administrative_time_minutes ?? ''),
+    additional_admin_minutes: String(record.additional_admin_minutes ?? ''),
   };
 }
 
@@ -116,8 +116,8 @@ export function VisitProcessPage() {
       const hasInterventions = interventionsRes.data.length > 0;
       setForm((prev) => ({
         ...prev,
-        pharmacist_intervention_recorded: hasInterventions ? 'yes' : prev.pharmacist_intervention_recorded,
-        interventions_count: hasInterventions ? String(interventionsRes.data.length) : prev.interventions_count,
+        intervention_registered: hasInterventions ? 'yes' : prev.intervention_registered,
+        intervention_count: hasInterventions ? String(interventionsRes.data.length) : prev.intervention_count,
       }));
     }
 
@@ -159,15 +159,14 @@ export function VisitProcessPage() {
       stratification_performed: toNullableBoolean(form.stratification_performed),
       stratification_level: form.stratification_level.trim() || null,
       stratification_completed_correctly: toNullableBoolean(form.stratification_completed_correctly),
-      pharmacist_intervention_recorded: toNullableBoolean(form.pharmacist_intervention_recorded),
-      interventions_count: toNullableNumber(form.interventions_count),
-      recommendation_to_other_professional: toNullableBoolean(form.recommendation_to_other_professional),
+      intervention_registered: toNullableBoolean(form.intervention_registered),
+      intervention_count: toNullableNumber(form.intervention_count),
+      recommendation_to_professional: toNullableBoolean(form.recommendation_to_professional),
       recommendation_status: form.recommendation_status || null,
-      continues_in_program: toNullableBoolean(form.continues_in_program),
+      patient_continues_program: toNullableBoolean(form.patient_continues_program),
       dropout_reason: form.dropout_reason.trim() || null,
       operational_incidents: form.operational_incidents.trim() || null,
-      administrative_time_minutes: toNullableNumber(form.administrative_time_minutes),
-      professional_user_id: userRes.data.user.id,
+      additional_admin_minutes: toNullableNumber(form.additional_admin_minutes),
     };
 
     const saveResult = await upsertVisitProcess(payload);
@@ -233,7 +232,7 @@ export function VisitProcessPage() {
 
           <label>
             ¿Hubo intervención farmacéutica registrada?
-            <select {...field('pharmacist_intervention_recorded')}>
+            <select {...field('intervention_registered')}>
               <option value="">No registrado</option>
               <option value="yes">Sí</option>
               <option value="no">No</option>
@@ -242,12 +241,12 @@ export function VisitProcessPage() {
 
           <label>
             Número de intervenciones realizadas
-            <input type="number" min={0} step="1" {...field('interventions_count')} />
+            <input type="number" min={0} step="1" {...field('intervention_count')} />
           </label>
 
           <label>
             ¿Hubo recomendación a otro profesional?
-            <select {...field('recommendation_to_other_professional')}>
+            <select {...field('recommendation_to_professional')}>
               <option value="">No registrado</option>
               <option value="yes">Sí</option>
               <option value="no">No</option>
@@ -269,7 +268,7 @@ export function VisitProcessPage() {
 
           <label>
             Paciente continúa en programa
-            <select {...field('continues_in_program')}>
+            <select {...field('patient_continues_program')}>
               <option value="">No registrado</option>
               <option value="yes">Sí</option>
               <option value="no">No</option>
@@ -288,7 +287,7 @@ export function VisitProcessPage() {
 
           <label>
             Tiempo adicional administrativo (min)
-            <input type="number" min={0} step="1" {...field('administrative_time_minutes')} />
+            <input type="number" min={0} step="1" {...field('additional_admin_minutes')} />
           </label>
 
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
