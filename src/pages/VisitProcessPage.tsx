@@ -16,7 +16,7 @@ import {
 type YesNo = 'yes' | 'no' | '';
 
 type ProcessForm = {
-  session_total_minutes: string;
+  total_session_minutes: string;
   stratification_performed: YesNo;
   stratification_level: string;
   stratification_completed_correctly: YesNo;
@@ -31,7 +31,7 @@ type ProcessForm = {
 };
 
 const INITIAL_FORM: ProcessForm = {
-  session_total_minutes: '',
+  total_session_minutes: '',
   stratification_performed: '',
   stratification_level: '',
   stratification_completed_correctly: '',
@@ -65,7 +65,7 @@ function fromNullableBoolean(value: boolean | null): YesNo {
 
 function mapRecordToForm(record: VisitProcessRecord): ProcessForm {
   return {
-    session_total_minutes: String(record.session_total_minutes ?? ''),
+    total_session_minutes: String(record.total_session_minutes ?? ''),
     stratification_performed: fromNullableBoolean(record.stratification_performed),
     stratification_level: record.stratification_level ?? '',
     stratification_completed_correctly: fromNullableBoolean(record.stratification_completed_correctly),
@@ -155,7 +155,7 @@ export function VisitProcessPage() {
     const payload = {
       patient_id: visit.patient_id,
       visit_id: visitId,
-      session_total_minutes: toNullableNumber(form.session_total_minutes),
+      total_session_minutes: toNullableNumber(form.total_session_minutes),
       stratification_performed: toNullableBoolean(form.stratification_performed),
       stratification_level: form.stratification_level.trim() || null,
       stratification_completed_correctly: toNullableBoolean(form.stratification_completed_correctly),
@@ -205,7 +205,7 @@ export function VisitProcessPage() {
 
           <label>
             Tiempo total sesión (min)
-            <input type="number" min={0} step="1" {...field('session_total_minutes')} />
+            <input type="number" min={0} step="1" {...field('total_session_minutes')} />
           </label>
 
           <label>
