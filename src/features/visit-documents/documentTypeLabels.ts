@@ -6,6 +6,7 @@ export const DOCUMENT_TYPE_LABELS: Record<VisitDocumentType, string> = {
   hospital_discharge: 'Alta hospitalaria',
   specialist_report: 'Informe de especialista',
   imaging: 'Prueba de imagen',
+  map: 'MAPA',
   prescription: 'Receta médica',
   other: 'Otro documento',
 };
