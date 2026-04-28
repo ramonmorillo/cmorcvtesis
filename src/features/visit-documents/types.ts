@@ -6,6 +6,7 @@ export const VISIT_DOCUMENT_TYPES = [
   'hospital_discharge',
   'specialist_report',
   'imaging',
+  'map',
   'prescription',
   'other',
 ] as const;
