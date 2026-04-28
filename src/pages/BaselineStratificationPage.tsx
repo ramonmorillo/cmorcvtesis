@@ -100,7 +100,6 @@ const LEVEL_META: Record<CmoLevel, { label: string; color: string; bg: string; b
 
 const NUMERIC_FIELDS: [string, string][] = [
   ['non_hdl_mg_dl', 'No-HDL (mg/dL)'],
-  ['chronic_med_count', 'Nº medicamentos crónicos'],
   ['systolic_bp', 'TA sistólica (mmHg)'],
   ['diastolic_bp', 'TA diastólica (mmHg)'],
   ['heart_rate', 'FC (lpm)'],
@@ -499,6 +498,10 @@ export function BaselineStratificationPage() {
               FARMACOTERAPÉUTICAS
             </p>
             <div className="grid-2">
+              <label>
+                Nº medicamentos crónicos
+                <input {...field('chronic_med_count')} inputMode="decimal" />
+              </label>
               <label>
                 Med. de alto riesgo
                 <select {...field('high_risk_medication_present_status')}>
