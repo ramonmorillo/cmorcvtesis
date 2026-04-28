@@ -10,15 +10,14 @@ export type VisitProcessRecord = {
   stratification_performed: boolean | null;
   stratification_level: string | null;
   stratification_completed_correctly: boolean | null;
-  pharmacist_intervention_recorded: boolean | null;
-  interventions_count: number | null;
-  recommendation_to_other_professional: boolean | null;
+  intervention_registered: boolean | null;
+  intervention_count: number | null;
+  recommendation_to_professional: boolean | null;
   recommendation_status: RecommendationStatus | null;
-  continues_in_program: boolean | null;
+  patient_continues_program: boolean | null;
   dropout_reason: string | null;
   operational_incidents: string | null;
-  administrative_time_minutes: number | null;
-  professional_user_id: string | null;
+  additional_admin_minutes: number | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -26,7 +25,7 @@ export type VisitProcessRecord = {
 export type UpsertVisitProcessInput = Omit<VisitProcessRecord, 'id' | 'created_at' | 'updated_at'>;
 
 const VISIT_PROCESS_SELECT =
-  'id,patient_id,visit_id,total_session_minutes,stratification_performed,stratification_level,stratification_completed_correctly,pharmacist_intervention_recorded,interventions_count,recommendation_to_other_professional,recommendation_status,continues_in_program,dropout_reason,operational_incidents,administrative_time_minutes,professional_user_id,created_at,updated_at';
+  'id,patient_id,visit_id,total_session_minutes,stratification_performed,stratification_level,stratification_completed_correctly,intervention_registered,intervention_count,recommendation_to_professional,recommendation_status,patient_continues_program,dropout_reason,operational_incidents,additional_admin_minutes,created_at,updated_at';
 
 function extractErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
