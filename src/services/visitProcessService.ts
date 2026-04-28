@@ -6,7 +6,7 @@ export type VisitProcessRecord = {
   id: string;
   patient_id: string;
   visit_id: string;
-  session_total_minutes: number | null;
+  total_session_minutes: number | null;
   stratification_performed: boolean | null;
   stratification_level: string | null;
   stratification_completed_correctly: boolean | null;
@@ -26,7 +26,7 @@ export type VisitProcessRecord = {
 export type UpsertVisitProcessInput = Omit<VisitProcessRecord, 'id' | 'created_at' | 'updated_at'>;
 
 const VISIT_PROCESS_SELECT =
-  'id,patient_id,visit_id,session_total_minutes,stratification_performed,stratification_level,stratification_completed_correctly,pharmacist_intervention_recorded,interventions_count,recommendation_to_other_professional,recommendation_status,continues_in_program,dropout_reason,operational_incidents,administrative_time_minutes,professional_user_id,created_at,updated_at';
+  'id,patient_id,visit_id,total_session_minutes,stratification_performed,stratification_level,stratification_completed_correctly,pharmacist_intervention_recorded,interventions_count,recommendation_to_other_professional,recommendation_status,continues_in_program,dropout_reason,operational_incidents,administrative_time_minutes,professional_user_id,created_at,updated_at';
 
 function extractErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
