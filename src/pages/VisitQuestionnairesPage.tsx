@@ -272,6 +272,16 @@ export function VisitQuestionnairesPage() {
       return;
     }
 
+    const refreshed = await listQuestionnairesByVisit(visitId);
+    if (refreshed.errorMessage) {
+      setErrorMessage(refreshed.errorMessage);
+      return;
+    }
+
+    const refreshedByType = new Map(refreshed.data.map((record) => [record.questionnaire_type, record]));
+    setIexpacForm(hydrateIexpac(refreshedByType.get('iexpac')));
+    setMoriskyForm(hydrateMorisky(refreshedByType.get('morisky')));
+    setEq5dForm(hydrateEq5d(refreshedByType.get('eq5d')));
     setSuccessMessage('Cuestionarios guardados correctamente.');
   };
 

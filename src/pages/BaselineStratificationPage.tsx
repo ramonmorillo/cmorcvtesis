@@ -5,7 +5,9 @@ import { SMOKER_STATUS_OPTIONS } from '../constants/enums';
 import { ErrorState } from '../components/common/ErrorState';
 import { VisitTabs } from '../components/common/VisitTabs';
 import {
+  type ClinicalAssessment,
   getClinicalAssessmentByVisit,
+  getLatestPreviousClinicalAssessmentByPatient,
   upsertClinicalAssessment,
   type NewClinicalAssessmentInput,
 } from '../services/assessmentService';
@@ -163,6 +165,47 @@ export function BaselineStratificationPage() {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  const applyAssessmentToForm = (assessment: ClinicalAssessment) => {
+    setForm((prev) => ({
+      ...prev,
+      education_level: assessment.education_level ?? '',
+      pregnancy_postpartum: fromTriState(assessment.pregnancy_postpartum),
+      biological_sex: assessment.biological_sex ?? '',
+      race_ethnicity_risk: assessment.race_ethnicity_risk ?? '',
+      hypertension_present: fromTriState(assessment.hypertension_present),
+      non_hdl_mg_dl: String(assessment.non_hdl_mg_dl ?? ''),
+      cv_pathology_present: fromTriState(assessment.cv_pathology_present),
+      comorbidities_present: fromTriState(assessment.comorbidities_present),
+      recent_cvd_12m: fromTriState(assessment.recent_cvd_12m),
+      hospital_er_use_12m: fromTriState(assessment.hospital_er_use_12m),
+      smoker_status: assessment.smoker_status ?? '',
+      physical_activity_pattern: assessment.physical_activity_pattern ?? '',
+      social_support_absent: fromTriState(assessment.social_support_absent),
+      psychosocial_stress: fromTriState(assessment.psychosocial_stress),
+      chronic_med_count: String(assessment.chronic_med_count ?? ''),
+      high_risk_medication_present_status: fromNullableBoolean(assessment.high_risk_medication_present),
+      recent_regimen_change: fromTriState(assessment.recent_regimen_change),
+      regimen_complexity_present: fromTriState(assessment.regimen_complexity_present),
+      adherence_problem: fromTriState(assessment.adherence_problem),
+      systolic_bp: String(assessment.systolic_bp ?? ''),
+      diastolic_bp: String(assessment.diastolic_bp ?? ''),
+      heart_rate: String(assessment.heart_rate ?? ''),
+      weight_kg: String(assessment.weight_kg ?? ''),
+      height_cm: String(assessment.height_cm ?? ''),
+      bmi: String(assessment.bmi ?? ''),
+      waist_cm: String(assessment.waist_cm ?? ''),
+      ldl_mg_dl: String(assessment.ldl_mg_dl ?? ''),
+      hdl_mg_dl: String(assessment.hdl_mg_dl ?? ''),
+      fasting_glucose_mg_dl: String(assessment.fasting_glucose_mg_dl ?? ''),
+      hba1c_pct: String(assessment.hba1c_pct ?? ''),
+      score2_value: String(assessment.score2_value ?? ''),
+      framingham_value: String(assessment.framingham_value ?? ''),
+      diet_score: String(assessment.diet_score ?? ''),
+      safety_incidents: assessment.safety_incidents ?? '',
+      adverse_events_count: String(assessment.adverse_events_count ?? ''),
+    }));
+  };
+
   useEffect(() => {
     async function loadCurrent() {
       const [visitRes, assessmentRes] = await Promise.all([
@@ -188,45 +231,20 @@ export function BaselineStratificationPage() {
       }
 
       if (assessmentRes.data) {
-        const v = assessmentRes.data;
-        setForm((prev) => ({
-          ...prev,
-          education_level: v.education_level ?? '',
-          pregnancy_postpartum: fromTriState(v.pregnancy_postpartum),
-          biological_sex: v.biological_sex ?? '',
-          race_ethnicity_risk: v.race_ethnicity_risk ?? '',
-          hypertension_present: fromTriState(v.hypertension_present),
-          non_hdl_mg_dl: String(v.non_hdl_mg_dl ?? ''),
-          cv_pathology_present: fromTriState(v.cv_pathology_present),
-          comorbidities_present: fromTriState(v.comorbidities_present),
-          recent_cvd_12m: fromTriState(v.recent_cvd_12m),
-          hospital_er_use_12m: fromTriState(v.hospital_er_use_12m),
-          smoker_status: v.smoker_status ?? '',
-          physical_activity_pattern: v.physical_activity_pattern ?? '',
-          social_support_absent: fromTriState(v.social_support_absent),
-          psychosocial_stress: fromTriState(v.psychosocial_stress),
-          chronic_med_count: String(v.chronic_med_count ?? ''),
-          high_risk_medication_present_status: fromNullableBoolean(v.high_risk_medication_present),
-          recent_regimen_change: fromTriState(v.recent_regimen_change),
-          regimen_complexity_present: fromTriState(v.regimen_complexity_present),
-          adherence_problem: fromTriState(v.adherence_problem),
-          systolic_bp: String(v.systolic_bp ?? ''),
-          diastolic_bp: String(v.diastolic_bp ?? ''),
-          heart_rate: String(v.heart_rate ?? ''),
-          weight_kg: String(v.weight_kg ?? ''),
-          height_cm: String(v.height_cm ?? ''),
-          bmi: String(v.bmi ?? ''),
-          waist_cm: String(v.waist_cm ?? ''),
-          ldl_mg_dl: String(v.ldl_mg_dl ?? ''),
-          hdl_mg_dl: String(v.hdl_mg_dl ?? ''),
-          fasting_glucose_mg_dl: String(v.fasting_glucose_mg_dl ?? ''),
-          hba1c_pct: String(v.hba1c_pct ?? ''),
-          score2_value: String(v.score2_value ?? ''),
-          framingham_value: String(v.framingham_value ?? ''),
-          diet_score: String(v.diet_score ?? ''),
-          safety_incidents: v.safety_incidents ?? '',
-          adverse_events_count: String(v.adverse_events_count ?? ''),
-        }));
+        applyAssessmentToForm(assessmentRes.data);
+        return;
+      }
+
+      if (patientId) {
+        const previousAssessmentRes = await getLatestPreviousClinicalAssessmentByPatient(patientId, visitId);
+        if (previousAssessmentRes.errorMessage) {
+          setErrorMessage(previousAssessmentRes.errorMessage);
+          return;
+        }
+
+        if (previousAssessmentRes.data) {
+          applyAssessmentToForm(previousAssessmentRes.data);
+        }
       }
     }
     void loadCurrent();
@@ -332,6 +350,14 @@ export function BaselineStratificationPage() {
       return;
     }
 
+    const latestSaved = await getClinicalAssessmentByVisit(visitId);
+    if (latestSaved.errorMessage || !latestSaved.data) {
+      setErrorMessage(latestSaved.errorMessage ?? 'Se guardó, pero no se pudo verificar la persistencia de la evaluación clínica.');
+      setSaving(false);
+      return;
+    }
+
+    applyAssessmentToForm(latestSaved.data);
     setSaveSuccess(true);
     setSaving(false);
   };

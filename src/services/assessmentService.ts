@@ -272,3 +272,31 @@ export async function getLatestClinicalAssessmentByPatient(patientId: string) {
     errorMessage: null,
   };
 }
+
+export async function getLatestPreviousClinicalAssessmentByPatient(patientId: string, currentVisitId: string) {
+  if (!supabase) {
+    return { data: null, errorMessage: 'Supabase no está configurado. No se puede leer la última evaluación clínica previa.' };
+  }
+
+  const { data, error } = await supabase
+    .from('clinical_assessments')
+    .select(`${ASSESSMENT_SELECT},visits!inner(patient_id,visit_date,scheduled_date,created_at)`)
+    .eq('visits.patient_id', patientId)
+    .neq('visit_id', currentVisitId)
+    .order('visit_date', { referencedTable: 'visits', ascending: false, nullsFirst: false })
+    .order('scheduled_date', { referencedTable: 'visits', ascending: false, nullsFirst: false })
+    .order('created_at', { referencedTable: 'visits', ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    return { data: null, errorMessage: extractErrorMessage(error) };
+  }
+
+  return {
+    data: (data as (ClinicalAssessment & {
+      visits: { patient_id: string; visit_date: string | null; scheduled_date: string | null; created_at: string | null };
+    }) | null) ?? null,
+    errorMessage: null,
+  };
+}
