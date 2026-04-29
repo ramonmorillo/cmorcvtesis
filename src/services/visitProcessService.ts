@@ -18,6 +18,9 @@ export type VisitProcessRecord = {
   dropout_reason: string | null;
   operational_incidents: string | null;
   additional_admin_minutes: number | null;
+  equipment_cost: number | null;
+  additional_material_cost: number | null;
+  other_costs: number | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -25,7 +28,7 @@ export type VisitProcessRecord = {
 export type UpsertVisitProcessInput = Omit<VisitProcessRecord, 'id' | 'created_at' | 'updated_at'>;
 
 const VISIT_PROCESS_SELECT =
-  'id,patient_id,visit_id,total_session_minutes,stratification_performed,stratification_level,stratification_completed_correctly,intervention_registered,intervention_count,recommendation_to_professional,recommendation_status,patient_continues_program,dropout_reason,operational_incidents,additional_admin_minutes,created_at,updated_at';
+  'id,patient_id,visit_id,total_session_minutes,stratification_performed,stratification_level,stratification_completed_correctly,intervention_registered,intervention_count,recommendation_to_professional,recommendation_status,patient_continues_program,dropout_reason,operational_incidents,additional_admin_minutes,equipment_cost,additional_material_cost,other_costs,created_at,updated_at';
 
 function extractErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {

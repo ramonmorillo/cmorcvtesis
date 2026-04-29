@@ -28,6 +28,9 @@ type ProcessForm = {
   dropout_reason: string;
   operational_incidents: string;
   additional_admin_minutes: string;
+  equipment_cost: string;
+  additional_material_cost: string;
+  other_costs: string;
 };
 
 const INITIAL_FORM: ProcessForm = {
@@ -43,6 +46,9 @@ const INITIAL_FORM: ProcessForm = {
   dropout_reason: '',
   operational_incidents: '',
   additional_admin_minutes: '',
+  equipment_cost: '',
+  additional_material_cost: '',
+  other_costs: '',
 };
 
 function toNullableNumber(value: string): number | null {
@@ -77,6 +83,9 @@ function mapRecordToForm(record: VisitProcessRecord): ProcessForm {
     dropout_reason: record.dropout_reason ?? '',
     operational_incidents: record.operational_incidents ?? '',
     additional_admin_minutes: String(record.additional_admin_minutes ?? ''),
+    equipment_cost: String(record.equipment_cost ?? ''),
+    additional_material_cost: String(record.additional_material_cost ?? ''),
+    other_costs: String(record.other_costs ?? ''),
   };
 }
 
@@ -167,6 +176,9 @@ export function VisitProcessPage() {
       dropout_reason: form.dropout_reason.trim() || null,
       operational_incidents: form.operational_incidents.trim() || null,
       additional_admin_minutes: toNullableNumber(form.additional_admin_minutes),
+      equipment_cost: toNullableNumber(form.equipment_cost),
+      additional_material_cost: toNullableNumber(form.additional_material_cost),
+      other_costs: toNullableNumber(form.other_costs),
     };
 
     const saveResult = await upsertVisitProcess(payload);
@@ -290,6 +302,23 @@ export function VisitProcessPage() {
             <input type="number" min={0} step="1" {...field('additional_admin_minutes')} />
           </label>
 
+
+          <h2 style={{ margin: '0.5rem 0 0.25rem' }}>Bloque C · Costes</h2>
+
+          <label>
+            Costes de aparataje
+            <input type="number" min={0} step="0.01" {...field('equipment_cost')} />
+          </label>
+
+          <label>
+            Coste de material adicional
+            <input type="number" min={0} step="0.01" {...field('additional_material_cost')} />
+          </label>
+
+          <label>
+            Otros costes
+            <input type="number" min={0} step="0.01" {...field('other_costs')} />
+          </label>
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
             <button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Guardar proceso'}</button>
             <Link to={`/visits/${visitId}/reports`}>Ir a informes</Link>
