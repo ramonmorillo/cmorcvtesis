@@ -333,9 +333,13 @@ export function VisitInterventionsPage() {
           <ul className="simple-list">
             {items.map((item) => (
               <li key={item.id}>
-                <span>{item.intervention_type}</span>
-                <span>{item.priority_level ? interventionPriorityLabel[item.priority_level] : '-'}</span>
-                <span>{item.delivered ? 'Entregada' : 'Pendiente'}</span>
+                <div style={{ display: 'grid', gap: '0.25rem' }}>
+                  <span>{item.intervention_type}</span>
+                  <span>{item.priority_level ? interventionPriorityLabel[item.priority_level] : '-'}</span>
+                  <span>{item.delivered ? 'Entregada' : 'Pendiente'}</span>
+                  {item.outcome?.trim() ? <span><strong>Resultado:</strong> {item.outcome.trim()}</span> : null}
+                  {item.notes?.trim() ? <span><strong>Notas:</strong> {item.notes.trim()}</span> : null}
+                </div>
               </li>
             ))}
           </ul>
