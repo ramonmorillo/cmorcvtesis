@@ -427,6 +427,7 @@ export function PatientDetailPage() {
                       <td style={{ textAlign: 'right' }}>{interventionsCount}</td>
                       <td>
                         <div className="actions-inline">
+                          <Link to={`/patients/${id}/visits/${visit.id}`}>Detalle visita</Link>
                           <Link to={`/visits/${visit.id}/stratification`}>Evaluación clínica</Link>
                           <Link to={`/visits/${visit.id}/medications`}>Medicación</Link>
                           <Link to={`/visits/${visit.id}/interventions`}>Intervenciones</Link>
