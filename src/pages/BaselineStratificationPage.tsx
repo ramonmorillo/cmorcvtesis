@@ -163,6 +163,9 @@ export function BaselineStratificationPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isEditingStratification, setIsEditingStratification] = useState(true);
+  const [hasSavedAssessment, setHasSavedAssessment] = useState(false);
+  const [originalStratificationSnapshot, setOriginalStratificationSnapshot] = useState<Record<string, string> | null>(null);
 
   const applyAssessmentToForm = (assessment: ClinicalAssessment) => {
     setForm((prev) => ({
@@ -230,7 +233,47 @@ export function BaselineStratificationPage() {
       }
 
       if (assessmentRes.data) {
+        const loadedForm = {
+          education_level: assessmentRes.data.education_level ?? '',
+          pregnancy_postpartum: fromTriState(assessmentRes.data.pregnancy_postpartum),
+          biological_sex: assessmentRes.data.biological_sex ?? '',
+          race_ethnicity_risk: assessmentRes.data.race_ethnicity_risk ?? '',
+          hypertension_present: fromTriState(assessmentRes.data.hypertension_present),
+          non_hdl_mg_dl: String(assessmentRes.data.non_hdl_mg_dl ?? ''),
+          cv_pathology_present: fromTriState(assessmentRes.data.cv_pathology_present),
+          comorbidities_present: fromTriState(assessmentRes.data.comorbidities_present),
+          recent_cvd_12m: fromTriState(assessmentRes.data.recent_cvd_12m),
+          hospital_er_use_12m: fromTriState(assessmentRes.data.hospital_er_use_12m),
+          smoker_status: assessmentRes.data.smoker_status ?? '',
+          physical_activity_pattern: assessmentRes.data.physical_activity_pattern ?? '',
+          social_support_absent: fromTriState(assessmentRes.data.social_support_absent),
+          psychosocial_stress: fromTriState(assessmentRes.data.psychosocial_stress),
+          chronic_med_count: String(assessmentRes.data.chronic_med_count ?? ''),
+          high_risk_medication_present_status: fromNullableBoolean(assessmentRes.data.high_risk_medication_present),
+          recent_regimen_change: fromTriState(assessmentRes.data.recent_regimen_change),
+          regimen_complexity_present: fromTriState(assessmentRes.data.regimen_complexity_present),
+          adherence_problem: fromTriState(assessmentRes.data.adherence_problem),
+          systolic_bp: String(assessmentRes.data.systolic_bp ?? ''),
+          diastolic_bp: String(assessmentRes.data.diastolic_bp ?? ''),
+          heart_rate: String(assessmentRes.data.heart_rate ?? ''),
+          weight_kg: String(assessmentRes.data.weight_kg ?? ''),
+          height_cm: String(assessmentRes.data.height_cm ?? ''),
+          bmi: String(assessmentRes.data.bmi ?? ''),
+          waist_cm: String(assessmentRes.data.waist_cm ?? ''),
+          ldl_mg_dl: String(assessmentRes.data.ldl_mg_dl ?? ''),
+          hdl_mg_dl: String(assessmentRes.data.hdl_mg_dl ?? ''),
+          fasting_glucose_mg_dl: String(assessmentRes.data.fasting_glucose_mg_dl ?? ''),
+          hba1c_pct: String(assessmentRes.data.hba1c_pct ?? ''),
+          score2_value: String(assessmentRes.data.score2_value ?? ''),
+          framingham_value: String(assessmentRes.data.framingham_value ?? ''),
+          diet_score: String(assessmentRes.data.diet_score ?? ''),
+          safety_incidents: assessmentRes.data.safety_incidents ?? '',
+          adverse_events_count: String(assessmentRes.data.adverse_events_count ?? ''),
+        };
         applyAssessmentToForm(assessmentRes.data);
+        setHasSavedAssessment(true);
+        setIsEditingStratification(false);
+        setOriginalStratificationSnapshot(loadedForm);
         return;
       }
 
@@ -251,6 +294,7 @@ export function BaselineStratificationPage() {
 
   const field = (name: string) => ({
     value: form[name] ?? '',
+    disabled: hasSavedAssessment && !isEditingStratification,
     onChange: (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setForm((prev) => ({ ...prev, [name]: e.target.value })),
   });
@@ -357,8 +401,25 @@ export function BaselineStratificationPage() {
     }
 
     applyAssessmentToForm(latestSaved.data);
+    setOriginalStratificationSnapshot({ ...form });
+    setHasSavedAssessment(true);
+    setIsEditingStratification(false);
     setSaveSuccess(true);
     setSaving(false);
+  };
+
+  const handleStartEditStratification = () => {
+    setErrorMessage(null);
+    setSaveSuccess(false);
+    setOriginalStratificationSnapshot({ ...form });
+    setIsEditingStratification(true);
+  };
+
+  const handleCancelEditStratification = () => {
+    if (originalStratificationSnapshot) setForm(originalStratificationSnapshot);
+    setErrorMessage(null);
+    setSaveSuccess(false);
+    setIsEditingStratification(false);
   };
 
   const hasFormData = (Object.values(form) as string[]).some((v) => v.trim() !== '');
@@ -554,9 +615,26 @@ export function BaselineStratificationPage() {
             </div>
           </div>
 
-          <button type="submit" disabled={saving}>
-            {saving ? 'Guardando...' : 'Guardar evaluación'}
-          </button>
+          <div className="actions-inline">
+            {hasSavedAssessment && !isEditingStratification ? (
+              <button type="button" onClick={handleStartEditStratification}>
+                Editar estratificación
+              </button>
+            ) : null}
+
+            {!hasSavedAssessment || isEditingStratification ? (
+              <>
+                <button type="submit" disabled={saving}>
+                  {saving ? 'Guardando...' : hasSavedAssessment ? 'Guardar cambios' : 'Guardar evaluación'}
+                </button>
+                {hasSavedAssessment ? (
+                  <button type="button" onClick={handleCancelEditStratification} disabled={saving}>
+                    Cancelar
+                  </button>
+                ) : null}
+              </>
+            ) : null}
+          </div>
         </form>
 
         {saveSuccess ? (
