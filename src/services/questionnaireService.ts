@@ -23,6 +23,7 @@ type QuestionnaireResponseRow = {
   id: string;
   visit_id: string;
   user_id: string | null;
+  questionnaire_type?: string | null;
   measurement_id?: string | null;
   responses: Record<string, unknown>;
   created_at: string;
@@ -201,7 +202,8 @@ function normalizeQuestionnaireRows(
   questionnaireTypeByMeasurementId: Map<string, QuestionnaireType>,
 ): QuestionnaireResponseRecord[] {
   return rows.flatMap((row) => {
-    const questionnaireType = row.measurement_id ? (questionnaireTypeByMeasurementId.get(row.measurement_id) ?? null) : null;
+    const questionnaireType = normalizeQuestionnaireCode(row.questionnaire_type)
+      ?? (row.measurement_id ? (questionnaireTypeByMeasurementId.get(row.measurement_id) ?? null) : null);
 
     if (!questionnaireType) {
       return [];
@@ -231,7 +233,7 @@ export function isQuestionnaireVisitType(visitType: string | null | undefined): 
   return visitType === 'baseline' || visitType === 'final' || visitType === 'month_12';
 }
 
-const QUESTIONNAIRE_BASE_SELECT = 'id,visit_id,user_id,measurement_id,responses,created_at,updated_at,visits(patient_id,visit_type)';
+const QUESTIONNAIRE_BASE_SELECT = 'id,visit_id,user_id,questionnaire_type,measurement_id,responses,created_at,updated_at,visits(patient_id,visit_type)';
 
 export async function listQuestionnairesByVisit(visitId: string): Promise<{ data: QuestionnaireResponseRecord[]; errorMessage: string | null }> {
   if (!supabase) {
@@ -298,6 +300,21 @@ export async function getQuestionnairesByPatient(patientId: string): Promise<{ d
 
 export const listQuestionnairesByPatient = getQuestionnairesByPatient;
 
+
+
+async function resolveVisitMeasurementId(visitId: string): Promise<{ measurementId: string | null; errorMessage: string | null }> {
+  if (!supabase) return { measurementId: null, errorMessage: 'Supabase no está configurado.' };
+
+  const { data, error } = await supabase
+    .from('measurements')
+    .select('id')
+    .eq('visit_id', visitId)
+    .maybeSingle();
+
+  if (error) return { measurementId: null, errorMessage: extractErrorMessage(error) };
+
+  return { measurementId: data?.id ?? null, errorMessage: null };
+}
 export async function saveQuestionnaireBundle(input: QuestionnaireResponseUpsertInput[]): Promise<{ data: QuestionnaireResponseRecord[]; errorMessage: string | null }> {
   if (!supabase) {
     return { data: [], errorMessage: 'Supabase no está configurado. No se pueden guardar cuestionarios.' };
@@ -318,12 +335,42 @@ export async function saveQuestionnaireBundle(input: QuestionnaireResponseUpsert
     return { data: [], errorMessage: measurementMapResult.errorMessage };
   }
 
-  const payload = input.map(({ visit_id, questionnaire_type, responses }) => ({
-    visit_id,
-    user_id: authenticatedUser.id,
-    measurement_id: measurementMapResult.measurementIdByType.get(questionnaire_type) ?? null,
-    responses,
-  }));
+  const measurementIdByVisit = new Map<string, string>();
+  const payload = [];
+
+  for (const { visit_id, questionnaire_type, responses } of input) {
+    let measurementId = measurementMapResult.measurementIdByType.get(questionnaire_type) ?? null;
+
+    if (!measurementId) {
+      if (measurementIdByVisit.has(visit_id)) {
+        measurementId = measurementIdByVisit.get(visit_id) ?? null;
+      } else {
+        const visitMeasurement = await resolveVisitMeasurementId(visit_id);
+        if (visitMeasurement.errorMessage) {
+          return { data: [], errorMessage: visitMeasurement.errorMessage };
+        }
+        measurementId = visitMeasurement.measurementId;
+        if (measurementId) {
+          measurementIdByVisit.set(visit_id, measurementId);
+        }
+      }
+    }
+
+    if (!measurementId) {
+      return {
+        data: [],
+        errorMessage: `No existe una medición asociada a la visita para el cuestionario ${questionnaire_type.toUpperCase()}.`,
+      };
+    }
+
+    payload.push({
+      visit_id,
+      user_id: authenticatedUser.id,
+      questionnaire_type,
+      measurement_id: measurementId,
+      responses,
+    });
+  }
 
   const { data, error } = await supabase
     .from('questionnaire_responses')
