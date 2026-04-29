@@ -2,17 +2,20 @@ import { supabase } from '../lib/supabase';
 
 export type QuestionnaireType = 'iexpac' | 'morisky' | 'eq5d' | 'pam10';
 
+const QUESTIONNAIRE_CODES = {
+  IEXPAC: 'IEXPAC',
+  MORISKY: 'MORISKY_GREEN',
+  EQ5D: 'EQ5D_5L',
+  PAM10: 'PAM10',
+} as const;
+
 const CANONICAL_QUESTIONNAIRE_CODE: Record<QuestionnaireType, string> = {
-  iexpac: 'IEXPAC',
-  morisky: 'MORISKY_GREEN',
-  eq5d: 'EQ5D_5L',
-  pam10: 'PAM10',
+  iexpac: QUESTIONNAIRE_CODES.IEXPAC,
+  morisky: QUESTIONNAIRE_CODES.MORISKY,
+  eq5d: QUESTIONNAIRE_CODES.EQ5D,
+  pam10: QUESTIONNAIRE_CODES.PAM10,
 };
 
-type QuestionnaireMeasurementMapRow = {
-  questionnaire_code: string;
-  measurement_id: string;
-};
 
 type VisitRelationRow = {
   patient_id?: string | null;
@@ -57,29 +60,6 @@ function extractErrorMessage(error: unknown): string {
   }
 
   return 'No se pudo procesar el cuestionario.';
-}
-
-function normalizeQuestionnaireCode(raw: unknown): QuestionnaireType | null {
-  if (typeof raw !== 'string') return null;
-  const value = raw.trim().toLowerCase();
-
-  if (value === 'iexpac') return 'iexpac';
-  if (value === 'morisky' || value === 'morisky-green' || value === 'morisky_green') return 'morisky';
-  if (value === 'eq5d' || value === 'eq-5d' || value === 'eq5d-5l' || value === 'eq_5d' || value === 'eq5d_5l') return 'eq5d';
-  if (value === 'pam10' || value === 'pam-10' || value === 'pam_10') return 'pam10';
-
-  return null;
-}
-
-function normalizeCanonicalQuestionnaireCode(raw: unknown): QuestionnaireType | null {
-  if (typeof raw !== 'string') return null;
-
-  if (raw === CANONICAL_QUESTIONNAIRE_CODE.iexpac) return 'iexpac';
-  if (raw === CANONICAL_QUESTIONNAIRE_CODE.morisky) return 'morisky';
-  if (raw === CANONICAL_QUESTIONNAIRE_CODE.eq5d) return 'eq5d';
-  if (raw === CANONICAL_QUESTIONNAIRE_CODE.pam10) return 'pam10';
-
-  return normalizeQuestionnaireCode(raw);
 }
 
 function getVisitRelation(row: QuestionnaireResponseRow): VisitRelationRow {
@@ -168,28 +148,35 @@ async function resolveQuestionnaireMeasurementMap(): Promise<{
     };
   }
 
-  const { data, error } = await supabase
-    .from('questionnaire_measurement_map')
-    .select('questionnaire_code,measurement_id');
-
-  if (error) {
-    return {
-      measurementIdByType: new Map(),
-      questionnaireTypeByMeasurementId: new Map(),
-      errorMessage: extractErrorMessage(error),
-    };
-  }
-
   const measurementIdByType = new Map<QuestionnaireType, string>();
   const questionnaireTypeByMeasurementId = new Map<string, QuestionnaireType>();
 
-  ((data ?? []) as QuestionnaireMeasurementMapRow[]).forEach((row) => {
-    const questionnaireType = normalizeCanonicalQuestionnaireCode(row.questionnaire_code);
-    if (!questionnaireType) return;
+  for (const questionnaireType of Object.keys(CANONICAL_QUESTIONNAIRE_CODE) as QuestionnaireType[]) {
+    const code = CANONICAL_QUESTIONNAIRE_CODE[questionnaireType];
+    const { data, error } = await supabase
+      .from('questionnaire_measurement_map')
+      .select('measurement_id')
+      .eq('questionnaire_code', code);
 
-    measurementIdByType.set(questionnaireType, row.measurement_id);
-    questionnaireTypeByMeasurementId.set(row.measurement_id, questionnaireType);
-  });
+    console.debug('[questionnaire-map] lookup', { requestedCode: code, rowsReturned: data?.length ?? 0, supabaseError: error });
+
+    if (error) {
+      return {
+        measurementIdByType: new Map(),
+        questionnaireTypeByMeasurementId: new Map(),
+        errorMessage: extractErrorMessage(error),
+      };
+    }
+
+    const measurementId = ((data ?? []) as Array<{ measurement_id: string }>)[0]?.measurement_id ?? null;
+
+    if (!measurementId) {
+      continue;
+    }
+
+    measurementIdByType.set(questionnaireType, measurementId);
+    questionnaireTypeByMeasurementId.set(measurementId, questionnaireType);
+  }
 
   return { measurementIdByType, questionnaireTypeByMeasurementId, errorMessage: null };
 }
