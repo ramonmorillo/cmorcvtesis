@@ -22,8 +22,6 @@ type VisitRelationRow = {
 type QuestionnaireResponseRow = {
   id: string;
   visit_id: string;
-  user_id: string | null;
-  questionnaire_type?: string | null;
   measurement_id?: string | null;
   responses: Record<string, unknown>;
   created_at: string;
@@ -34,7 +32,6 @@ type QuestionnaireResponseRow = {
 export type QuestionnaireResponseRecord = {
   id: string;
   patient_id: string | null;
-  user_id: string | null;
   visit_id: string;
   visit_type: string;
   questionnaire_type: QuestionnaireType;
@@ -213,8 +210,7 @@ function normalizeQuestionnaireRows(
 
     return [{
       id: row.id,
-      patient_id: visit.patient_id ?? row.user_id ?? null,
-      user_id: row.user_id,
+      patient_id: visit.patient_id ?? null,
       visit_id: row.visit_id,
       visit_type: visit.visit_type ?? 'unknown',
       questionnaire_type: questionnaireType,
@@ -232,7 +228,7 @@ export function isQuestionnaireVisitType(visitType: string | null | undefined): 
   return visitType === 'baseline' || visitType === 'final' || visitType === 'month_12';
 }
 
-const QUESTIONNAIRE_BASE_SELECT = 'id,visit_id,user_id,measurement_id,responses,created_at,updated_at,visits(patient_id,visit_type)';
+const QUESTIONNAIRE_BASE_SELECT = 'id,visit_id,measurement_id,responses,created_at,updated_at,visits(patient_id,visit_type)';
 
 export async function listQuestionnairesByVisit(visitId: string): Promise<{ data: QuestionnaireResponseRecord[]; errorMessage: string | null }> {
   if (!supabase) {
@@ -301,19 +297,6 @@ export const listQuestionnairesByPatient = getQuestionnairesByPatient;
 
 
 
-async function resolveVisitMeasurementId(visitId: string): Promise<{ measurementId: string | null; errorMessage: string | null }> {
-  if (!supabase) return { measurementId: null, errorMessage: 'Supabase no está configurado.' };
-
-  const { data, error } = await supabase
-    .from('measurements')
-    .select('id')
-    .eq('visit_id', visitId)
-    .maybeSingle();
-
-  if (error) return { measurementId: null, errorMessage: extractErrorMessage(error) };
-
-  return { measurementId: data?.id ?? null, errorMessage: null };
-}
 export async function saveQuestionnaireBundle(input: QuestionnaireResponseUpsertInput[]): Promise<{ data: QuestionnaireResponseRecord[]; errorMessage: string | null }> {
   if (!supabase) {
     return { data: [], errorMessage: 'Supabase no está configurado. No se pueden guardar cuestionarios.' };
@@ -334,26 +317,10 @@ export async function saveQuestionnaireBundle(input: QuestionnaireResponseUpsert
     return { data: [], errorMessage: measurementMapResult.errorMessage };
   }
 
-  const measurementIdByVisit = new Map<string, string>();
   const payload = [];
 
   for (const { visit_id, questionnaire_type, responses } of input) {
-    let measurementId = measurementMapResult.measurementIdByType.get(questionnaire_type) ?? null;
-
-    if (!measurementId) {
-      if (measurementIdByVisit.has(visit_id)) {
-        measurementId = measurementIdByVisit.get(visit_id) ?? null;
-      } else {
-        const visitMeasurement = await resolveVisitMeasurementId(visit_id);
-        if (visitMeasurement.errorMessage) {
-          return { data: [], errorMessage: visitMeasurement.errorMessage };
-        }
-        measurementId = visitMeasurement.measurementId;
-        if (measurementId) {
-          measurementIdByVisit.set(visit_id, measurementId);
-        }
-      }
-    }
+    const measurementId = measurementMapResult.measurementIdByType.get(questionnaire_type) ?? null;
 
     if (!measurementId) {
       return {
