@@ -194,6 +194,67 @@ async function resolveQuestionnaireMeasurementMap(): Promise<{
   return { measurementIdByType, questionnaireTypeByMeasurementId, errorMessage: null };
 }
 
+
+
+async function ensurePam10MeasurementIdForVisit(visitId: string, recordedBy: string): Promise<{ measurementId: string | null; errorMessage: string | null }> {
+  if (!supabase) {
+    return { measurementId: null, errorMessage: 'Supabase no está configurado.' };
+  }
+
+  const existingMeasurementResult = await supabase
+    .from('measurements')
+    .select('id')
+    .eq('visit_id', visitId)
+    .maybeSingle();
+
+  if (existingMeasurementResult.error) {
+    return { measurementId: null, errorMessage: extractErrorMessage(existingMeasurementResult.error) };
+  }
+
+  const visitMeasurementId = existingMeasurementResult.data?.id ?? null;
+
+  if (visitMeasurementId) {
+    const mapResult = await supabase
+      .from('questionnaire_measurement_map')
+      .upsert({ questionnaire_code: CANONICAL_QUESTIONNAIRE_CODE.pam10, measurement_id: visitMeasurementId }, { onConflict: 'questionnaire_code' })
+      .select('measurement_id')
+      .single();
+
+    if (mapResult.error) {
+      return { measurementId: null, errorMessage: extractErrorMessage(mapResult.error) };
+    }
+
+    return { measurementId: mapResult.data?.measurement_id ?? visitMeasurementId, errorMessage: null };
+  }
+
+  const createdMeasurementResult = await supabase
+    .from('measurements')
+    .insert({ visit_id: visitId, recorded_by: recordedBy })
+    .select('id')
+    .single();
+
+  if (createdMeasurementResult.error) {
+    return { measurementId: null, errorMessage: extractErrorMessage(createdMeasurementResult.error) };
+  }
+
+  const createdMeasurementId = createdMeasurementResult.data?.id ?? null;
+
+  if (!createdMeasurementId) {
+    return { measurementId: null, errorMessage: 'No se pudo crear la medición para PAM10.' };
+  }
+
+  const mapResult = await supabase
+    .from('questionnaire_measurement_map')
+    .upsert({ questionnaire_code: CANONICAL_QUESTIONNAIRE_CODE.pam10, measurement_id: createdMeasurementId }, { onConflict: 'questionnaire_code' })
+    .select('measurement_id')
+    .single();
+
+  if (mapResult.error) {
+    return { measurementId: null, errorMessage: extractErrorMessage(mapResult.error) };
+  }
+
+  return { measurementId: mapResult.data?.measurement_id ?? createdMeasurementId, errorMessage: null };
+}
 function normalizeQuestionnaireRows(
   rows: QuestionnaireResponseRow[],
   questionnaireTypeByMeasurementId: Map<string, QuestionnaireType>,
@@ -320,7 +381,20 @@ export async function saveQuestionnaireBundle(input: QuestionnaireResponseUpsert
   const payload = [];
 
   for (const { visit_id, questionnaire_type, responses } of input) {
-    const measurementId = measurementMapResult.measurementIdByType.get(questionnaire_type) ?? null;
+    let measurementId = measurementMapResult.measurementIdByType.get(questionnaire_type) ?? null;
+
+    if (!measurementId && questionnaire_type === 'pam10') {
+      const pam10MeasurementResult = await ensurePam10MeasurementIdForVisit(visit_id, authenticatedUser.id);
+      if (pam10MeasurementResult.errorMessage) {
+        return { data: [], errorMessage: pam10MeasurementResult.errorMessage };
+      }
+
+      measurementId = pam10MeasurementResult.measurementId;
+      if (measurementId) {
+        measurementMapResult.measurementIdByType.set('pam10', measurementId);
+        measurementMapResult.questionnaireTypeByMeasurementId.set(measurementId, 'pam10');
+      }
+    }
 
     if (!measurementId) {
       return {
