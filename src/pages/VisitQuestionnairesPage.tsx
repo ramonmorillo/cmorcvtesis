@@ -15,12 +15,14 @@ import { getVisitById } from '../services/visitService';
 
 const IEXPAC_ITEM_KEYS = Array.from({ length: 11 }, (_, idx) => `q${idx + 1}` as const);
 const EQ5D_DIMENSIONS = ['mobility', 'selfcare', 'activities', 'pain', 'anxiety'] as const;
+const PAM10_ITEM_KEYS = Array.from({ length: 10 }, (_, idx) => `q${idx + 1}` as const);
 
 type LikertValue = 1 | 2 | 3 | 4 | 5;
 
 type IexpacForm = Record<(typeof IEXPAC_ITEM_KEYS)[number], '' | `${LikertValue}`> & { q12: '' | `${LikertValue}` };
 type MoriskyForm = { q1: '' | 'yes' | 'no'; q2: '' | 'yes' | 'no'; q3: '' | 'yes' | 'no'; q4: '' | 'yes' | 'no' };
 type Eq5dForm = Record<(typeof EQ5D_DIMENSIONS)[number], '' | `${LikertValue}`> & { vas: '' | string };
+type Pam10Form = Record<(typeof PAM10_ITEM_KEYS)[number], '' | `${LikertValue}`>;
 
 const LIKERT_LABELS: Array<{ value: LikertValue; label: string }> = [
   { value: 1, label: 'Nunca' },
@@ -42,6 +44,19 @@ const IEXPAC_QUESTIONS = [
   'Me siento acompañado/a en el seguimiento de mi enfermedad.',
   'Puedo contactar con el equipo cuando aparece una incidencia.',
   'Percibo continuidad y organización en mi atención.',
+] as const;
+
+const PAM10_QUESTIONS = [
+  'Al final, yo soy la persona responsable de ocuparme de mi salud.',
+  'Tener un papel activo en el cuidado de mi propia salud es lo más importante que afecta a mi salud.',
+  'Sé lo que hacen mis medicamentos recetados.',
+  'Estoy seguro de que puedo distinguir entre cuándo debo ir al médico o cuándo debo atender mi problema de salud.',
+  'Estoy seguro de que puedo contar al médico las inquietudes que tengo incluso cuando él o ella no lo pregunte.',
+  'Estoy seguro de que puedo realizar los tratamientos médicos que pueda tener que hacer en casa.',
+  'He sido capaz de mantener/cumplir los cambios en mi estilo de vida, como comer correctamente o hacer ejercicio.',
+  'Sé cómo evitar problemas con mi salud.',
+  'Estoy seguro de que puedo encontrar soluciones cuando surgen nuevos problemas con mi salud.',
+  'Estoy seguro de que puedo mantener los cambios en mi estilo de vida, como comer correctamente y hacer ejercicio, incluso durante momentos de estrés.',
 ] as const;
 
 function parseLikert(value: string): LikertValue | null {
@@ -121,6 +136,23 @@ function calculateEq5d(form: Eq5dForm): { totalScore: number | null; secondarySc
   };
 }
 
+function calculatePam10(form: Pam10Form): { totalScore: number; responses: Record<string, number> } | null {
+  const responses: Record<string, number> = {};
+  let sum = 0;
+
+  for (const key of PAM10_ITEM_KEYS) {
+    const value = parseLikert(form[key]);
+    if (value === null) return null;
+    responses[key] = value;
+    sum += value;
+  }
+
+  return {
+    totalScore: sum,
+    responses,
+  };
+}
+
 function hydrateIexpac(record: QuestionnaireResponseRecord | undefined): IexpacForm {
   const r = record?.responses ?? {};
   const out: IexpacForm = {
@@ -177,6 +209,19 @@ function hydrateEq5d(record: QuestionnaireResponseRecord | undefined): Eq5dForm 
   };
 }
 
+function hydratePam10(record: QuestionnaireResponseRecord | undefined): Pam10Form {
+  const r = record?.responses ?? {};
+  const out: Pam10Form = { q1: '', q2: '', q3: '', q4: '', q5: '', q6: '', q7: '', q8: '', q9: '', q10: '' };
+  PAM10_ITEM_KEYS.forEach((key) => {
+    const v = r[key];
+    if (v === 1 || v === 2 || v === 3 || v === 4 || v === 5) {
+      out[key] = String(v) as `${LikertValue}`;
+    }
+  });
+
+  return out;
+}
+
 export function VisitQuestionnairesPage() {
   const { visitId = '' } = useParams();
   const [visitPatientId, setVisitPatientId] = useState('');
@@ -184,6 +229,7 @@ export function VisitQuestionnairesPage() {
   const [iexpacForm, setIexpacForm] = useState<IexpacForm>({ q1: '', q2: '', q3: '', q4: '', q5: '', q6: '', q7: '', q8: '', q9: '', q10: '', q11: '', q12: '' });
   const [moriskyForm, setMoriskyForm] = useState<MoriskyForm>({ q1: '', q2: '', q3: '', q4: '' });
   const [eq5dForm, setEq5dForm] = useState<Eq5dForm>({ mobility: '', selfcare: '', activities: '', pain: '', anxiety: '', vas: '' });
+  const [pam10Form, setPam10Form] = useState<Pam10Form>({ q1: '', q2: '', q3: '', q4: '', q5: '', q6: '', q7: '', q8: '', q9: '', q10: '' });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -193,6 +239,7 @@ export function VisitQuestionnairesPage() {
   const iexpacMetrics = useMemo(() => calculateIexpac(iexpacForm), [iexpacForm]);
   const moriskyMetrics = useMemo(() => calculateMorisky(moriskyForm), [moriskyForm]);
   const eq5dMetrics = useMemo(() => calculateEq5d(eq5dForm), [eq5dForm]);
+  const pam10Metrics = useMemo(() => calculatePam10(pam10Form), [pam10Form]);
 
   useEffect(() => {
     async function loadData() {
@@ -214,6 +261,7 @@ export function VisitQuestionnairesPage() {
       setIexpacForm(hydrateIexpac(byType.get('iexpac')));
       setMoriskyForm(hydrateMorisky(byType.get('morisky')));
       setEq5dForm(hydrateEq5d(byType.get('eq5d')));
+      setPam10Form(hydratePam10(byType.get('pam10')));
     }
 
     void loadData();
@@ -234,8 +282,8 @@ export function VisitQuestionnairesPage() {
       return;
     }
 
-    if (!iexpacMetrics || !moriskyMetrics || !eq5dMetrics) {
-      setErrorMessage('Completa todos los campos obligatorios de IEXPAC, Morisky y EQ-5D-5L.');
+    if (!iexpacMetrics || !moriskyMetrics || !eq5dMetrics || !pam10Metrics) {
+      setErrorMessage('Completa todos los campos obligatorios de IEXPAC, Morisky, EQ-5D-5L y PAM-10.');
       return;
     }
 
@@ -261,6 +309,13 @@ export function VisitQuestionnairesPage() {
         total_score: eq5dMetrics.totalScore,
         secondary_score: eq5dMetrics.secondaryScore,
       },
+      {
+        visit_id: visitId,
+        questionnaire_type: 'pam10',
+        responses: pam10Metrics.responses,
+        total_score: pam10Metrics.totalScore,
+        secondary_score: null,
+      },
     ];
 
     setSaving(true);
@@ -282,6 +337,7 @@ export function VisitQuestionnairesPage() {
     setIexpacForm(hydrateIexpac(refreshedByType.get('iexpac')));
     setMoriskyForm(hydrateMorisky(refreshedByType.get('morisky')));
     setEq5dForm(hydrateEq5d(refreshedByType.get('eq5d')));
+    setPam10Form(hydratePam10(refreshedByType.get('pam10')));
     setSuccessMessage('Cuestionarios guardados correctamente.');
   };
 
@@ -400,6 +456,46 @@ export function VisitQuestionnairesPage() {
               <span className={moriskyMetrics?.totalScore === 1 ? 'badge-success' : 'badge-muted'}>
                 {moriskyMetrics?.adherenceLabel ?? 'Pendiente'}
               </span>
+            </p>
+          </article>
+
+          <article className="questionnaire-card">
+            <h2>PAM-10</h2>
+            <p className="help-text">10 ítems obligatorios. Escala 1–5 (5 = N/A).</p>
+            <div className="questionnaire-grid">
+              {PAM10_QUESTIONS.map((question, index) => {
+                const key = `q${index + 1}` as (typeof PAM10_ITEM_KEYS)[number];
+                return (
+                  <div key={key}>
+                    <p style={{ marginBottom: '0.35rem', fontWeight: 600 }}>{index + 1}. {question}</p>
+                    <div className="radio-row">
+                      {[
+                        { value: 1, label: 'Totalmente en desacuerdo' },
+                        { value: 2, label: 'En desacuerdo' },
+                        { value: 3, label: 'De acuerdo' },
+                        { value: 4, label: 'Totalmente de acuerdo' },
+                        { value: 5, label: 'N/A' },
+                      ].map((item) => (
+                        <label key={item.value} className="radio-inline">
+                          <input
+                            type="radio"
+                            name={`pam10-${key}`}
+                            value={item.value}
+                            checked={pam10Form[key] === String(item.value)}
+                            onChange={(e) => setPam10Form((prev) => ({ ...prev, [key]: e.target.value as `${LikertValue}` }))}
+                            disabled={!questionnaireEnabled}
+                          />
+                          {item.value} · {item.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <p className="help-text" style={{ marginTop: '0.75rem' }}>
+              Puntuación total PAM-10: <strong>{pam10Metrics?.totalScore ?? '-'}</strong>
             </p>
           </article>
 
