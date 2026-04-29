@@ -202,8 +202,7 @@ function normalizeQuestionnaireRows(
   questionnaireTypeByMeasurementId: Map<string, QuestionnaireType>,
 ): QuestionnaireResponseRecord[] {
   return rows.flatMap((row) => {
-    const questionnaireType = normalizeQuestionnaireCode(row.questionnaire_type)
-      ?? (row.measurement_id ? (questionnaireTypeByMeasurementId.get(row.measurement_id) ?? null) : null);
+    const questionnaireType = row.measurement_id ? (questionnaireTypeByMeasurementId.get(row.measurement_id) ?? null) : null;
 
     if (!questionnaireType) {
       return [];
@@ -233,7 +232,7 @@ export function isQuestionnaireVisitType(visitType: string | null | undefined): 
   return visitType === 'baseline' || visitType === 'final' || visitType === 'month_12';
 }
 
-const QUESTIONNAIRE_BASE_SELECT = 'id,visit_id,user_id,questionnaire_type,measurement_id,responses,created_at,updated_at,visits(patient_id,visit_type)';
+const QUESTIONNAIRE_BASE_SELECT = 'id,visit_id,user_id,measurement_id,responses,created_at,updated_at,visits(patient_id,visit_type)';
 
 export async function listQuestionnairesByVisit(visitId: string): Promise<{ data: QuestionnaireResponseRecord[]; errorMessage: string | null }> {
   if (!supabase) {
@@ -366,7 +365,6 @@ export async function saveQuestionnaireBundle(input: QuestionnaireResponseUpsert
     payload.push({
       visit_id,
       user_id: authenticatedUser.id,
-      questionnaire_type,
       measurement_id: measurementId,
       responses,
     });
