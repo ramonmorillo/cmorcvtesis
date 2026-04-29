@@ -35,6 +35,7 @@ export const router = createHashRouter([
       { path: '/project', element: <ProjectPage /> },
       { path: '/patients/:id', element: <PatientDetailPage /> },
       { path: '/patients/:id/visits/new', element: <NewVisitPage /> },
+      { path: '/patients/:id/visits/:visitId', element: <NewVisitPage /> },
       { path: '/visits/:visitId/stratification', element: <BaselineStratificationPage /> },
       { path: '/visits/:visitId/medications', element: <VisitMedicationsPage /> },
       { path: '/visits/:visitId/interventions', element: <VisitInterventionsPage /> },
