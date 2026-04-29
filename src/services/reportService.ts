@@ -73,6 +73,7 @@ function formatQuestionnaireItem(item: QuestionnaireResponseRecord): string {
     iexpac: 'IEXPAC (experiencia de atención)',
     morisky: 'Morisky-Green (adherencia terapéutica)',
     eq5d: 'EQ-5D-5L (calidad de vida percibida)',
+    pam10: 'PAM-10 (activación del paciente)',
   };
   const score = typeof item.total_score === 'number' ? ` · puntuación: ${item.total_score}` : ' · puntuación no disponible';
   return `${labels[item.questionnaire_type]}${score}`;

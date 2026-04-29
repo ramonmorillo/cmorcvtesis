@@ -1,11 +1,12 @@
 import { supabase } from '../lib/supabase';
 
-export type QuestionnaireType = 'iexpac' | 'morisky' | 'eq5d';
+export type QuestionnaireType = 'iexpac' | 'morisky' | 'eq5d' | 'pam10';
 
 const CANONICAL_QUESTIONNAIRE_CODE: Record<QuestionnaireType, string> = {
   iexpac: 'IEXPAC',
   morisky: 'MORISKY_GREEN',
   eq5d: 'EQ5D_5L',
+  pam10: 'PAM10',
 };
 
 type QuestionnaireMeasurementMapRow = {
@@ -67,6 +68,7 @@ function normalizeQuestionnaireCode(raw: unknown): QuestionnaireType | null {
   if (value === 'iexpac') return 'iexpac';
   if (value === 'morisky' || value === 'morisky-green' || value === 'morisky_green') return 'morisky';
   if (value === 'eq5d' || value === 'eq-5d' || value === 'eq5d-5l' || value === 'eq_5d' || value === 'eq5d_5l') return 'eq5d';
+  if (value === 'pam10' || value === 'pam-10' || value === 'pam_10') return 'pam10';
 
   return null;
 }
@@ -77,6 +79,7 @@ function normalizeCanonicalQuestionnaireCode(raw: unknown): QuestionnaireType | 
   if (raw === CANONICAL_QUESTIONNAIRE_CODE.iexpac) return 'iexpac';
   if (raw === CANONICAL_QUESTIONNAIRE_CODE.morisky) return 'morisky';
   if (raw === CANONICAL_QUESTIONNAIRE_CODE.eq5d) return 'eq5d';
+  if (raw === CANONICAL_QUESTIONNAIRE_CODE.pam10) return 'pam10';
 
   return normalizeQuestionnaireCode(raw);
 }
@@ -134,6 +137,18 @@ function deriveScores(questionnaireType: QuestionnaireType, responses: Record<st
     }
 
     return { totalScore: null, secondaryScore: null };
+  }
+
+  if (questionnaireType === 'pam10') {
+    let sum = 0;
+    for (let idx = 1; idx <= 10; idx += 1) {
+      const value = parseNumber(responses[`q${idx}`]);
+      if (value === null || value < 1 || value > 5) {
+        return { totalScore: null, secondaryScore: null };
+      }
+      sum += value;
+    }
+    return { totalScore: sum, secondaryScore: null };
   }
 
   return {
