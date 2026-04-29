@@ -80,8 +80,10 @@ function formatQuestionnaireItem(item: QuestionnaireResponseRecord): string {
 }
 
 function formatInterventionItem(item: Intervention): string {
-  if (item.outcome?.trim()) return `${item.intervention_type}: ${item.outcome.trim()}`;
-  return item.intervention_type;
+  const chunks = [item.intervention_type];
+  if (item.outcome?.trim()) chunks.push(`Resultado: ${item.outcome.trim()}`);
+  if (item.notes?.trim()) chunks.push(`Notas: ${item.notes.trim()}`);
+  return chunks.join(' · ');
 }
 
 function deriveSimpleSummary(visit: Visit, cmoScore: number | null, interventions: Intervention[], questionnaires: QuestionnaireResponseRecord[]): string {

@@ -45,6 +45,7 @@ type InterventionRow = {
   delivered: boolean | null;
   linked_to_cmo_level: number | null;
   outcome: string | null;
+  notes: string | null;
   created_at: string | null;
 };
 
@@ -428,7 +429,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
     supabase.from('patients').select('id,study_code,inclusion_date,age_at_inclusion,sex,created_at').order('created_at', { ascending: true }),
     supabase.from('visits').select('id,patient_id,visit_type,visit_number,visit_date,scheduled_date,created_at').order('created_at', { ascending: true }),
     supabase.from('cmo_scores').select('visit_id,score,priority'),
-    supabase.from('interventions').select('id,visit_id,intervention_type,intervention_domain,priority_level,delivered,linked_to_cmo_level,outcome,created_at').order('created_at', { ascending: true }),
+    supabase.from('interventions').select('id,visit_id,intervention_type,intervention_domain,priority_level,delivered,linked_to_cmo_level,outcome,notes,created_at').order('created_at', { ascending: true }),
     supabase.from('clinical_assessments').select('visit_id,education_level,pregnancy_postpartum,biological_sex,race_ethnicity_risk,hypertension_present,cv_pathology_present,comorbidities_present,recent_cvd_12m,hospital_er_use_12m,physical_activity_pattern,social_support_absent,psychosocial_stress,chronic_med_count,recent_regimen_change,regimen_complexity_present,adherence_problem,systolic_bp,diastolic_bp,heart_rate,weight_kg,height_cm,bmi,waist_cm,ldl_mg_dl,hdl_mg_dl,non_hdl_mg_dl,fasting_glucose_mg_dl,hba1c_pct,score2_value,framingham_value,cv_risk_level,smoker_status,diet_score,adverse_events_count,high_risk_medication_present'),
     listAllQuestionnaires(),
     supabase
@@ -593,6 +594,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
     delivered: intervention.delivered,
     linked_to_cmo_level: intervention.linked_to_cmo_level,
     outcome: intervention.outcome,
+    notes: intervention.notes,
   }));
 
   const questionnairesCsvRows = questionnaires.map((q) => ({
@@ -717,7 +719,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
   const patientsCsv = toCsv(Object.keys(normalizedPatientsRows[0] ?? { patient_id: '' }), normalizedPatientsRows);
   const visitsCsv = toCsv(['visit_id', 'patient_id', 'visit_type', 'visit_number', 'visit_date', 'scheduled_date'], normalizedVisitsRows);
   const stratificationCsv = toCsv(Object.keys(normalizedStratificationRows[0] ?? { visit_id: '', patient_id: '' }), normalizedStratificationRows);
-  const interventionsCsv = toCsv(['intervention_id', 'visit_id', 'intervention_type', 'intervention_domain', 'priority_level', 'delivered', 'linked_to_cmo_level', 'outcome'], normalizedInterventionsRows);
+  const interventionsCsv = toCsv(['intervention_id', 'visit_id', 'intervention_type', 'intervention_domain', 'priority_level', 'delivered', 'linked_to_cmo_level', 'outcome', 'notes'], normalizedInterventionsRows);
   const questionnairesCsv = toCsv(Object.keys(normalizedQuestionnairesRows[0] ?? { patient_id: '' }), normalizedQuestionnairesRows);
   const datasetMaestroCsv = toCsv(Object.keys(normalizedDatasetMaestroRows[0] ?? {}), normalizedDatasetMaestroRows);
   const medicationByVisitCsv = toCsv(Object.keys(normalizedMedicationByVisitRows[0] ?? { visit_id: '', patient_id: '' }), normalizedMedicationByVisitRows);
