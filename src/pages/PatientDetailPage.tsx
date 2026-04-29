@@ -285,6 +285,8 @@ export function PatientDetailPage() {
   const finalMorisky = getQuestionnaireByVisit(questionnaireByVisitId, finalVisit?.id ?? null, 'morisky');
   const baselineEq5d = getQuestionnaireByVisit(questionnaireByVisitId, baselineVisit?.id ?? null, 'eq5d');
   const finalEq5d = getQuestionnaireByVisit(questionnaireByVisitId, finalVisit?.id ?? null, 'eq5d');
+  const baselinePam10 = getQuestionnaireByVisit(questionnaireByVisitId, baselineVisit?.id ?? null, 'pam10');
+  const finalPam10 = getQuestionnaireByVisit(questionnaireByVisitId, finalVisit?.id ?? null, 'pam10');
 
   const deltaIexpac = (() => {
     const basal = toNullableNumber(baselineIexpac?.total_score);
@@ -462,6 +464,10 @@ export function PatientDetailPage() {
             <strong>{baselineEq5d ? '✓' : '✗'}</strong>
           </li>
           <li>
+            <span>Basal: PAM-10</span>
+            <strong>{baselinePam10 ? '✓' : '✗'}</strong>
+          </li>
+          <li>
             <span>Final: IEXPAC</span>
             <strong>{finalIexpac ? '✓' : '✗'}</strong>
           </li>
@@ -472,6 +478,10 @@ export function PatientDetailPage() {
           <li>
             <span>Final: EQ-5D</span>
             <strong>{finalEq5d ? '✓' : '✗'}</strong>
+          </li>
+          <li>
+            <span>Final: PAM-10</span>
+            <strong>{finalPam10 ? '✓' : '✗'}</strong>
           </li>
           <li>
             <span>Δ IEXPAC</span>
