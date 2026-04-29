@@ -115,7 +115,6 @@ const NUMERIC_FIELDS: [string, string][] = [
   ['hba1c_pct', 'HbA1c (%)'],
   ['score2_value', 'SCORE2 (%)'],
   ['framingham_value', 'Framingham (%)'],
-  ['diet_score', 'Dieta (0–10)'],
   ['adverse_events_count', 'Eventos adversos'],
 ];
 
