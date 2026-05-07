@@ -65,6 +65,8 @@ export function NewVisitPage() {
 
     if (isExistingVisit) {
       const result = await updateVisit(visitId, {
+        visit_type: form.visit_type,
+        visit_number: getVisitNumberByType(form.visit_type),
         scheduled_date: form.scheduled_date || null,
         visit_date: form.visit_date || null,
         visit_status: form.visit_status || null,

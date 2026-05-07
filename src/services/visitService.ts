@@ -128,7 +128,7 @@ export async function createVisit(input: NewVisitInput): Promise<{ data: Visit |
   return { data: data ? normalizeVisit(data as Visit) : null, errorMessage: null };
 }
 
-export type VisitUpdateInput = Partial<Pick<Visit, 'visit_date' | 'visit_status' | 'notes' | 'scheduled_date' | 'extraordinary_reason'>>;
+export type VisitUpdateInput = Partial<Pick<Visit, 'visit_type' | 'visit_number' | 'visit_date' | 'visit_status' | 'notes' | 'scheduled_date' | 'extraordinary_reason'>>;
 
 export async function updateVisit(visitId: string, updates: VisitUpdateInput): Promise<{ data: Visit | null; errorMessage: string | null }> {
   if (!supabase) {
