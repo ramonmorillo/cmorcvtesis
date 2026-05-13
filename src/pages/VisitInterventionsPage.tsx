@@ -38,6 +38,7 @@ const INTERVENTION_CATALOG: InterventionCatalogItem[] = [
   { code: 'L3-CRF-01', label: 'Control de la presión arterial.', domain: 'Cribado y detección de factores de riesgo cardiovascular', cmo_pillar: 'oportunidad', min_level: 3 },
   { code: 'L3-CRF-02', label: 'Medición del perfil lipídico.', domain: 'Cribado y detección de factores de riesgo cardiovascular', cmo_pillar: 'oportunidad', min_level: 3 },
   { code: 'L3-CRF-03', label: 'Cuantificación de HbA1c.', domain: 'Cribado y detección de factores de riesgo cardiovascular', cmo_pillar: 'oportunidad', min_level: 3 },
+  { code: 'L3-CRF-05', label: 'Monitorización de glucosa', domain: 'Cribado y detección de factores de riesgo cardiovascular', cmo_pillar: 'oportunidad', min_level: 3 },
   { code: 'L3-CRF-04', label: 'Cribado de fibrilación auricular en pacientes mayores de 65 años.', domain: 'Cribado y detección de factores de riesgo cardiovascular', cmo_pillar: 'oportunidad', min_level: 3 },
   { code: 'L3-CET-01', label: 'Identificar la etapa de cambio del paciente —precontemplación, contemplación, preparación, acción o mantenimiento— utilizando el modelo transteórico.', domain: 'Cesación tabáquica', cmo_pillar: 'motivacion', min_level: 3 },
   { code: 'L3-CET-02', label: 'Aplicar técnicas de entrevista motivacional para aumentar la implicación del paciente y resolver la ambivalencia hacia el abandono del tabaco.', domain: 'Cesación tabáquica', cmo_pillar: 'motivacion', min_level: 3 },

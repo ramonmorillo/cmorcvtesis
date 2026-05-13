@@ -81,6 +81,13 @@ export const INTERVENTION_CATALOG: InterventionCatalogItem[] = [
     min_level: 3,
   },
   {
+    code: 'glucose_monitoring',
+    label: 'Monitorización de glucosa',
+    domain: 'Screening and Detection of Cardiovascular Risk Factors (CVRF)',
+    cmo_pillar: 'oportunidad',
+    min_level: 3,
+  },
+  {
     code: 'af_screening_over65',
     label: 'Cribado de fibrilación auricular en mayores de 65 años',
     domain: 'Screening and Detection of Cardiovascular Risk Factors (CVRF)',
