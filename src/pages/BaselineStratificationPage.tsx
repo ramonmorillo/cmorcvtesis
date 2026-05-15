@@ -23,7 +23,7 @@ import {
   type RaceEthnicityRisk,
   type SmokingStatus,
 } from '../services/cmoScoringEngine';
-import { upsertCmoScore } from '../services/cmoScoreService';
+import { getCmoScoreByVisit, upsertCmoScore, type CmoScoreRecord } from '../services/cmoScoreService';
 import { getVisitById } from '../services/visitService';
 
 type YesNoUnknown = 'yes' | 'no' | 'unknown';
@@ -165,6 +165,7 @@ export function BaselineStratificationPage() {
   const [isEditingStratification, setIsEditingStratification] = useState(true);
   const [hasSavedAssessment, setHasSavedAssessment] = useState(false);
   const [originalStratificationSnapshot, setOriginalStratificationSnapshot] = useState<Record<string, string> | null>(null);
+  const [savedCmoScore, setSavedCmoScore] = useState<CmoScoreRecord | null>(null);
 
   const applyAssessmentToForm = (assessment: ClinicalAssessment) => {
     setForm((prev) => ({
@@ -209,14 +210,16 @@ export function BaselineStratificationPage() {
 
   useEffect(() => {
     async function loadCurrent() {
-      const [visitRes, assessmentRes] = await Promise.all([
+      const [visitRes, assessmentRes, scoreRes] = await Promise.all([
         getVisitById(visitId),
         getClinicalAssessmentByVisit(visitId),
+        getCmoScoreByVisit(visitId),
       ]);
 
       const patientId = visitRes.data?.patient_id ?? '';
       if (patientId) setVisitPatientId(patientId);
       if (assessmentRes.errorMessage) setErrorMessage(assessmentRes.errorMessage);
+      if (!scoreRes.errorMessage) setSavedCmoScore(scoreRes.data);
 
       if (patientId) {
         const patientRes = await getPatientById(patientId);
@@ -276,7 +279,7 @@ export function BaselineStratificationPage() {
         return;
       }
 
-      if (patientId) {
+      if (patientId && !scoreRes.data) {
         const previousAssessmentRes = await getLatestPreviousClinicalAssessmentByPatient(patientId, visitId);
         if (previousAssessmentRes.errorMessage) {
           setErrorMessage(previousAssessmentRes.errorMessage);
@@ -330,7 +333,10 @@ export function BaselineStratificationPage() {
   }), [form, resolvedAge]);
 
   const cmoResult: CmoScoringResult = useMemo(() => scoreCmo(cmoInput), [cmoInput]);
-  const meta = LEVEL_META[cmoResult.level];
+  const hasUnsavedChanges = isEditingStratification && hasSavedAssessment;
+  const displayedScore = hasUnsavedChanges || !savedCmoScore ? cmoResult.totalScore : savedCmoScore.score;
+  const displayedLevel = hasUnsavedChanges || !savedCmoScore ? cmoResult.level : savedCmoScore.priority;
+  const meta = LEVEL_META[displayedLevel as CmoLevel];
 
   const assessmentPayload = useMemo<NewClinicalAssessmentInput>(() => ({
     visit_id: visitId,
@@ -385,7 +391,7 @@ export function BaselineStratificationPage() {
       return;
     }
 
-    const { errorMessage: scoreErr } = await upsertCmoScore(visitId, cmoResult);
+    const { data: savedScoreData, errorMessage: scoreErr } = await upsertCmoScore(visitId, cmoResult);
     if (scoreErr) {
       setErrorMessage(scoreErr);
       setSaving(false);
@@ -400,6 +406,7 @@ export function BaselineStratificationPage() {
     }
 
     applyAssessmentToForm(latestSaved.data);
+    setSavedCmoScore(savedScoreData);
     setOriginalStratificationSnapshot({ ...form });
     setHasSavedAssessment(true);
     setIsEditingStratification(false);
@@ -442,12 +449,12 @@ export function BaselineStratificationPage() {
               minWidth: '2.5ch', textAlign: 'center', color: meta.color,
             }}
           >
-            {cmoResult.totalScore}
+{displayedScore}
           </span>
           <div>
             <div style={{ fontWeight: 700, color: meta.color }}>{meta.label}</div>
             <div className="help-text" style={{ fontSize: '0.8rem', marginTop: '0.1rem' }}>
-              puntos CMO-RCV · actualizado en tiempo real
+{hasUnsavedChanges || !savedCmoScore ? 'puntos CMO-RCV · actualizado en tiempo real' : 'puntos CMO-RCV · guardado para esta visita'}
             </div>
           </div>
         </div>
