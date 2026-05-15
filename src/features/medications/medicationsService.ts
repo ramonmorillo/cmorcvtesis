@@ -348,15 +348,19 @@ export async function importExternalMedicationToVisit(input: {
   }
 
   const candidate = mapExternalMedicationPayloadToNormalizedCandidate(input.sourcePayload);
+  const normalizedSelectedLabel = input.selectedLabel.trim();
+  const resolvedDisplayName = normalizedSelectedLabel.length > 0
+    ? normalizedSelectedLabel
+    : buildExternalMedicationLabel(input.sourcePayload).trim() || 'Medicamento CIMA';
   const normalizedResult = await upsertNormalizedMedicationFromExternal(candidate);
   if (normalizedResult.errorMessage || !normalizedResult.data) {
     return { data: [], errorMessage: normalizedResult.errorMessage ?? 'No se pudo normalizar el medicamento externo.' };
   }
 
-  const sourceCode = candidate.cimaCn ?? normalizedResult.data.productId;
+  const sourceCode = (candidate.cimaCn ?? normalizedResult.data.productId ?? '').trim() || null;
   const localCatalogResult = await ensureExternalMedicationCatalogItem({
     sourceCode,
-    displayName: input.selectedLabel,
+    displayName: resolvedDisplayName,
     candidate,
   });
   if (localCatalogResult.errorMessage || !localCatalogResult.data) {
@@ -369,7 +373,7 @@ export async function importExternalMedicationToVisit(input: {
     catalog_concept_id: normalizedResult.data.conceptId,
     catalog_product_id: normalizedResult.data.productId,
     selection_source: 'external_cima',
-    selected_label_snapshot: input.selectedLabel,
+    selected_label_snapshot: resolvedDisplayName,
     selected_source_payload: input.sourcePayload,
     dose_text: null,
     frequency_text: null,
