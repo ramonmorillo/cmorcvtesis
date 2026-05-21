@@ -480,9 +480,15 @@ export async function createMedicationCatalogItem(
     .maybeSingle();
 
   if (error) {
+    const rawError = extractErrorMessage(error, 'No fue posible crear el medicamento en el catálogo interno.');
+    const normalizedError = rawError.toLowerCase();
+    const isRlsInsertError = normalizedError.includes('row-level security') || normalizedError.includes('new row violates');
+
     return {
       data: { item: null, duplicate: null },
-      errorMessage: extractErrorMessage(error, 'No fue posible crear el medicamento en el catálogo interno.'),
+      errorMessage: isRlsInsertError
+        ? 'No fue posible crear la medicación no CIMA por permisos de catálogo. Revisa que tu sesión esté autenticada y vuelve a intentarlo.'
+        : rawError,
     };
   }
 
