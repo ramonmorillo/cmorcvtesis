@@ -1,6 +1,6 @@
 import type { MedicationCatalogItem, MedicationCatalogSource, MedicationOrigin } from './types';
 
-const KNOWN_SOURCES: ReadonlySet<MedicationCatalogSource> = new Set(['internal', 'external_cima', 'external_other']);
+const KNOWN_SOURCES: ReadonlySet<MedicationCatalogSource> = new Set(['internal', 'manual', 'external_cima', 'external_other']);
 
 export function normalizeMedicationCatalogSource(source: string | null | undefined): MedicationCatalogSource {
   const normalized = (source ?? '').trim().toLowerCase();
@@ -21,8 +21,8 @@ export function normalizeMedicationCatalogSource(source: string | null | undefin
 }
 
 export function resolveMedicationOrigin(item: Pick<MedicationCatalogItem, 'source' | 'source_code'>): MedicationOrigin {
-  if (item.source === 'internal') {
-    return { kind: 'internal', source: 'internal' };
+  if (item.source === 'internal' || item.source === 'manual') {
+    return { kind: 'internal', source: item.source };
   }
 
   return {
