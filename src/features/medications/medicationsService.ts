@@ -26,6 +26,7 @@ type CreateMedicationCatalogItemResult = {
   item: MedicationCatalogItem | null;
   duplicate: MedicationCatalogItem | null;
 };
+type CanonicalCatalogSource = 'external_cima' | 'manual';
 
 const PATIENT_MEDICATION_SELECT =
   'id,patient_id,medication_catalog_id,catalog_concept_id,catalog_product_id,selection_source,selected_label_snapshot,selected_source_payload,dose_text,frequency_text,route_text,indication,start_date,end_date,is_active,notes,created_at,updated_at,medication_catalog:medication_catalog_id(id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at)';
@@ -115,6 +116,113 @@ function normalizeMedicationName(value: string): string {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, ' ');
+}
+
+function canonicalizeManualSource(source: string | null | undefined): CanonicalCatalogSource {
+  const normalized = (source ?? '').trim().toLowerCase();
+  if (normalized === 'external_cima') {
+    return 'external_cima';
+  }
+  if (normalized === 'manual' || normalized === 'non_cima' || normalized === 'no_cima' || normalized === 'custom' || normalized === 'local') {
+    return 'manual';
+  }
+  return 'manual';
+}
+
+async function ensureMedicationCatalogItem(params: {
+  catalogItemId?: string | null;
+  source: string | null | undefined;
+  sourceCode?: string | null;
+  displayName: string;
+  activeIngredient?: string | null;
+  strength?: string | null;
+  form?: string | null;
+  route?: string | null;
+  atcCode?: string | null;
+}): Promise<NullableServiceResult<MedicationCatalogItem>> {
+  if (!supabase) {
+    return { data: null, errorMessage: 'Supabase no está configurado.' };
+  }
+
+  if (params.catalogItemId) {
+    return { data: { id: params.catalogItemId } as MedicationCatalogItem, errorMessage: null };
+  }
+
+  const canonicalSource = canonicalizeManualSource(params.source);
+  const displayName = params.displayName.trim();
+  if (displayName.length < 2) {
+    return { data: null, errorMessage: 'El nombre del medicamento debe tener al menos 2 caracteres.' };
+  }
+
+  const sourceCode = canonicalSource === 'external_cima'
+    ? trimOrNull(params.sourceCode ?? '')
+    : null;
+
+  if (canonicalSource === 'external_cima' && !sourceCode) {
+    return { data: null, errorMessage: 'El medicamento CIMA requiere source_code válido.' };
+  }
+
+  if (canonicalSource === 'external_cima') {
+    const { data: existingBySourceCode, error: existingBySourceCodeError } = await supabase
+      .from('medication_catalog')
+      .select('id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at')
+      .eq('source', 'external_cima')
+      .eq('source_code', sourceCode)
+      .maybeSingle();
+
+    if (existingBySourceCodeError) {
+      return { data: null, errorMessage: extractErrorMessage(existingBySourceCodeError, 'No fue posible consultar medicación CIMA existente.') };
+    }
+    if (existingBySourceCode) {
+      return { data: normalizeMedicationCatalogItem(existingBySourceCode as MedicationCatalogItem), errorMessage: null };
+    }
+  } else {
+    const normalizedDisplayName = normalizeMedicationName(displayName);
+    const { data: possibleDuplicates, error: duplicateError } = await supabase
+      .from('medication_catalog')
+      .select('id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at')
+      .eq('source', 'manual')
+      .ilike('display_name', `%${displayName}%`)
+      .limit(40);
+
+    if (duplicateError) {
+      return { data: null, errorMessage: extractErrorMessage(duplicateError, 'No fue posible verificar duplicados del catálogo manual.') };
+    }
+
+    const duplicate = ((possibleDuplicates ?? []) as MedicationCatalogItem[])
+      .map(normalizeMedicationCatalogItem)
+      .find((candidate) => normalizeMedicationName(candidate.display_name) === normalizedDisplayName);
+    if (duplicate) {
+      return { data: duplicate, errorMessage: null };
+    }
+  }
+
+  const insertPayload = {
+    source: canonicalSource,
+    source_code: sourceCode,
+    display_name: displayName,
+    active_ingredient: trimOrNull(params.activeIngredient ?? ''),
+    strength: trimOrNull(params.strength ?? ''),
+    form: trimOrNull(params.form ?? ''),
+    route: trimOrNull(params.route ?? ''),
+    atc_code: trimOrNull(params.atcCode ?? ''),
+  };
+  debugMedicationCatalogOperation('ensureMedicationCatalogItem.insert', insertPayload);
+
+  const { data, error } = await supabase
+    .from('medication_catalog')
+    .insert(insertPayload)
+    .select('id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at')
+    .maybeSingle();
+
+  if (error) {
+    return { data: null, errorMessage: extractErrorMessage(error, 'No fue posible crear el medicamento en catálogo local.') };
+  }
+
+  return {
+    data: data ? normalizeMedicationCatalogItem(data as MedicationCatalogItem) : null,
+    errorMessage: null,
+  };
 }
 
 function normalizeVisitMedicationEvent(
@@ -306,63 +414,16 @@ async function ensureExternalMedicationCatalogItem(params: {
     return { data: null, errorMessage: 'Supabase no está configurado.' };
   }
 
-  if (params.sourceCode) {
-    const { data: existingBySourceCode } = await supabase
-      .from('medication_catalog')
-      .select('id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at')
-      .eq('source', 'external_cima')
-      .eq('source_code', params.sourceCode)
-      .maybeSingle();
-
-    if (existingBySourceCode) {
-      return { data: normalizeMedicationCatalogItem(existingBySourceCode as MedicationCatalogItem), errorMessage: null };
-    }
-  }
-
-  const { data: existingByDisplayName, error: existingByDisplayNameError } = await supabase
-    .from('medication_catalog')
-    .select('id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at')
-    .eq('source', 'external_cima')
-    .eq('display_name', params.displayName)
-    .maybeSingle();
-
-  if (existingByDisplayNameError) {
-    return { data: null, errorMessage: extractErrorMessage(existingByDisplayNameError, 'No fue posible validar duplicados del catálogo local.') };
-  }
-
-  if (existingByDisplayName) {
-    return { data: normalizeMedicationCatalogItem(existingByDisplayName as MedicationCatalogItem), errorMessage: null };
-  }
-
-  const insertPayload = {
+  return ensureMedicationCatalogItem({
     source: 'external_cima',
-    source_code: params.sourceCode,
-    display_name: params.displayName,
-    active_ingredient: params.candidate.ingredientNames.join(' + ') || null,
+    sourceCode: params.sourceCode,
+    displayName: params.displayName,
+    activeIngredient: params.candidate.ingredientNames.join(' + ') || null,
     strength: params.candidate.strengthText,
     form: params.candidate.pharmaceuticalForm,
     route: params.candidate.routeDefault,
-    atc_code: params.candidate.atcCodes[0] ?? null,
-  };
-
-  debugMedicationCatalogOperation('ensureExternalMedicationCatalogItem.insert', insertPayload);
-
-  const { data: insertedData, error } = await supabase
-    .from('medication_catalog')
-    .insert({
-      ...insertPayload,
-    })
-    .select('id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at')
-    .maybeSingle();
-
-  if (error) {
-    return { data: null, errorMessage: extractErrorMessage(error, 'No fue posible crear el medicamento externo en catálogo local.') };
-  }
-
-  return {
-    data: insertedData ? normalizeMedicationCatalogItem(insertedData as MedicationCatalogItem) : null,
-    errorMessage: null,
-  };
+    atcCode: params.candidate.atcCodes[0] ?? null,
+  });
 }
 
 export async function importExternalMedicationToVisit(input: {
@@ -471,48 +532,16 @@ export async function createMedicationCatalogItem(
     };
   }
 
-  const normalizedDisplayName = normalizeMedicationName(displayName);
-  const { data: possibleDuplicates, error: duplicateError } = await supabase
-    .from('medication_catalog')
-    .select('id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at')
-    .ilike('display_name', `%${displayName}%`)
-    .limit(40);
-
-  if (duplicateError) {
-    return {
-      data: { item: null, duplicate: null },
-      errorMessage: extractErrorMessage(duplicateError, 'No fue posible verificar duplicados en el catálogo.'),
-    };
-  }
-
-  const duplicate = ((possibleDuplicates ?? []) as MedicationCatalogItem[])
-    .map(normalizeMedicationCatalogItem)
-    .find((candidate) => normalizeMedicationName(candidate.display_name) === normalizedDisplayName);
-
-  if (duplicate) {
-    return { data: { item: null, duplicate }, errorMessage: null };
-  }
-
-  const insertPayload = {
+  const ensured = await ensureMedicationCatalogItem({
     source: 'manual',
-    source_code: null,
-    display_name: displayName,
-    active_ingredient: trimOrNull(input.active_ingredient ?? ''),
-    strength: trimOrNull(input.strength ?? ''),
-    form: trimOrNull(input.form ?? ''),
-    route: trimOrNull(input.route ?? ''),
-  };
-
-  debugMedicationCatalogOperation('createMedicationCatalogItem.insert', insertPayload);
-
-  const { data, error } = await supabase
-    .from('medication_catalog')
-    .insert(insertPayload)
-    .select('id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at')
-    .maybeSingle();
-
-  if (error) {
-    const rawError = extractErrorMessage(error, 'No fue posible crear el medicamento en el catálogo interno.');
+    displayName,
+    activeIngredient: input.active_ingredient,
+    strength: input.strength,
+    form: input.form,
+    route: input.route,
+  });
+  if (ensured.errorMessage) {
+    const rawError = ensured.errorMessage;
     const normalizedError = rawError.toLowerCase();
     const isRlsInsertError = normalizedError.includes('row-level security') || normalizedError.includes('new row violates');
 
@@ -523,11 +552,14 @@ export async function createMedicationCatalogItem(
         : rawError,
     };
   }
+  if (!ensured.data) {
+    return { data: { item: null, duplicate: null }, errorMessage: 'No fue posible crear o reutilizar el medicamento en catálogo.' };
+  }
 
   return {
     data: {
-      item: data ? normalizeMedicationCatalogItem(data as MedicationCatalogItem) : null,
-      duplicate: null,
+      item: ensured.data.source === 'manual' ? ensured.data : null,
+      duplicate: ensured.data.source === 'manual' ? null : ensured.data,
     },
     errorMessage: null,
   };
