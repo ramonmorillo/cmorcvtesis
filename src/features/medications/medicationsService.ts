@@ -30,6 +30,13 @@ type CreateMedicationCatalogItemResult = {
 const PATIENT_MEDICATION_SELECT =
   'id,patient_id,medication_catalog_id,catalog_concept_id,catalog_product_id,selection_source,selected_label_snapshot,selected_source_payload,dose_text,frequency_text,route_text,indication,start_date,end_date,is_active,notes,created_at,updated_at,medication_catalog:medication_catalog_id(id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at)';
 
+function debugMedicationCatalogOperation(operationName: string, payload: Record<string, unknown>): void {
+  if (import.meta.env.DEV) {
+    console.debug('[medication_catalog operation]', operationName);
+    console.debug('[medication_catalog payload]', payload);
+  }
+}
+
 export type ExternalMedicationSearchItem = {
   id: string;
   label: string;
@@ -312,17 +319,38 @@ async function ensureExternalMedicationCatalogItem(params: {
     }
   }
 
-  const { data, error } = await supabase
+  const { data: existingByDisplayName, error: existingByDisplayNameError } = await supabase
+    .from('medication_catalog')
+    .select('id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at')
+    .eq('source', 'external_cima')
+    .eq('display_name', params.displayName)
+    .maybeSingle();
+
+  if (existingByDisplayNameError) {
+    return { data: null, errorMessage: extractErrorMessage(existingByDisplayNameError, 'No fue posible validar duplicados del catálogo local.') };
+  }
+
+  if (existingByDisplayName) {
+    return { data: normalizeMedicationCatalogItem(existingByDisplayName as MedicationCatalogItem), errorMessage: null };
+  }
+
+  const insertPayload = {
+    source: 'external_cima',
+    source_code: params.sourceCode,
+    display_name: params.displayName,
+    active_ingredient: params.candidate.ingredientNames.join(' + ') || null,
+    strength: params.candidate.strengthText,
+    form: params.candidate.pharmaceuticalForm,
+    route: params.candidate.routeDefault,
+    atc_code: params.candidate.atcCodes[0] ?? null,
+  };
+
+  debugMedicationCatalogOperation('ensureExternalMedicationCatalogItem.insert', insertPayload);
+
+  const { data: insertedData, error } = await supabase
     .from('medication_catalog')
     .insert({
-      source: 'external_cima',
-      source_code: params.sourceCode,
-      display_name: params.displayName,
-      active_ingredient: params.candidate.ingredientNames.join(' + ') || null,
-      strength: params.candidate.strengthText,
-      form: params.candidate.pharmaceuticalForm,
-      route: params.candidate.routeDefault,
-      atc_code: params.candidate.atcCodes[0] ?? null,
+      ...insertPayload,
     })
     .select('id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at')
     .maybeSingle();
@@ -332,7 +360,7 @@ async function ensureExternalMedicationCatalogItem(params: {
   }
 
   return {
-    data: data ? normalizeMedicationCatalogItem(data as MedicationCatalogItem) : null,
+    data: insertedData ? normalizeMedicationCatalogItem(insertedData as MedicationCatalogItem) : null,
     errorMessage: null,
   };
 }
@@ -465,17 +493,21 @@ export async function createMedicationCatalogItem(
     return { data: { item: null, duplicate }, errorMessage: null };
   }
 
+  const insertPayload = {
+    source: 'manual',
+    source_code: null,
+    display_name: displayName,
+    active_ingredient: trimOrNull(input.active_ingredient ?? ''),
+    strength: trimOrNull(input.strength ?? ''),
+    form: trimOrNull(input.form ?? ''),
+    route: trimOrNull(input.route ?? ''),
+  };
+
+  debugMedicationCatalogOperation('createMedicationCatalogItem.insert', insertPayload);
+
   const { data, error } = await supabase
     .from('medication_catalog')
-    .insert({
-      source: 'manual',
-      source_code: null,
-      display_name: displayName,
-      active_ingredient: trimOrNull(input.active_ingredient ?? ''),
-      strength: trimOrNull(input.strength ?? ''),
-      form: trimOrNull(input.form ?? ''),
-      route: trimOrNull(input.route ?? ''),
-    })
+    .insert(insertPayload)
     .select('id,source,source_code,display_name,active_ingredient,strength,form,route,atc_code,created_at,updated_at')
     .maybeSingle();
 
