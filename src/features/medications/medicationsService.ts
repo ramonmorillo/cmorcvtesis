@@ -468,7 +468,7 @@ export async function createMedicationCatalogItem(
   const { data, error } = await supabase
     .from('medication_catalog')
     .insert({
-      source: 'internal',
+      source: 'manual',
       source_code: null,
       display_name: displayName,
       active_ingredient: trimOrNull(input.active_ingredient ?? ''),

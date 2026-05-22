@@ -1,6 +1,6 @@
 export type MedicationEventType = 'added' | 'modified' | 'stopped' | 'confirmed_no_change';
 
-export type MedicationCatalogSource = 'internal' | 'external_cima' | 'external_other';
+export type MedicationCatalogSource = 'internal' | 'manual' | 'external_cima' | 'external_other';
 
 export type CatalogSource = 'cima' | 'internal' | 'manual';
 
@@ -19,7 +19,7 @@ export type MedicationCatalogItem = {
 };
 
 export type MedicationOrigin =
-  | { kind: 'internal'; source: 'internal' }
+  | { kind: 'internal'; source: 'internal' | 'manual' }
   | { kind: 'external'; source: 'external_cima' | 'external_other'; source_code: string | null };
 
 export type MedicationSelectionSource = 'internal' | 'external_cima' | 'external_other' | 'manual';
