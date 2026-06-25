@@ -86,6 +86,12 @@ const CMO_PILLAR_LABEL: Record<CmoPillar, string> = {
   oportunidad: 'Oportunidad',
 };
 
+const CMO_PILLAR_OPTIONS: Array<{ value: CmoPillar; label: string }> = [
+  { value: 'capacidad', label: 'Capacidad' },
+  { value: 'motivacion', label: 'Motivación' },
+  { value: 'oportunidad', label: 'Oportunidad' },
+];
+
 
 function normalizeCmoPillar(value: string | null | undefined): CmoPillar | '' {
   if (!value) return '';
@@ -224,7 +230,6 @@ export function VisitInterventionsPage() {
     }
 
     const payload = {
-      visit_id: visitId,
       intervention_type: interventionTypeToSave,
       intervention_domain: toDbCmoPillar(form.cmo_pillar),
       priority_level: form.priority_level,
@@ -236,7 +241,7 @@ export function VisitInterventionsPage() {
 
     const result = editingInterventionId
       ? await updateIntervention(editingInterventionId, payload)
-      : await createIntervention(payload);
+      : await createIntervention({ ...payload, visit_id: visitId });
 
     if (result.errorMessage) {
       setErrorMessage(result.errorMessage);
@@ -346,9 +351,11 @@ export function VisitInterventionsPage() {
               }))}
             >
               <option value="">Seleccionar pilar CMO</option>
-              <option value="capacidad">Capacidad</option>
-              <option value="motivacion">Motivación</option>
-              <option value="oportunidad">Oportunidad</option>
+              {CMO_PILLAR_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </label>
 
