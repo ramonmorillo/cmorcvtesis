@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { INTERVENTION_CATALOG, type CmoPillar } from '../constants/interventionCatalog';
+import { type CmoPillar } from '../constants/interventionCatalog';
 
 export type DashboardData = {
   pro: {
@@ -50,33 +50,19 @@ export type DashboardData = {
   recentInterventions: Array<{ id: string; visit_id: string; patient_id: string; intervention_type: string; created_at: string | null }>;
 };
 
-const DOMAIN_TO_PILLAR: Record<string, CmoPillar> = {
-  monitoring: 'oportunidad',
-  coordination: 'oportunidad',
-  medication: 'capacidad',
-  education: 'capacidad',
-  safety: 'oportunidad',
-  lifestyle: 'motivacion',
-  adherence: 'motivacion',
-};
-
-function normalizeDomain(domain: string | null): string {
-  return (domain ?? '').trim().toLowerCase();
+function normalizeCmoPillar(value: string | null | undefined): CmoPillar | null {
+  const normalized = (value ?? '').trim().toLowerCase();
+  if (normalized === 'capacidad') return 'capacidad';
+  if (normalized === 'motivación' || normalized === 'motivacion') return 'motivacion';
+  if (normalized === 'oportunidad') return 'oportunidad';
+  return null;
 }
 
-function getPillarFromIntervention(row: { intervention_type: string | null; intervention_domain: string | null; intervention_pillar?: string | null }): CmoPillar | null {
-  const normalizedPillar = (row.intervention_pillar ?? '').trim().toLowerCase();
-  if (normalizedPillar === 'capacidad') return 'capacidad';
-  if (normalizedPillar === 'motivación' || normalizedPillar === 'motivacion') return 'motivacion';
-  if (normalizedPillar === 'oportunidad') return 'oportunidad';
-  const normalizedDomain = normalizeDomain(row.intervention_domain);
+function getPillarFromIntervention(row: { intervention_type: string | null; intervention_domain: string | null }): CmoPillar | null {
+  const savedDomainPillar = normalizeCmoPillar(row.intervention_domain);
+  if (savedDomainPillar) return savedDomainPillar;
 
-  if (normalizedDomain in DOMAIN_TO_PILLAR) {
-    return DOMAIN_TO_PILLAR[normalizedDomain];
-  }
-
-  const fromCatalog = INTERVENTION_CATALOG.find((item) => item.label === (row.intervention_type ?? ''));
-  return fromCatalog?.cmo_pillar ?? null;
+  return null;
 }
 
 export async function loadDashboardData(): Promise<{ data: DashboardData | null; errorMessage: string | null }> {
@@ -127,7 +113,7 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
       .select('id,visit_id,intervention_type,created_at,visits!inner(patient_id)')
       .order('created_at', { ascending: false })
       .limit(8),
-    supabase.from('interventions').select('linked_to_cmo_level,intervention_type,intervention_domain,intervention_pillar', { count: 'exact' }),
+    supabase.from('interventions').select('linked_to_cmo_level,intervention_type,intervention_domain', { count: 'exact' }),
   ]);
 
   const errors = [
@@ -170,7 +156,6 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
     linked_to_cmo_level: number | null;
     intervention_type: string | null;
     intervention_domain: string | null;
-    intervention_pillar: string | null;
   };
 
   for (const item of (interventionsAggRes.data ?? []) as InterventionAggRow[]) {

@@ -7,7 +7,6 @@ export type Intervention = {
   visit_id: string;
   intervention_type: string;
   intervention_domain: string | null;
-  intervention_pillar: string | null;
   priority_level: PriorityLevel | null;
   delivered: boolean | null;
   linked_to_cmo_level: number | null;
@@ -21,7 +20,7 @@ export type NewInterventionInput = Omit<Intervention, 'id' | 'created_at' | 'upd
 export type UpdateInterventionInput = Partial<Omit<Intervention, 'id' | 'visit_id' | 'created_at' | 'updated_at'>>;
 
 const INTERVENTION_SELECT =
-  'id,visit_id,intervention_type,intervention_domain,intervention_pillar,priority_level,delivered,linked_to_cmo_level,outcome,notes,created_at,updated_at';
+  'id,visit_id,intervention_type,intervention_domain,priority_level,delivered,linked_to_cmo_level,outcome,notes,created_at,updated_at';
 
 function extractErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {

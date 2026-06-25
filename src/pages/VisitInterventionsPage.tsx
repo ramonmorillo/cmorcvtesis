@@ -106,9 +106,9 @@ function findCatalogItemForIntervention(item: Intervention): InterventionCatalog
 }
 
 function getInterventionPillar(item: Intervention): CmoPillar | '' {
-  const savedPillar = normalizeCmoPillar(item.intervention_pillar);
-  if (savedPillar) return savedPillar;
-  return findCatalogItemForIntervention(item)?.cmo_pillar ?? '';
+  const savedDomainPillar = normalizeCmoPillar(item.intervention_domain);
+  if (savedDomainPillar) return savedDomainPillar;
+  return '';
 }
 
 export function VisitInterventionsPage() {
@@ -120,7 +120,7 @@ export function VisitInterventionsPage() {
     intervention_code: '',
     intervention_type: '',
     intervention_domain: '',
-    intervention_pillar: '' as CmoPillar | '',
+    cmo_pillar: '' as CmoPillar | '',
     priority_level: 'low' as PriorityLevel,
     delivered: true,
     linked_to_cmo_level: '3',
@@ -153,7 +153,7 @@ export function VisitInterventionsPage() {
           intervention_code: '',
           intervention_type: '',
           intervention_domain: '',
-          intervention_pillar: '',
+          cmo_pillar: '',
           priority_level: cmoPriorityToInterventionPriority[level] ?? 'low',
           delivered: true,
           linked_to_cmo_level: String(level),
@@ -193,7 +193,7 @@ export function VisitInterventionsPage() {
         intervention_code: selectedCode,
         intervention_type: '',
         intervention_domain: '',
-        intervention_pillar: '',
+        cmo_pillar: '',
       }));
       return;
     }
@@ -203,8 +203,8 @@ export function VisitInterventionsPage() {
       ...prev,
       intervention_code: selectedCode,
       intervention_type: selected?.label ?? '',
-      intervention_domain: selected?.domain ?? '',
-      intervention_pillar: selected?.cmo_pillar ?? '',
+      intervention_domain: selected?.cmo_pillar ? toDbCmoPillar(selected.cmo_pillar) ?? '' : '',
+      cmo_pillar: selected?.cmo_pillar ?? '',
     }));
     setOtherIntervention('');
   };
@@ -226,8 +226,7 @@ export function VisitInterventionsPage() {
     const payload = {
       visit_id: visitId,
       intervention_type: interventionTypeToSave,
-      intervention_domain: form.intervention_domain || null,
-      intervention_pillar: toDbCmoPillar(form.intervention_pillar),
+      intervention_domain: toDbCmoPillar(form.cmo_pillar),
       priority_level: form.priority_level,
       delivered: form.delivered,
       linked_to_cmo_level: Number(form.linked_to_cmo_level),
@@ -250,7 +249,7 @@ export function VisitInterventionsPage() {
       intervention_code: '',
       intervention_type: '',
       intervention_domain: '',
-      intervention_pillar: '',
+      cmo_pillar: '',
       outcome: '',
       notes: '',
     }));
@@ -269,8 +268,8 @@ export function VisitInterventionsPage() {
     setForm({
       intervention_code: catalogItem?.code ?? OTHER_INTERVENTION_CODE,
       intervention_type: item.intervention_type,
-      intervention_domain: item.intervention_domain ?? catalogItem?.domain ?? '',
-      intervention_pillar: pillar,
+      intervention_domain: item.intervention_domain ?? '',
+      cmo_pillar: pillar,
       priority_level: item.priority_level ?? 'low',
       delivered: item.delivered ?? true,
       linked_to_cmo_level: String(item.linked_to_cmo_level ?? catalogItem?.min_level ?? 3),
@@ -336,8 +335,21 @@ export function VisitInterventionsPage() {
           ) : null}
 
           <label>
-            Pilar CMO principal (solo lectura)
-            <input value={form.intervention_pillar ? CMO_PILLAR_LABEL[form.intervention_pillar] : ''} readOnly />
+            Pilar CMO principal
+            <select
+              required
+              value={form.cmo_pillar}
+              onChange={(e) => setForm((p) => ({
+                ...p,
+                cmo_pillar: e.target.value as CmoPillar | '',
+                intervention_domain: toDbCmoPillar(e.target.value as CmoPillar | '') ?? '',
+              }))}
+            >
+              <option value="">Seleccionar pilar CMO</option>
+              <option value="capacidad">Capacidad</option>
+              <option value="motivacion">Motivación</option>
+              <option value="oportunidad">Oportunidad</option>
+            </select>
           </label>
 
           <div className="grid-2">
@@ -376,7 +388,7 @@ export function VisitInterventionsPage() {
             {editingInterventionId ? (
               <button type="button" className="secondary" onClick={() => {
                 setEditingInterventionId(null);
-                setForm((prev) => ({ ...prev, intervention_code: '', intervention_type: '', intervention_domain: '', intervention_pillar: '', outcome: '', notes: '' }));
+                setForm((prev) => ({ ...prev, intervention_code: '', intervention_type: '', intervention_domain: '', cmo_pillar: '', outcome: '', notes: '' }));
                 setOtherIntervention('');
               }}>
                 Cancelar edición
@@ -399,7 +411,7 @@ export function VisitInterventionsPage() {
                 <div style={{ display: 'grid', gap: '0.25rem' }}>
                   <span>{item.intervention_type}</span>
                   <span>{item.priority_level ? interventionPriorityLabel[item.priority_level] : '-'}</span>
-                  <span><strong>Pilar CMO:</strong> {getInterventionPillar(item) ? CMO_PILLAR_LABEL[getInterventionPillar(item) as CmoPillar] : '-'}</span>
+                  <span><strong>Pilar CMO:</strong> {getInterventionPillar(item) ? CMO_PILLAR_LABEL[getInterventionPillar(item) as CmoPillar] : 'No asignado'}</span>
                   <span>{item.delivered ? 'Entregada' : 'Pendiente'}</span>
                   {item.outcome?.trim() ? <span><strong>Resultado:</strong> {item.outcome.trim()}</span> : null}
                   {item.notes?.trim() ? <span><strong>Notas:</strong> {item.notes.trim()}</span> : null}
