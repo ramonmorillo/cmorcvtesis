@@ -64,7 +64,10 @@ function normalizeDomain(domain: string | null): string {
   return (domain ?? '').trim().toLowerCase();
 }
 
-function getPillarFromIntervention(row: { intervention_type: string | null; intervention_domain: string | null }): CmoPillar | null {
+function getPillarFromIntervention(row: { intervention_type: string | null; intervention_domain: string | null; intervention_pillar?: string | null }): CmoPillar | null {
+  if (row.intervention_pillar === 'capacidad' || row.intervention_pillar === 'motivacion' || row.intervention_pillar === 'oportunidad') {
+    return row.intervention_pillar;
+  }
   const normalizedDomain = normalizeDomain(row.intervention_domain);
 
   if (normalizedDomain in DOMAIN_TO_PILLAR) {
@@ -123,7 +126,7 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
       .select('id,visit_id,intervention_type,created_at,visits!inner(patient_id)')
       .order('created_at', { ascending: false })
       .limit(8),
-    supabase.from('interventions').select('linked_to_cmo_level,intervention_type,intervention_domain', { count: 'exact' }),
+    supabase.from('interventions').select('linked_to_cmo_level,intervention_type,intervention_domain,intervention_pillar', { count: 'exact' }),
   ]);
 
   const errors = [
@@ -166,6 +169,7 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
     linked_to_cmo_level: number | null;
     intervention_type: string | null;
     intervention_domain: string | null;
+    intervention_pillar: string | null;
   };
 
   for (const item of (interventionsAggRes.data ?? []) as InterventionAggRow[]) {

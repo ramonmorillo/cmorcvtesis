@@ -6,6 +6,7 @@ import { VisitTabs } from '../components/common/VisitTabs';
 import { getCmoScoreByVisit, type CmoScoreRecord } from '../services/cmoScoreService';
 import {
   createIntervention,
+  updateIntervention,
   listInterventionsByVisit,
   type Intervention,
   type PriorityLevel,
@@ -85,6 +86,20 @@ const CMO_PILLAR_LABEL: Record<CmoPillar, string> = {
   oportunidad: 'Oportunidad',
 };
 
+
+function isCmoPillar(value: string | null | undefined): value is CmoPillar {
+  return value === 'capacidad' || value === 'motivacion' || value === 'oportunidad';
+}
+
+function findCatalogItemForIntervention(item: Intervention): InterventionCatalogItem | undefined {
+  return INTERVENTION_CATALOG.find((catalogItem) => catalogItem.label === item.intervention_type);
+}
+
+function getInterventionPillar(item: Intervention): CmoPillar | '' {
+  if (isCmoPillar(item.intervention_pillar)) return item.intervention_pillar;
+  return findCatalogItemForIntervention(item)?.cmo_pillar ?? '';
+}
+
 export function VisitInterventionsPage() {
   const { visitId = '' } = useParams();
   const [visitPatientId, setVisitPatientId] = useState('');
@@ -102,6 +117,7 @@ export function VisitInterventionsPage() {
     notes: '',
   });
   const [otherIntervention, setOtherIntervention] = useState('');
+  const [editingInterventionId, setEditingInterventionId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -200,6 +216,7 @@ export function VisitInterventionsPage() {
       visit_id: visitId,
       intervention_type: interventionTypeToSave,
       intervention_domain: form.intervention_domain || null,
+      intervention_pillar: form.intervention_pillar || null,
       priority_level: form.priority_level,
       delivered: form.delivered,
       linked_to_cmo_level: Number(form.linked_to_cmo_level),
@@ -207,7 +224,9 @@ export function VisitInterventionsPage() {
       notes: form.notes || null,
     };
 
-    const result = await createIntervention(payload);
+    const result = editingInterventionId
+      ? await updateIntervention(editingInterventionId, payload)
+      : await createIntervention(payload);
 
     if (result.errorMessage) {
       setErrorMessage(result.errorMessage);
@@ -225,8 +244,29 @@ export function VisitInterventionsPage() {
       notes: '',
     }));
     setOtherIntervention('');
+    setEditingInterventionId(null);
     setSaving(false);
     await loadInterventions();
+  };
+
+
+  const handleEditIntervention = (item: Intervention) => {
+    const catalogItem = findCatalogItemForIntervention(item);
+    const pillar = getInterventionPillar(item);
+
+    setEditingInterventionId(item.id);
+    setForm({
+      intervention_code: catalogItem?.code ?? OTHER_INTERVENTION_CODE,
+      intervention_type: item.intervention_type,
+      intervention_domain: item.intervention_domain ?? catalogItem?.domain ?? '',
+      intervention_pillar: pillar,
+      priority_level: item.priority_level ?? 'low',
+      delivered: item.delivered ?? true,
+      linked_to_cmo_level: String(item.linked_to_cmo_level ?? catalogItem?.min_level ?? 3),
+      outcome: item.outcome ?? '',
+      notes: item.notes ?? '',
+    });
+    setOtherIntervention(catalogItem ? '' : item.intervention_type);
   };
 
   const cmoMeta = cmoScore ? LEVEL_META[cmoScore.priority as CmoLevel] : null;
@@ -320,7 +360,18 @@ export function VisitInterventionsPage() {
             Notas
             <textarea rows={3} value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} />
           </label>
-          <button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Guardar intervención'}</button>
+          <div className="actions-inline">
+            <button type="submit" disabled={saving}>{saving ? 'Guardando...' : editingInterventionId ? 'Guardar cambios' : 'Guardar intervención'}</button>
+            {editingInterventionId ? (
+              <button type="button" className="secondary" onClick={() => {
+                setEditingInterventionId(null);
+                setForm((prev) => ({ ...prev, intervention_code: '', intervention_type: '', intervention_domain: '', intervention_pillar: '', outcome: '', notes: '' }));
+                setOtherIntervention('');
+              }}>
+                Cancelar edición
+              </button>
+            ) : null}
+          </div>
         </form>
 
         {errorMessage ? <ErrorState title="No se pudo guardar/cargar intervenciones" message={errorMessage} /> : null}
@@ -337,9 +388,11 @@ export function VisitInterventionsPage() {
                 <div style={{ display: 'grid', gap: '0.25rem' }}>
                   <span>{item.intervention_type}</span>
                   <span>{item.priority_level ? interventionPriorityLabel[item.priority_level] : '-'}</span>
+                  <span><strong>Pilar CMO:</strong> {getInterventionPillar(item) ? CMO_PILLAR_LABEL[getInterventionPillar(item) as CmoPillar] : '-'}</span>
                   <span>{item.delivered ? 'Entregada' : 'Pendiente'}</span>
                   {item.outcome?.trim() ? <span><strong>Resultado:</strong> {item.outcome.trim()}</span> : null}
                   {item.notes?.trim() ? <span><strong>Notas:</strong> {item.notes.trim()}</span> : null}
+                  <button type="button" className="secondary" onClick={() => handleEditIntervention(item)}>Editar intervención</button>
                 </div>
               </li>
             ))}

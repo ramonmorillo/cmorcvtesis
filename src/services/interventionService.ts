@@ -7,6 +7,7 @@ export type Intervention = {
   visit_id: string;
   intervention_type: string;
   intervention_domain: string | null;
+  intervention_pillar: string | null;
   priority_level: PriorityLevel | null;
   delivered: boolean | null;
   linked_to_cmo_level: number | null;
@@ -17,9 +18,10 @@ export type Intervention = {
 };
 
 export type NewInterventionInput = Omit<Intervention, 'id' | 'created_at' | 'updated_at'>;
+export type UpdateInterventionInput = Partial<Omit<Intervention, 'id' | 'visit_id' | 'created_at' | 'updated_at'>>;
 
 const INTERVENTION_SELECT =
-  'id,visit_id,intervention_type,intervention_domain,priority_level,delivered,linked_to_cmo_level,outcome,notes,created_at,updated_at';
+  'id,visit_id,intervention_type,intervention_domain,intervention_pillar,priority_level,delivered,linked_to_cmo_level,outcome,notes,created_at,updated_at';
 
 function extractErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
@@ -83,6 +85,26 @@ export async function createIntervention(input: NewInterventionInput) {
     return { data: null, errorMessage: 'Supabase no está configurado. No se puede guardar la intervención.' };
   }
   const { data, error } = await supabase.from('interventions').insert(input).select(INTERVENTION_SELECT).maybeSingle();
+
+  if (error) {
+    return { data: null, errorMessage: extractErrorMessage(error) };
+  }
+
+  return { data: (data as Intervention | null) ?? null, errorMessage: null };
+}
+
+
+export async function updateIntervention(id: string, input: UpdateInterventionInput) {
+  if (!supabase) {
+    return { data: null, errorMessage: 'Supabase no está configurado. No se puede actualizar la intervención.' };
+  }
+
+  const { data, error } = await supabase
+    .from('interventions')
+    .update(input)
+    .eq('id', id)
+    .select(INTERVENTION_SELECT)
+    .maybeSingle();
 
   if (error) {
     return { data: null, errorMessage: extractErrorMessage(error) };
