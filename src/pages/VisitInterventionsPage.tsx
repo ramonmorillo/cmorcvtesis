@@ -87,8 +87,18 @@ const CMO_PILLAR_LABEL: Record<CmoPillar, string> = {
 };
 
 
-function isCmoPillar(value: string | null | undefined): value is CmoPillar {
-  return value === 'capacidad' || value === 'motivacion' || value === 'oportunidad';
+function normalizeCmoPillar(value: string | null | undefined): CmoPillar | '' {
+  if (!value) return '';
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'capacidad') return 'capacidad';
+  if (normalized === 'motivación' || normalized === 'motivacion') return 'motivacion';
+  if (normalized === 'oportunidad') return 'oportunidad';
+  return '';
+}
+
+function toDbCmoPillar(value: CmoPillar | ''): string | null {
+  if (!value) return null;
+  return CMO_PILLAR_LABEL[value];
 }
 
 function findCatalogItemForIntervention(item: Intervention): InterventionCatalogItem | undefined {
@@ -96,7 +106,8 @@ function findCatalogItemForIntervention(item: Intervention): InterventionCatalog
 }
 
 function getInterventionPillar(item: Intervention): CmoPillar | '' {
-  if (isCmoPillar(item.intervention_pillar)) return item.intervention_pillar;
+  const savedPillar = normalizeCmoPillar(item.intervention_pillar);
+  if (savedPillar) return savedPillar;
   return findCatalogItemForIntervention(item)?.cmo_pillar ?? '';
 }
 
@@ -216,7 +227,7 @@ export function VisitInterventionsPage() {
       visit_id: visitId,
       intervention_type: interventionTypeToSave,
       intervention_domain: form.intervention_domain || null,
-      intervention_pillar: form.intervention_pillar || null,
+      intervention_pillar: toDbCmoPillar(form.intervention_pillar),
       priority_level: form.priority_level,
       delivered: form.delivered,
       linked_to_cmo_level: Number(form.linked_to_cmo_level),

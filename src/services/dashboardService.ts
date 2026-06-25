@@ -65,9 +65,10 @@ function normalizeDomain(domain: string | null): string {
 }
 
 function getPillarFromIntervention(row: { intervention_type: string | null; intervention_domain: string | null; intervention_pillar?: string | null }): CmoPillar | null {
-  if (row.intervention_pillar === 'capacidad' || row.intervention_pillar === 'motivacion' || row.intervention_pillar === 'oportunidad') {
-    return row.intervention_pillar;
-  }
+  const normalizedPillar = (row.intervention_pillar ?? '').trim().toLowerCase();
+  if (normalizedPillar === 'capacidad') return 'capacidad';
+  if (normalizedPillar === 'motivación' || normalizedPillar === 'motivacion') return 'motivacion';
+  if (normalizedPillar === 'oportunidad') return 'oportunidad';
   const normalizedDomain = normalizeDomain(row.intervention_domain);
 
   if (normalizedDomain in DOMAIN_TO_PILLAR) {
