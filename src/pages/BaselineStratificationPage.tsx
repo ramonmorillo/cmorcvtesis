@@ -46,9 +46,15 @@ function toNullableBoolean(value: unknown): boolean | null {
 }
 
 function toTriStatePayloadValue(value: unknown): 'yes' | 'no' | null {
-  if (value === 'yes' || value === 'sí' || value === 'si' || value === true) return 'yes';
-  if (value === 'no' || value === false) return 'no';
-  if (value === 'unknown' || value === 'not_recorded' || value === '' || value === undefined || value === null) return null;
+  if (value === true) return 'yes';
+  if (value === false) return 'no';
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') return null;
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'yes' || normalized === 'sí' || normalized === 'si' || normalized === 'true' || normalized === '1') return 'yes';
+  if (normalized === 'no' || normalized === 'false' || normalized === '0') return 'no';
+  if (normalized === 'unknown' || normalized === 'not_recorded' || normalized === '') return null;
   return null;
 }
 
@@ -58,8 +64,15 @@ function fromNullableBoolean(value: boolean | null | undefined): string {
   return '';
 }
 
-function fromTriState(value: string | null | undefined): string {
-  if (value === 'yes' || value === 'no' || value === 'unknown') return value;
+function fromTriState(value: unknown): string {
+  if (value === true || value === 1) return 'yes';
+  if (value === false || value === 0) return 'no';
+  if (typeof value !== 'string') return '';
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'yes' || normalized === 'sí' || normalized === 'si' || normalized === 'true' || normalized === '1') return 'yes';
+  if (normalized === 'no' || normalized === 'false' || normalized === '0') return 'no';
+  if (normalized === 'unknown') return 'unknown';
   return '';
 }
 
