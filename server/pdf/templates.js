@@ -2,12 +2,7 @@ const SIGNATURE_NAME = 'María Romero Murillo';
 const SIGNATURE_ROLE = 'Farmacéutica clínica · Coordinación asistencial IRIS';
 
 function escapeHtml(value) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
+  return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
 }
 
 function renderList(items) {
@@ -47,7 +42,7 @@ function renderSummaryBox({ title, items }) {
   `;
 }
 
-function renderHeader({ audienceLabel, reportSubtitle, visitId, visitTypeLabel, visitDateLabel, generatedAtLabel }) {
+function renderHeader({ audienceLabel, reportSubtitle, patientLabel, visitId, visitTypeLabel, visitDateLabel, generatedAtLabel }) {
   return `
     <header class="report-header">
       <p class="brand">IRIS</p>
@@ -57,6 +52,10 @@ function renderHeader({ audienceLabel, reportSubtitle, visitId, visitTypeLabel, 
       </div>
       <hr class="header-separator" />
       <dl class="meta-grid">
+        <div class="meta-item">
+          <dt>Paciente</dt>
+          <dd>${escapeHtml(patientLabel)}</dd>
+        </div>
         <div class="meta-item">
           <dt>ID de visita</dt>
           <dd>${escapeHtml(visitId)}</dd>
@@ -345,6 +344,7 @@ export function renderPatientTemplate(data) {
   const header = renderHeader({
     audienceLabel: 'Versión paciente',
     reportSubtitle: 'Informe de visita (Paciente)',
+    patientLabel: data.patientLabel,
     visitId: data.visitId,
     visitTypeLabel: data.visitTypeLabel,
     visitDateLabel: data.visitDateLabel,
@@ -361,10 +361,26 @@ export function renderPatientTemplate(data) {
   });
 
   const bodySections = [
-    renderSection({ title: 'Resumen de la visita', content: `<p>${escapeHtml(data.simpleSummary)}</p>` }),
-    renderSection({ title: 'Intervenciones registradas', content: `<ul>${renderList(data.interventions)}</ul>` }),
-    renderSection({ title: 'Recomendaciones', content: `<ul>${renderList(data.recommendations)}</ul>` }),
-    renderSection({ title: 'Seguimiento', content: `<p>${escapeHtml(data.followUp)}</p>` }),
+    renderSection({
+      title: 'Resumen de la visita',
+      content: `<p>${escapeHtml(data.simpleSummary)}</p>`,
+    }),
+    renderSection({
+      title: 'Resultados de cuestionarios de esta visita',
+      content: `<ul>${renderList(data.questionnaireResults)}</ul>`,
+    }),
+    renderSection({
+      title: 'Intervenciones registradas',
+      content: `<ul>${renderList(data.interventions)}</ul>`,
+    }),
+    renderSection({
+      title: 'Recomendaciones',
+      content: `<ul>${renderList(data.recommendations)}</ul>`,
+    }),
+    renderSection({
+      title: 'Seguimiento',
+      content: `<p>${escapeHtml(data.followUp)}</p>`,
+    }),
     renderSignatureSection(),
   ].join('');
 
@@ -380,6 +396,7 @@ export function renderClinicianTemplate(data) {
   const header = renderHeader({
     audienceLabel: 'Versión médica',
     reportSubtitle: 'Informe de visita (Médico)',
+    patientLabel: data.patientLabel,
     visitId: data.visitId,
     visitTypeLabel: data.visitTypeLabel,
     visitDateLabel: data.visitDateLabel,
@@ -399,9 +416,18 @@ export function renderClinicianTemplate(data) {
   });
 
   const bodySections = [
-    renderSection({ title: 'Resumen clínico', content: `<p>${escapeHtml(data.clinicalSummary)}</p>` }),
-    renderSection({ title: 'Cuestionarios relevantes', content: `<ul>${renderList(data.relevantQuestionnaires)}</ul>` }),
-    renderSection({ title: 'Intervenciones registradas', content: `<ul>${renderList(data.interventions)}</ul>` }),
+    renderSection({
+      title: 'Resumen clínico',
+      content: `<p>${escapeHtml(data.clinicalSummary)}</p>`,
+    }),
+    renderSection({
+      title: 'Cuestionarios relevantes',
+      content: `<ul>${renderList(data.relevantQuestionnaires)}</ul>`,
+    }),
+    renderSection({
+      title: 'Intervenciones registradas',
+      content: `<ul>${renderList(data.interventions)}</ul>`,
+    }),
     renderSection({
       title: 'Recomendaciones',
       content: `<ul>${renderList(data.careCoordinationRecommendations)}</ul>`,

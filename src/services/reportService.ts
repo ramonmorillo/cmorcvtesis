@@ -7,15 +7,18 @@ import { getCmoScoreByVisit } from './cmoScoreService';
 import { listInterventionsByVisit, type Intervention } from './interventionService';
 import { getPatientById } from './patientService';
 import { listQuestionnairesByVisit, type QuestionnaireResponseRecord } from './questionnaireService';
+import { formatQuestionnaireResult, validateQuestionnaireTrace } from './questionnaireDomain';
 import { getVisitById, type Visit } from './visitService';
 
 export type PatientVisitReportData = {
   visitId: string;
+  patientLabel: string;
   visitTypeLabel: string;
   visitDateLabel: string;
   generatedAtLabel: string;
   simpleSummary: string;
   cmoLevelLabel: string;
+  questionnaireResults: string[];
   interventions: string[];
   recommendations: string[];
   activeMedications: string[];
@@ -25,6 +28,7 @@ export type PatientVisitReportData = {
 
 export type ClinicianVisitReportData = {
   visitId: string;
+  patientLabel: string;
   visitTypeLabel: string;
   visitDateLabel: string;
   generatedAtLabel: string;
@@ -68,17 +72,6 @@ function cmoPriorityLabel(priority: number | null | undefined): string {
   return 'No disponible';
 }
 
-function formatQuestionnaireItem(item: QuestionnaireResponseRecord): string {
-  const labels: Record<QuestionnaireResponseRecord['questionnaire_type'], string> = {
-    iexpac: 'IEXPAC (experiencia de atención)',
-    morisky: 'Morisky-Green (adherencia terapéutica)',
-    eq5d: 'EQ-5D-5L (calidad de vida percibida)',
-    pam10: 'PAM-10 (activación del paciente)',
-  };
-  const score = typeof item.total_score === 'number' ? ` · puntuación: ${item.total_score}` : ' · puntuación no disponible';
-  return `${labels[item.questionnaire_type]}${score}`;
-}
-
 function formatInterventionItem(item: Intervention): string {
   const chunks = [item.intervention_type];
   if (item.outcome?.trim()) chunks.push(`Resultado: ${item.outcome.trim()}`);
@@ -117,24 +110,15 @@ function derivePatientRecommendations(interventions: Intervention[]): string[] {
 
 function deriveCoordinationRecommendations(cmoPriority: number | null | undefined): string[] {
   if (cmoPriority === 1) {
-    return [
-      'Prioridad alta: coordinar revisión médica preferente en un plazo máximo de 7 días.',
-      'Revisar conciliación terapéutica y riesgo de eventos adversos antes del próximo contacto.',
-    ];
+    return ['Prioridad alta: coordinar revisión médica preferente en un plazo máximo de 7 días.', 'Revisar conciliación terapéutica y riesgo de eventos adversos antes del próximo contacto.'];
   }
 
   if (cmoPriority === 2) {
-    return [
-      'Mantener coordinación con atención primaria para ajustar el plan farmacoterapéutico.',
-      'Programar reevaluación de adherencia y control clínico en el siguiente contacto.',
-    ];
+    return ['Mantener coordinación con atención primaria para ajustar el plan farmacoterapéutico.', 'Programar reevaluación de adherencia y control clínico en el siguiente contacto.'];
   }
 
   if (cmoPriority === 3) {
-    return [
-      'Continuar el circuito asistencial habitual con reevaluación periódica.',
-      'Sin alertas de alta prioridad; mantener monitorización en visita programada.',
-    ];
+    return ['Continuar el circuito asistencial habitual con reevaluación periódica.', 'Sin alertas de alta prioridad; mantener monitorización en visita programada.'];
   }
 
   return ['No existe prioridad CMO registrada para emitir recomendaciones de coordinación específicas.'];
@@ -147,12 +131,7 @@ function buildMedicationDisplayName(item: PatientMedication): string {
 }
 
 function buildMedicationReportLine(item: PatientMedication): string {
-  const fields = [
-    item.dose_text?.trim(),
-    item.frequency_text?.trim(),
-    item.route_text?.trim(),
-    item.notes?.trim(),
-  ].filter((value): value is string => Boolean(value));
+  const fields = [item.dose_text?.trim(), item.frequency_text?.trim(), item.route_text?.trim(), item.notes?.trim()].filter((value): value is string => Boolean(value));
 
   if (fields.length === 0) {
     return buildMedicationDisplayName(item);
@@ -205,6 +184,30 @@ export async function loadVisitReportData(visitId: string): Promise<VisitReportL
     listVisitMedicationSnapshot(visitId),
   ]);
 
+  if (questionnairesResult.errorMessage) {
+    return {
+      patientReportData: null,
+      clinicianReportData: null,
+      errorMessage: `No se puede verificar la trazabilidad de los cuestionarios: ${questionnairesResult.errorMessage}`,
+      missingFields: ['questionnaire_traceability'],
+    };
+  }
+
+  const questionnaireTrace = validateQuestionnaireTrace(questionnairesResult.data ?? [], {
+    visitId,
+    patientId: visit.patient_id,
+    visitType: visit.visit_type,
+  });
+
+  if (questionnaireTrace.errorMessage) {
+    return {
+      patientReportData: null,
+      clinicianReportData: null,
+      errorMessage: questionnaireTrace.errorMessage,
+      missingFields: ['questionnaire_traceability'],
+    };
+  }
+
   const missingFields: string[] = [];
   if (!patientResult.data) missingFields.push('patient');
   if (!visit.visit_date && !visit.scheduled_date) missingFields.push('visit_date');
@@ -214,7 +217,7 @@ export async function loadVisitReportData(visitId: string): Promise<VisitReportL
 
   const patient = patientResult.data;
   const interventions = interventionsResult.data ?? [];
-  const questionnaires = questionnairesResult.data ?? [];
+  const questionnaires = questionnaireTrace.data;
   const activeMedicationLines = mapActiveMedicationLines(medicationSnapshotResult.data ?? []);
   const cmoScore = cmoResult.data?.score ?? null;
 
@@ -223,15 +226,18 @@ export async function loadVisitReportData(visitId: string): Promise<VisitReportL
   const generatedAtLabel = toDateTimeLabel(new Date());
   const cmoLevel = cmoPriorityLabel(cmoResult.data?.priority);
   const patientLabel = patient?.study_code ? `Paciente ${patient.study_code}` : 'Paciente';
+  const questionnaireResults = questionnaires.map(formatQuestionnaireResult);
 
   return {
     patientReportData: {
       visitId,
+      patientLabel,
       visitTypeLabel: visitTypeLabel || 'No disponible',
       visitDateLabel,
       generatedAtLabel,
       simpleSummary: `${patientLabel}. ${deriveSimpleSummary(visit, cmoScore, interventions, questionnaires)}`,
       cmoLevelLabel: cmoLevel,
+      questionnaireResults,
       interventions: interventions.map(formatInterventionItem),
       recommendations: derivePatientRecommendations(interventions),
       activeMedications: activeMedicationLines,
@@ -241,24 +247,19 @@ export async function loadVisitReportData(visitId: string): Promise<VisitReportL
     },
     clinicianReportData: {
       visitId,
+      patientLabel,
       visitTypeLabel: visitTypeLabel || 'No disponible',
       visitDateLabel,
       generatedAtLabel,
       cmoScoreLabel: cmoResult.data ? `${cmoResult.data.score} puntos · ${cmoLevel}` : 'No disponible',
-      relevantQuestionnaires: questionnaires.map(formatQuestionnaireItem),
+      relevantQuestionnaires: questionnaireResults,
       interventions: interventions.map(formatInterventionItem),
       activeMedications: activeMedicationLines,
       clinicalSummary: deriveClinicalSummary(visit, cmoScore, questionnaires),
       careCoordinationRecommendations: deriveCoordinationRecommendations(cmoResult.data?.priority),
       institutionalFooter: getInstitutionalFooter(),
     },
-    errorMessage:
-      patientResult.errorMessage ??
-      cmoResult.errorMessage ??
-      interventionsResult.errorMessage ??
-      questionnairesResult.errorMessage ??
-      medicationSnapshotResult.errorMessage ??
-      null,
+    errorMessage: patientResult.errorMessage ?? cmoResult.errorMessage ?? interventionsResult.errorMessage ?? questionnairesResult.errorMessage ?? medicationSnapshotResult.errorMessage ?? null,
     missingFields,
   };
 }
@@ -312,6 +313,7 @@ function buildPdfLines(template: ReportTemplate, data: PdfTemplatePayload): stri
       'IRIS - INFORME DE VISITA (PACIENTE)',
       '',
       `ID de visita: ${patient.visitId}`,
+      `${patient.patientLabel}`,
       `Tipo de visita: ${patient.visitTypeLabel}`,
       `Fecha de la visita: ${patient.visitDateLabel}`,
       `Generado el: ${patient.generatedAtLabel}`,
@@ -321,19 +323,16 @@ function buildPdfLines(template: ReportTemplate, data: PdfTemplatePayload): stri
       '',
       `Nivel CMO: ${patient.cmoLevelLabel}`,
       '',
+      'Resultados de cuestionarios de esta visita',
+      ...(patient.questionnaireResults.length > 0 ? patient.questionnaireResults.map((item) => `- ${item}`) : ['- No se registraron cuestionarios en esta visita']),
+      '',
       'Intervenciones registradas',
       ...(patient.interventions.length > 0 ? patient.interventions.map((item) => `- ${item}`) : ['- No disponibles']),
       '',
       'Recomendaciones para el paciente',
       ...(patient.recommendations.length > 0 ? patient.recommendations.map((item) => `- ${item}`) : ['- No disponibles']),
       '',
-      ...(patient.activeMedications.length > 0
-        ? [
-            'Medicación activa en el momento de la visita',
-            ...patient.activeMedications.map((item) => `- ${item}`),
-            '',
-          ]
-        : []),
+      ...(patient.activeMedications.length > 0 ? ['Medicación activa en el momento de la visita', ...patient.activeMedications.map((item) => `- ${item}`), ''] : []),
       'Seguimiento',
       patient.followUp,
       '',
@@ -350,6 +349,7 @@ function buildPdfLines(template: ReportTemplate, data: PdfTemplatePayload): stri
     'IRIS - INFORME DE VISITA (MÉDICO)',
     '',
     `ID de visita: ${clinician.visitId}`,
+    `${clinician.patientLabel}`,
     `Tipo de visita: ${clinician.visitTypeLabel}`,
     `Fecha de la visita: ${clinician.visitDateLabel}`,
     `Generado el: ${clinician.generatedAtLabel}`,
@@ -360,24 +360,14 @@ function buildPdfLines(template: ReportTemplate, data: PdfTemplatePayload): stri
     clinician.clinicalSummary,
     '',
     'Cuestionarios relevantes',
-    ...(clinician.relevantQuestionnaires.length > 0
-      ? clinician.relevantQuestionnaires.map((item) => `- ${item}`)
-      : ['- No disponibles']),
+    ...(clinician.relevantQuestionnaires.length > 0 ? clinician.relevantQuestionnaires.map((item) => `- ${item}`) : ['- No disponibles']),
     '',
     'Intervenciones registradas',
     ...(clinician.interventions.length > 0 ? clinician.interventions.map((item) => `- ${item}`) : ['- No disponibles']),
     '',
-    ...(clinician.activeMedications.length > 0
-      ? [
-          'Medicación activa en el momento de la visita',
-          ...clinician.activeMedications.map((item) => `- ${item}`),
-          '',
-        ]
-      : []),
+    ...(clinician.activeMedications.length > 0 ? ['Medicación activa en el momento de la visita', ...clinician.activeMedications.map((item) => `- ${item}`), ''] : []),
     'Recomendaciones de coordinación asistencial',
-    ...(clinician.careCoordinationRecommendations.length > 0
-      ? clinician.careCoordinationRecommendations.map((item) => `- ${item}`)
-      : ['- No disponibles']),
+    ...(clinician.careCoordinationRecommendations.length > 0 ? clinician.careCoordinationRecommendations.map((item) => `- ${item}`) : ['- No disponibles']),
     '',
     'Firma profesional',
     'María Romero Murillo',
@@ -427,18 +417,12 @@ function composePdfDocument(lines: string[]): Uint8Array {
     const contentObjectId = contentObjectIds[index];
     const page = pages[index];
 
-    const textOperations = [
-      'BT',
-      '/F1 11 Tf',
-      '48 795 Td',
-      '14 TL',
-      ...page.map((line, lineIndex) => `${lineIndex === 0 ? '' : 'T* ' }(${escapePdfString(line)}) Tj`),
-      'ET',
-    ].join('\n');
+    const textOperations = ['BT', '/F1 11 Tf', '48 795 Td', '14 TL', ...page.map((line, lineIndex) => `${lineIndex === 0 ? '' : 'T* '}(${escapePdfString(line)}) Tj`), 'ET'].join('\n');
 
     const stream = `${textOperations}\n`;
 
-    objects[pageObjectId] = `${pageObjectId} 0 obj\n<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentObjectId} 0 R >>\nendobj\n`;
+    objects[pageObjectId] =
+      `${pageObjectId} 0 obj\n<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentObjectId} 0 R >>\nendobj\n`;
     objects[contentObjectId] = `${contentObjectId} 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}endstream\nendobj\n`;
   }
 
