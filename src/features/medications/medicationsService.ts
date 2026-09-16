@@ -431,9 +431,9 @@ export async function importExternalMedicationToVisit(input: {
   patientId: string;
   selectedLabel: string;
   sourcePayload: Record<string, unknown>;
-}): Promise<ServiceResult<PatientMedication[]>> {
+}): Promise<ServiceResult<PatientMedication[]> & { newMedicationId: string | null }> {
   if (!supabase) {
-    return { data: [], errorMessage: 'Supabase no está configurado. No se puede importar medicación externa.' };
+    return { data: [], errorMessage: 'Supabase no está configurado. No se puede importar medicación externa.', newMedicationId: null };
   }
 
   const candidate = mapExternalMedicationPayloadToNormalizedCandidate(input.sourcePayload);
@@ -443,7 +443,7 @@ export async function importExternalMedicationToVisit(input: {
     : buildExternalMedicationLabel(input.sourcePayload).trim() || 'Medicamento CIMA';
   const normalizedResult = await upsertNormalizedMedicationFromExternal(candidate);
   if (normalizedResult.errorMessage || !normalizedResult.data) {
-    return { data: [], errorMessage: normalizedResult.errorMessage ?? 'No se pudo normalizar el medicamento externo.' };
+    return { data: [], errorMessage: normalizedResult.errorMessage ?? 'No se pudo normalizar el medicamento externo.', newMedicationId: null };
   }
 
   const sourceCode = (candidate.cimaCn ?? normalizedResult.data.productId ?? '').trim() || null;
@@ -453,7 +453,7 @@ export async function importExternalMedicationToVisit(input: {
     candidate,
   });
   if (localCatalogResult.errorMessage || !localCatalogResult.data) {
-    return { data: [], errorMessage: localCatalogResult.errorMessage ?? 'No se pudo enlazar el catálogo local.' };
+    return { data: [], errorMessage: localCatalogResult.errorMessage ?? 'No se pudo enlazar el catálogo local.', newMedicationId: null };
   }
 
   const insertPayload = {
@@ -481,7 +481,7 @@ export async function importExternalMedicationToVisit(input: {
     .maybeSingle();
 
   if (error) {
-    return { data: [], errorMessage: extractErrorMessage(error, 'No fue posible añadir la medicación externa al paciente.') };
+    return { data: [], errorMessage: extractErrorMessage(error, 'No fue posible añadir la medicación externa al paciente.'), newMedicationId: null };
   }
 
   const persisted = data
@@ -503,15 +503,15 @@ export async function importExternalMedicationToVisit(input: {
     });
 
     if (eventError) {
-      return { data: [], errorMessage: extractErrorMessage(eventError, 'No fue posible registrar el evento de importación externa.') };
+      return { data: [], errorMessage: extractErrorMessage(eventError, 'No fue posible registrar el evento de importación externa.'), newMedicationId: null };
     }
   }
 
   const refreshed = await listActivePatientMedications(input.patientId);
   if (refreshed.errorMessage) {
-    return { data: [], errorMessage: refreshed.errorMessage };
+    return { data: [], errorMessage: refreshed.errorMessage, newMedicationId: null };
   }
-  return refreshed;
+  return { ...refreshed, newMedicationId: persisted?.id ?? null };
 }
 
 export async function createMedicationCatalogItem(
@@ -684,6 +684,14 @@ export async function saveVisitMedicationChanges(input: SaveVisitMedicationInput
     }
 
     upserted.push(persisted);
+
+    if (row.isInitialCompletion) {
+      // The 'added' event was already logged when the record was first created
+      // (immediate catalog-selection insert). Filling in the remaining fields
+      // here is the same initial add, not a later modification — skip logging
+      // a second event so change statistics aren't inflated.
+      continue;
+    }
 
     let eventType: MedicationEventType = 'confirmed_no_change';
     let oldValue: Record<string, unknown> | null = null;
