@@ -73,4 +73,12 @@ export type PatientMedicationDraft = {
   notes: string;
   is_active: boolean;
   previous?: PatientMedication;
+  /**
+   * True when `previous` is the empty record created by the immediate
+   * catalog-selection insert (importExternalMedicationToVisit), and the
+   * clinician hasn't finished the initial add yet. First-time completion of
+   * that record must count as 'added', not 'modified' — it's not
+   * persisted, only used to route the very next save correctly.
+   */
+  isInitialCompletion?: boolean;
 };
