@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
+import { BaselineTrendPanel } from '../features/baseline-trend/BaselineTrendPanel';
 import {
   VISIT_STATUS_OPTIONS,
   getVisitStatusLabel,
@@ -10,6 +11,7 @@ import {
   getVisitTypeSortOrder,
   type VisitStatus,
 } from '../constants/enums';
+import { listClinicalAssessmentsByPatient, type ClinicalAssessmentHistoryEntry } from '../services/assessmentService';
 import { PatientMedicationSummary } from '../features/medications/PatientMedicationSummary';
 import { getLatestMedicationReviewDate, listActivePatientMedications } from '../features/medications/medicationsService';
 import type { PatientMedication } from '../features/medications/types';
@@ -107,6 +109,8 @@ export function PatientDetailPage() {
   const [visits, setVisits] = useState<Visit[]>([]);
   const [latestCmoScore, setLatestCmoScore] = useState<CmoScoreRecord | null>(null);
   const [cmoHistory, setCmoHistory] = useState<CmoScoreHistoryEntry[]>([]);
+  const [assessmentHistory, setAssessmentHistory] = useState<ClinicalAssessmentHistoryEntry[]>([]);
+  const [assessmentHistoryWarning, setAssessmentHistoryWarning] = useState<string | null>(null);
   const [interventions, setInterventions] = useState<Array<{ id: string; visit_id: string; intervention_type: string; priority_level: PriorityLevel | null }>>([]);
   const [questionnaires, setQuestionnaires] = useState<QuestionnaireResponseRecord[]>([]);
   const [activeMedications, setActiveMedications] = useState<PatientMedication[]>([]);
@@ -123,6 +127,7 @@ export function PatientDetailPage() {
         setErrorMessage(null);
         setQuestionnaireWarning(null);
         setMedicationWarning(null);
+        setAssessmentHistoryWarning(null);
 
         const [patientResult, visitsResult] = await Promise.all([getPatientById(id), listVisitsByPatient(id)]);
 
@@ -138,6 +143,7 @@ export function PatientDetailPage() {
         const [
           cmoResult,
           cmoHistoryResult,
+          assessmentHistoryResult,
           interventionsResult,
           questionnairesResult,
           medicationsResult,
@@ -145,6 +151,7 @@ export function PatientDetailPage() {
         ] = await Promise.allSettled([
           getLatestCmoScoreByPatient(id),
           listCmoScoresByPatient(id),
+          listClinicalAssessmentsByPatient(id),
           listInterventionsByPatient(id),
           getQuestionnairesByPatient(id),
           listActivePatientMedications(id),
@@ -161,6 +168,16 @@ export function PatientDetailPage() {
           setCmoHistory(cmoHistoryResult.value.data);
         } else {
           setCmoHistory([]);
+        }
+
+        if (assessmentHistoryResult.status === 'fulfilled') {
+          setAssessmentHistory(assessmentHistoryResult.value.data);
+          if (assessmentHistoryResult.value.errorMessage) {
+            setAssessmentHistoryWarning(`Evolución de parámetros no disponible temporalmente: ${assessmentHistoryResult.value.errorMessage}`);
+          }
+        } else {
+          setAssessmentHistory([]);
+          setAssessmentHistoryWarning('Evolución de parámetros no disponible temporalmente. La ficha base se cargó correctamente.');
         }
 
         if (interventionsResult.status === 'fulfilled') {
@@ -442,6 +459,8 @@ export function PatientDetailPage() {
           </div>
         )}
       </section>
+
+      <BaselineTrendPanel entries={assessmentHistory} warning={assessmentHistoryWarning} />
 
       <PatientMedicationSummary
         medications={activeMedications}
