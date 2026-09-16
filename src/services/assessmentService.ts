@@ -273,6 +273,45 @@ export async function getLatestClinicalAssessmentByPatient(patientId: string) {
   };
 }
 
+export type ClinicalAssessmentHistoryEntry = ClinicalAssessment & {
+  visit_date: string | null;
+  scheduled_date: string | null;
+  visit_number: number | null;
+};
+
+/** Returns all clinical assessments for a patient, ordered oldest first, with visit date context. */
+export async function listClinicalAssessmentsByPatient(patientId: string) {
+  if (!supabase) {
+    return { data: [] as ClinicalAssessmentHistoryEntry[], errorMessage: 'Supabase no está configurado. No se puede leer el historial de evaluaciones clínicas.' };
+  }
+
+  const { data, error } = await supabase
+    .from('clinical_assessments')
+    .select(`${ASSESSMENT_SELECT},visits!inner(patient_id,visit_date,scheduled_date,visit_number)`)
+    .eq('visits.patient_id', patientId)
+    .order('visit_date', { referencedTable: 'visits', ascending: true, nullsFirst: false })
+    .order('scheduled_date', { referencedTable: 'visits', ascending: true, nullsFirst: false });
+
+  if (error) {
+    return { data: [] as ClinicalAssessmentHistoryEntry[], errorMessage: extractErrorMessage(error) };
+  }
+
+  const rows = ((data ?? []) as Array<ClinicalAssessment & {
+    visits: { patient_id: string; visit_date: string | null; scheduled_date: string | null; visit_number: number | null } |
+            Array<{ patient_id: string; visit_date: string | null; scheduled_date: string | null; visit_number: number | null }>;
+  }>).map((r) => {
+    const v = Array.isArray(r.visits) ? r.visits[0] : r.visits;
+    return {
+      ...r,
+      visit_date: v?.visit_date ?? null,
+      scheduled_date: v?.scheduled_date ?? null,
+      visit_number: v?.visit_number ?? null,
+    };
+  });
+
+  return { data: rows as ClinicalAssessmentHistoryEntry[], errorMessage: null };
+}
+
 export async function getLatestPreviousClinicalAssessmentByPatient(patientId: string, currentVisitId: string) {
   if (!supabase) {
     return { data: null, errorMessage: 'Supabase no está configurado. No se puede leer la última evaluación clínica previa.' };
