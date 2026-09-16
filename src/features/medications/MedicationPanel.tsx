@@ -203,7 +203,7 @@ function eventTypeToStatus(eventType: VisitMedicationEvent['event_type']): Medic
 }
 
 function getMedicationStatus(row: MedicationFormRow): MedicationChangeStatus {
-  if (!row.previous) {
+  if (!row.previous || row.isInitialCompletion) {
     return 'new';
   }
 
@@ -258,7 +258,10 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
     return window.localStorage.getItem('cmorcv:medication-debug') === '1';
   }, []);
 
-  const hydrateRowsFromSnapshot = (items: Awaited<ReturnType<typeof listVisitMedicationSnapshot>>['data']) => {
+  const hydrateRowsFromSnapshot = (
+    items: Awaited<ReturnType<typeof listVisitMedicationSnapshot>>['data'],
+    justCreatedId?: string | null,
+  ) => {
     setRows(
       items.map((item) => ({
         ...(item.medication_catalog
@@ -285,6 +288,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
         is_active: item.is_active,
         dose_unit_hint: inferDoseUnitHint(item.dose_text),
         previous: item,
+        isInitialCompletion: Boolean(justCreatedId) && item.id === justCreatedId,
       })),
     );
   };
@@ -389,7 +393,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
       return;
     }
 
-    hydrateRowsFromSnapshot(result.data);
+    hydrateRowsFromSnapshot(result.data, result.newMedicationId);
     const eventResult = await listVisitMedicationEvents(visitId);
     if (!eventResult.errorMessage) {
       setEventSummary(eventResult.data);
@@ -496,6 +500,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
       notes: row.notes,
       is_active: row.is_active,
       previous: row.previous,
+      isInitialCompletion: row.isInitialCompletion,
     }));
 
     const result = await saveVisitMedicationChanges({
