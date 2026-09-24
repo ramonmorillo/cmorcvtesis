@@ -5,7 +5,25 @@ import { VISIT_STATUS_OPTIONS, VISIT_TYPE_OPTIONS } from '../constants/enums';
 import type { VisitStatus, VisitType } from '../constants/enums';
 import { getVisitNumberByType, normalizeVisitTypeValue } from '../constants/enums';
 import { ErrorState } from '../components/common/ErrorState';
+import { PageHeader } from '../components/ui/PageHeader';
+import { getPatientById } from '../services/patientService';
 import { createVisit, getVisitById, updateVisit } from '../services/visitService';
+
+// Identificador del paciente para la cabecera (solo lectura).
+function usePatientStudyCode(patientId: string): string | null {
+  const [studyCode, setStudyCode] = useState<string | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    if (!patientId) return undefined;
+    void getPatientById(patientId).then((result) => {
+      if (mounted) setStudyCode(result.data?.study_code ?? null);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [patientId]);
+  return studyCode;
+}
 
 type VisitForm = {
   visit_type: VisitType;
@@ -114,10 +132,20 @@ export function NewVisitPage() {
   };
 
   const readOnly = isExistingVisit && !isEditingVisit;
+  const studyCode = usePatientStudyCode(id);
 
   return (
+    <div className="page-stack">
+      <PageHeader
+        eyebrow={studyCode ? `Paciente ${studyCode}` : 'Paciente'}
+        title={isExistingVisit ? 'Detalle de visita' : 'Nueva visita'}
+        description={
+          isExistingVisit
+            ? 'Datos administrativos de la visita. Pulsa «Editar visita» para modificarlos.'
+            : 'Al guardar se abrirá la evaluación clínica y estratificación CMO de la visita.'
+        }
+      />
     <section className="card">
-      <h1>{isExistingVisit ? 'Detalle de visita' : 'Nueva visita'}</h1>
       <form className="form-grid" onSubmit={handleSubmit}>
         <div className="grid-2">
           <label>
@@ -130,7 +158,7 @@ export function NewVisitPage() {
               ))}
             </select>
           </label>
-          <p className="help-text" style={{ marginTop: '1.9rem' }}>
+          <p className="help-text field-hint-inline">
             Número de visita calculado automáticamente: {getVisitNumberByType(form.visit_type) ?? 'Extraordinaria'}.
           </p>
           <label>
@@ -162,14 +190,14 @@ export function NewVisitPage() {
           Notas
           <textarea disabled={readOnly} rows={4} value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} />
         </label>
-        <div className="actions-inline">
+        <div className="form-actions">
           {isExistingVisit ? (
             readOnly ? (
               <button type="button" onClick={() => setIsEditingVisit(true)}>Editar visita</button>
             ) : (
               <>
                 <button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Guardar cambios'}</button>
-                <button type="button" onClick={() => {
+                <button type="button" className="button-secondary" onClick={() => {
                   if (initialSnapshot) setForm(initialSnapshot);
                   setIsEditingVisit(false);
                 }}>Cancelar</button>
@@ -183,5 +211,6 @@ export function NewVisitPage() {
       </form>
       {errorMessage ? <ErrorState title={isExistingVisit ? 'No se pudo actualizar la visita' : 'No se pudo guardar la visita'} message={errorMessage} /> : null}
     </section>
+    </div>
   );
 }

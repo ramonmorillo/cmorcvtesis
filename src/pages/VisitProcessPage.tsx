@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 
 import { ErrorState } from '../components/common/ErrorState';
 import { VisitTabs } from '../components/common/VisitTabs';
+import { Notice } from '../components/ui/Notice';
+import { StatusBadge } from '../components/ui/StatusBadge';
 import { listInterventionsByVisit } from '../services/interventionService';
 import { supabase } from '../lib/supabase';
 import { getVisitById, type Visit } from '../services/visitService';
@@ -206,13 +208,19 @@ export function VisitProcessPage() {
         <h1>Proceso y factibilidad por visita</h1>
         <VisitTabs visitId={visitId} active="process" />
 
-        <div className="help-text" style={{ marginBottom: '1rem' }}>
-          <div><strong>Fecha visita:</strong> {visit?.visit_date ?? visit?.scheduled_date ?? 'No registrada'}</div>
-          <div><strong>Profesional usuario:</strong> {professionalLabel}</div>
-        </div>
+        <dl className="inline-facts process-facts">
+          <div>
+            <dt>Fecha visita</dt>
+            <dd className="inline-facts-text">{visit?.visit_date ?? visit?.scheduled_date ?? 'No registrada'}</dd>
+          </div>
+          <div>
+            <dt>Profesional usuario</dt>
+            <dd className="inline-facts-text">{professionalLabel}</dd>
+          </div>
+        </dl>
 
         <form className="form-grid" onSubmit={handleSubmit}>
-          <h2 style={{ margin: '0.25rem 0 0.25rem' }}>Bloque A · Proceso</h2>
+          <h2 className="form-block-title">Bloque A · Proceso</h2>
 
           <label>
             Tiempo total sesión (min)
@@ -276,7 +284,7 @@ export function VisitProcessPage() {
             </select>
           </label>
 
-          <h2 style={{ margin: '0.5rem 0 0.25rem' }}>Bloque B · Factibilidad operativa</h2>
+          <h2 className="form-block-title">Bloque B · Factibilidad operativa</h2>
 
           <label>
             Paciente continúa en programa
@@ -303,7 +311,7 @@ export function VisitProcessPage() {
           </label>
 
 
-          <h2 style={{ margin: '0.5rem 0 0.25rem' }}>Bloque C · Costes</h2>
+          <h2 className="form-block-title">Bloque C · Costes</h2>
 
           <label>
             Costes de aparataje
@@ -319,15 +327,15 @@ export function VisitProcessPage() {
             Otros costes
             <input type="number" min={0} step="0.01" {...field('other_costs')} />
           </label>
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <div className="form-actions">
             <button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Guardar proceso'}</button>
             <Link to={`/visits/${visitId}/reports`}>Ir a informes</Link>
-            {saveSuccess ? <span className="help-text">Guardado correctamente.</span> : null}
+            {saveSuccess ? <StatusBadge tone="positive">Guardado correctamente.</StatusBadge> : null}
           </div>
         </form>
 
         {errorMessage ? (
-          <p className="error-text" role="alert" style={{ marginTop: '0.75rem' }}>{errorMessage}</p>
+          <Notice tone="danger">{errorMessage}</Notice>
         ) : null}
       </section>
     </div>

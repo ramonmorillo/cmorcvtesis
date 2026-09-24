@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 
 import { ErrorState } from '../components/common/ErrorState';
 import { VisitTabs } from '../components/common/VisitTabs';
+import { LoadingState } from '../components/ui/LoadingState';
+import { Notice } from '../components/ui/Notice';
 import {
   downloadClinicianVisitReportPdf,
   downloadPatientVisitReportPdf,
@@ -74,7 +76,7 @@ export function VisitReportsPage() {
       <div className="page-stack">
         <section className="card">
           <h1>Informes de visita</h1>
-          <p>Cargando...</p>
+          <LoadingState label="Preparando informes..." />
         </section>
       </div>
     );
@@ -90,10 +92,14 @@ export function VisitReportsPage() {
         <h1>Informes de visita</h1>
         <VisitTabs visitId={visitId} active="reports" />
 
-        {errorMessage ? <p className="help-text">Aviso: {errorMessage}</p> : null}
-        {missingText ? <p className="help-text">{missingText}</p> : null}
+        {errorMessage || missingText ? (
+          <div className="stack-sm report-notices">
+            {errorMessage ? <Notice tone="warning">Aviso: {errorMessage}</Notice> : null}
+            {missingText ? <Notice tone="info">{missingText}</Notice> : null}
+          </div>
+        ) : null}
 
-        <div className="actions-inline" style={{ marginBottom: '1rem' }}>
+        <div className="form-actions report-actions">
           <button type="button" onClick={() => void handlePatientPdfDownload()} disabled={Boolean(downloading)}>
             {downloading === 'patient' ? 'Generando PDF de paciente...' : 'Descargar informe paciente (PDF)'}
           </button>
@@ -101,7 +107,7 @@ export function VisitReportsPage() {
             {downloading === 'clinician' ? 'Generando PDF médico...' : 'Descargar informe médico (PDF)'}
           </button>
           {visitPatientId ? (
-            <Link className="button-link" to={`/patients/${visitPatientId}`}>
+            <Link className="button-link button-secondary" to={`/patients/${visitPatientId}`}>
               Volver a ficha paciente
             </Link>
           ) : null}

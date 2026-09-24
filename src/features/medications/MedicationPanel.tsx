@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 import { ErrorState } from '../../components/common/ErrorState';
+import { StatusBadge, type StatusTone } from '../../components/ui/StatusBadge';
 import {
   createMedicationCatalogItem,
   importExternalMedicationToVisit,
@@ -75,11 +76,11 @@ const DOSE_UNIT_OPTIONS = ['mg', 'g', 'UI', 'ml', 'comprimido(s)', 'cápsula(s)'
 
 type DoseUnitOptionValue = (typeof DOSE_UNIT_OPTIONS)[number];
 
-const STATUS_META: Record<MedicationChangeStatus, { label: string; color: string; background: string; border: string }> = {
-  unchanged: { label: 'Sin cambios', color: '#1d4ed8', background: '#eff6ff', border: '#bfdbfe' },
-  modified: { label: 'Modificado', color: '#7c2d12', background: '#fff7ed', border: '#fdba74' },
-  stopped: { label: 'Suspendido', color: '#991b1b', background: '#fef2f2', border: '#fecaca' },
-  new: { label: 'Nuevo', color: '#166534', background: '#f0fdf4', border: '#bbf7d0' },
+const STATUS_META: Record<MedicationChangeStatus, { label: string; tone: StatusTone }> = {
+  unchanged: { label: 'Sin cambios', tone: 'neutral' },
+  modified: { label: 'Modificado', tone: 'warning' },
+  stopped: { label: 'Suspendido', tone: 'neutral' },
+  new: { label: 'Nuevo', tone: 'info' },
 };
 
 function normalizeRouteValue(route: string | null | undefined): RouteOptionValue | '' {
@@ -533,21 +534,21 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
   return (
     <section className="card">
       <h2>Medicación longitudinal</h2>
-      <p className="help-text" style={{ marginBottom: '1rem' }}>
+      <p className="help-text">
         Se precarga la medicación activa del paciente. Puedes añadir, ajustar dosis/frecuencia y suspender tratamientos.
       </p>
       {!loading && hasInheritedTreatments ? (
-        <p className="help-text" style={{ marginBottom: '0.8rem', color: '#1d4ed8', fontWeight: 600 }}>
+        <p className="notice notice-info panel-notice">
           Tratamiento heredado de seguimiento previo
         </p>
       ) : null}
       {successMessage ? (
-        <p className="help-text" style={{ marginBottom: '0.8rem', color: '#166534', fontWeight: 600 }}>
+        <p className="notice notice-success panel-notice">
           ✓ {successMessage}
         </p>
       ) : null}
 
-      <div className="grid-2" style={{ marginBottom: '0.9rem' }}>
+      <div className="grid-2 panel-block">
         <label>
           Buscar en catálogo externo (CIMA)
           <input
@@ -581,37 +582,37 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
         </label>
       </div>
       {externalCatalogLoading ? (
-        <p className="help-text" style={{ marginBottom: '0.8rem', color: '#1d4ed8' }}>
+        <p className="notice notice-info panel-notice">
           Buscando en CIMA...
         </p>
       ) : null}
       {!externalCatalogLoading && externalCatalogError ? (
-        <p className="help-text" style={{ marginBottom: '0.8rem', color: '#b91c1c', fontWeight: 600 }}>
+        <p className="notice notice-danger panel-notice">
           Error en búsqueda externa: {externalCatalogError}
         </p>
       ) : null}
       {!externalCatalogLoading && !externalCatalogError && externalCatalogQuery.trim().length >= 3 && externalCatalogOptions.length === 0 ? (
-        <p className="help-text" style={{ marginBottom: '0.8rem', color: '#475569' }}>
+        <p className="help-text panel-block">
           Sin resultados en catálogo externo (CIMA).
         </p>
       ) : null}
       {catalogInfoMessage ? (
-        <p className="help-text" style={{ marginBottom: '0.8rem', color: '#1d4ed8', fontWeight: 600 }}>
+        <p className="notice notice-info panel-notice">
           {catalogInfoMessage}
         </p>
       ) : null}
-      <div style={{ marginBottom: '1rem', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '0.75rem' }}>
-        <p className="help-text" style={{ marginBottom: '0.55rem' }}>
+      <div className="panel-subsection">
+        <p className="help-text">
           ¿No encuentras el medicamento en CIMA? Puedes añadirlo al catálogo interno.
         </p>
-        <button type="button" onClick={() => setShowCreateCatalogForm((prev) => !prev)} style={{ marginBottom: showCreateCatalogForm ? '0.65rem' : 0 }}>
+        <button type="button" className="button-secondary" onClick={() => setShowCreateCatalogForm((prev) => !prev)}>
           {showCreateCatalogForm ? 'Cancelar alta en catálogo' : 'Añadir al catálogo interno'}
         </button>
 
         {catalogDuplicateSuggestion ? (
-          <p className="help-text" style={{ marginTop: '0.55rem', color: '#9a3412' }}>
+          <p className="notice notice-warning panel-notice">
             Ya existe "{catalogDuplicateSuggestion.display_name}". Evita duplicados y selecciona el existente.
-            <button type="button" onClick={handleSelectDuplicateSuggestion} style={{ marginLeft: '0.65rem' }}>
+            <button type="button" className="button-secondary button-sm inline-action" onClick={handleSelectDuplicateSuggestion}>
               Seleccionar existente
             </button>
           </p>
@@ -679,43 +680,21 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
         ) : null}
 
         {rows.map((row, index) => (
-          <article
-            key={`${row.id ?? 'new'}-${index}`}
-            style={{
-              border: '1px solid #e5e7eb',
-              borderRadius: '10px',
-              padding: '0.8rem',
-              opacity: row.is_active ? 1 : 0.65,
-              background: row.is_active ? '#ffffff' : '#f9fafb',
-              marginBottom: '0.45rem',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.55rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+          <article key={`${row.id ?? 'new'}-${index}`} className={row.is_active ? 'medication-row' : 'medication-row is-inactive'}>
+            <div className="medication-row-header">
+              <div className="medication-row-title">
                 <strong>{row.display_name}</strong>
-                <span className={row.source_badge === 'cima' ? 'badge-success' : 'badge-muted'}>{row.source_label}</span>
+                <StatusBadge tone={row.source_badge === 'cima' ? 'info' : 'neutral'}>{row.source_label}</StatusBadge>
                 {(() => {
                   const status = getMedicationStatus(row);
                   const meta = STATUS_META[status];
                   return (
-                    <span
-                      className="help-text"
-                      style={{
-                        color: meta.color,
-                        backgroundColor: meta.background,
-                        border: `1px solid ${meta.border}`,
-                        borderRadius: '999px',
-                        padding: '0.1rem 0.45rem',
-                        fontWeight: 600,
-                      }}
-                    >
-                      {meta.label}
-                    </span>
+                    <StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>
                   );
                 })()}
                 {showTechnicalMetadata && row.source_code ? <span className="help-text">Código técnico: {row.source_code}</span> : null}
               </div>
-              <button type="button" onClick={() => handleToggleActive(index)}>
+              <button type="button" className="button-secondary button-sm" onClick={() => handleToggleActive(index)}>
                 {row.is_active ? 'Suspender' : 'Reactivar'}
               </button>
             </div>
@@ -761,7 +740,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
                   placeholder="Ej. 1 vez/día o cada 12 h"
                 />
                 {!isSuggestedValue(row.frequency_text, FREQUENCY_SET) ? (
-                  <span className="help-text" style={{ color: '#9a3412' }}>
+                  <span className="help-text text-warning">
                     ⚠ Valor fuera de sugerencias. Se guardará como texto libre.
                   </span>
                 ) : null}
@@ -789,7 +768,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
                   placeholder="Ej. prevención secundaria"
                 />
                 {!isSuggestedValue(row.indication, INDICATION_SET) ? (
-                  <span className="help-text" style={{ color: '#9a3412' }}>
+                  <span className="help-text text-warning">
                     ⚠ Indicación no estandarizada. Se permite texto libre.
                   </span>
                 ) : null}
@@ -800,20 +779,20 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
               </label>
             </div>
 
-            <label style={{ marginTop: '0.5rem', display: 'block' }}>
+            <label className="panel-field">
               Notas
               <textarea rows={2} value={row.notes} onChange={(event) => handleChange(index, 'notes', event.target.value)} />
             </label>
             {(() => {
               const preview = buildDoseTextForSave(row);
               return preview ? (
-                <p className="help-text" style={{ marginTop: '0.35rem' }}>
+                <p className="help-text">
                   Dosis final a guardar: <strong>{preview}</strong>
                 </p>
               ) : null;
             })()}
             {getSemanticWarnings(row).map((warning) => (
-              <p key={`${row.medication_catalog_id}-${index}-${warning}`} className="help-text" style={{ marginTop: '0.4rem', color: '#9a3412' }}>
+              <p key={`${row.medication_catalog_id}-${index}-${warning}`} className="help-text text-warning">
                 ⚠ {warning}
               </p>
             ))}
@@ -839,31 +818,31 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
         </div>
       </form>
 
-      <article style={{ marginTop: '1rem', borderTop: '1px solid #e5e7eb', paddingTop: '0.8rem' }}>
-        <h3 style={{ marginBottom: '0.45rem' }}>Resumen de cambios de medicación en esta visita</h3>
+      <article className="panel-summary">
+        <h3>Resumen de cambios de medicación en esta visita</h3>
         {eventSummary.length === 0 ? (
           <p className="help-text">Aún no hay eventos guardados para esta visita.</p>
         ) : (
           <>
-            <p className="help-text" style={{ marginBottom: '0.6rem' }}>
+            <p className="help-text">
               Nuevos: {visitEventStats.added.length} · Modificados: {visitEventStats.modified.length} · Suspendidos:{' '}
               {visitEventStats.stopped.length} · Sin cambios: {visitEventStats.unchanged.length}
             </p>
-            <div className="grid-2" style={{ marginBottom: '0.7rem' }}>
+            <div className="grid-2 panel-block">
               <div>
-                <p className="help-text" style={{ fontWeight: 600 }}>Nuevos</p>
+                <p className="help-text text-strong">Nuevos</p>
                 <p className="help-text">{visitEventStats.added.slice(0, 3).map((event) => event.patient_medication?.medication_catalog?.display_name ?? 'Medicamento').join(' · ') || '—'}</p>
               </div>
               <div>
-                <p className="help-text" style={{ fontWeight: 600 }}>Modificados</p>
+                <p className="help-text text-strong">Modificados</p>
                 <p className="help-text">{visitEventStats.modified.slice(0, 3).map((event) => event.patient_medication?.medication_catalog?.display_name ?? 'Medicamento').join(' · ') || '—'}</p>
               </div>
               <div>
-                <p className="help-text" style={{ fontWeight: 600 }}>Suspendidos</p>
+                <p className="help-text text-strong">Suspendidos</p>
                 <p className="help-text">{visitEventStats.stopped.slice(0, 3).map((event) => event.patient_medication?.medication_catalog?.display_name ?? 'Medicamento').join(' · ') || '—'}</p>
               </div>
               <div>
-                <p className="help-text" style={{ fontWeight: 600 }}>Sin cambios</p>
+                <p className="help-text text-strong">Sin cambios</p>
                 <p className="help-text">{visitEventStats.unchanged.slice(0, 3).map((event) => event.patient_medication?.medication_catalog?.display_name ?? 'Medicamento').join(' · ') || '—'}</p>
               </div>
             </div>
