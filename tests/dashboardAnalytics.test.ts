@@ -145,6 +145,28 @@ describe('calculateLongitudinalDashboardMetrics', () => {
     expect(metrics).toMatchObject({ improved: 1, worsened: 0, stable: 0 });
   });
 
+  it('caso real: basal estratificada sin fecha ni estado completado (N1) y 3M programada con fecha (N3) cuenta como mejora', () => {
+    const metrics = calculateLongitudinalDashboardMetrics(['real'], [
+      visit('real-3m', 'real', 'month_3', '2026-09-24', 26, 3, 'scheduled'),
+      visit('real-baseline', 'real', 'baseline', null, 49, 1, 'scheduled'),
+    ], '2026-09-24');
+
+    expect(metrics).toMatchObject({ improved: 1, worsened: 0, stable: 0, averageBaselineScore: 49, averageLatestScore: 26 });
+    expect(metrics.latestPriorityByPatient.get('real')).toBe(3);
+    expect(metrics.patientsWithoutFollowup90d).toBe(0);
+  });
+
+  it('una fecha solo programada no cuenta como seguimiento realizado', () => {
+    const rows = [
+      visit('s-baseline', 'S', 'baseline', '2026-01-01', 30, 2),
+      visit('s-3m', 'S', 'month_3', null, 30, 2, 'scheduled'),
+    ];
+    rows[1].scheduled_date = '2026-10-01';
+
+    const metrics = calculateLongitudinalDashboardMetrics(['S'], rows, '2026-09-24');
+    expect(metrics).toMatchObject({ stable: 1, patientsWithoutFollowup90d: 1 });
+  });
+
   it('excluye visitas canceladas aunque tengan una fecha posterior', () => {
     const metrics = calculateLongitudinalDashboardMetrics(['cancelled'], [
       visit('valid', 'cancelled', 'baseline', '2026-01-01', 40, 1),

@@ -85,7 +85,7 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
     supabase.from('patients').select('id,age_at_inclusion,sex'),
     supabase
       .from('visits')
-      .select('id,patient_id,visit_type,visit_date,visit_status,created_at,cmo_scores(id,score,priority),clinical_assessments(id),interventions(id)'),
+      .select('id,patient_id,visit_type,visit_date,scheduled_date,visit_status,created_at,cmo_scores(id,score,priority),clinical_assessments(id),interventions(id)'),
     supabase
       .from('cmo_scores')
       .select('score,visits!inner(visit_type)'),
@@ -150,6 +150,7 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
     patient_id: string;
     visit_type: string | null;
     visit_date: string | null;
+    scheduled_date: string | null;
     visit_status: string | null;
     created_at: string | null;
     cmo_scores: ({ id: string } & DashboardScore) | Array<{ id: string } & DashboardScore> | null;

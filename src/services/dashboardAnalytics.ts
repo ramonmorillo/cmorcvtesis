@@ -8,6 +8,7 @@ export type DashboardVisit = {
   patient_id: string;
   visit_type: string | null;
   visit_date: string | null;
+  scheduled_date?: string | null;
   visit_status?: string | null;
   created_at?: string | null;
   cmo_scores?: DashboardScore | DashboardScore[] | null;
@@ -31,12 +32,27 @@ function firstScore(visit: DashboardVisit): DashboardScore | null {
   return visit.cmo_scores ?? null;
 }
 
+function isBaselineVisit(visit: DashboardVisit): boolean {
+  return visit.visit_type === 'baseline' || visit.visit_type === 'basal';
+}
+
+/**
+ * A visit counts clinically when it has an attended date or a recorded CMO
+ * stratification (a scored visit was performed even if its date/status was
+ * not updated). Cancelled / no-show visits never count.
+ */
 function isValidClinicalVisit(visit: DashboardVisit): boolean {
-  return Boolean(visit.visit_date) && !INVALID_CLINICAL_STATUSES.has(visit.visit_status ?? '');
+  if (INVALID_CLINICAL_STATUSES.has(visit.visit_status ?? '')) return false;
+  return Boolean(visit.visit_date) || priority(firstScore(visit)?.priority) !== null;
+}
+
+/** Ordering date: attended date, else scheduled date; undated baseline anchors first, other undated visits last. */
+function clinicalSortDate(visit: DashboardVisit): string {
+  return visit.visit_date ?? visit.scheduled_date ?? (isBaselineVisit(visit) ? '' : '9999-12-31');
 }
 
 function compareClinicalVisits(a: DashboardVisit, b: DashboardVisit): number {
-  const byDate = (a.visit_date ?? '').localeCompare(b.visit_date ?? '');
+  const byDate = clinicalSortDate(a).localeCompare(clinicalSortDate(b));
   if (byDate !== 0) return byDate;
   const byCreation = (a.created_at ?? '').localeCompare(b.created_at ?? '');
   if (byCreation !== 0) return byCreation;
@@ -93,10 +109,13 @@ export function calculateLongitudinalDashboardMetrics(
     const patientVisits = (validVisitsByPatient.get(patientId) ?? []).sort(compareClinicalVisits);
     if (patientVisits.length === 0) continue;
 
-    const baselineVisit = patientVisits.find((visit) => visit.visit_type === 'baseline' || visit.visit_type === 'basal');
+    const baselineVisit = patientVisits.find(isBaselineVisit);
     const latestVisit = patientVisits[patientVisits.length - 1];
 
-    if ((latestVisit.visit_date as string) < thresholdDate) patientsWithoutFollowup90d += 1;
+    // Follow-up recency only uses attended dates (never scheduled/future dates).
+    const attendedDates = patientVisits.map((visit) => visit.visit_date).filter((date): date is string => Boolean(date));
+    const latestAttendedDate = attendedDates.sort()[attendedDates.length - 1];
+    if (latestAttendedDate && latestAttendedDate < thresholdDate) patientsWithoutFollowup90d += 1;
 
     if (baselineVisit) {
       const baseline = firstScore(baselineVisit);
@@ -106,7 +125,7 @@ export function calculateLongitudinalDashboardMetrics(
       if (baselineScore !== null) baselineScores.push(baselineScore);
 
       const followupVisits = patientVisits
-        .filter((visit) => visit.visit_type !== 'baseline' && visit.visit_type !== 'basal')
+        .filter((visit) => !isBaselineVisit(visit))
         .filter((visit) => compareClinicalVisits(visit, baselineVisit) > 0)
         .filter((visit) => priority(firstScore(visit)?.priority) !== null);
       const followupVisit = followupVisits[followupVisits.length - 1];
