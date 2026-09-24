@@ -23,14 +23,39 @@ function visit(
 }
 
 describe('calculateLongitudinalDashboardMetrics', () => {
-  it('calcula mejora 1→3 y toma los scores basal y de la última fecha clínica', () => {
+  it.each([
+    [1, 3],
+    [1, 2],
+    [2, 3],
+  ])('clasifica %i→%i como mejora', (baselineLevel, followupLevel) => {
     const metrics = calculateLongitudinalDashboardMetrics(['A'], [
-      visit('a-baseline', 'A', 'baseline', '2026-01-10', 40, 1),
-      visit('a-3m', 'A', 'month_3', '2026-04-10', 32, 2),
-      visit('a-6m', 'A', 'month_6', '2026-07-10', 24, 3),
+      visit('a-baseline', 'A', 'baseline', '2026-01-10', 49, baselineLevel),
+      visit('a-3m', 'A', 'month_3', '2026-04-10', 26, followupLevel),
     ], '2026-09-24');
 
-    expect(metrics).toMatchObject({ improved: 1, worsened: 0, stable: 0, averageBaselineScore: 40, averageLatestScore: 24 });
+    expect(metrics).toMatchObject({ improved: 1, worsened: 0, stable: 0, averageBaselineScore: 49, averageLatestScore: 26 });
+  });
+
+  it.each([
+    [3, 1],
+    [3, 2],
+    [2, 1],
+  ])('clasifica %i→%i como empeoramiento', (baselineLevel, followupLevel) => {
+    const metrics = calculateLongitudinalDashboardMetrics(['A'], [
+      visit('a-baseline', 'A', 'baseline', '2026-01-10', 20, baselineLevel),
+      visit('a-3m', 'A', 'month_3', '2026-04-10', 30, followupLevel),
+    ], '2026-09-24');
+
+    expect(metrics).toMatchObject({ improved: 0, worsened: 1, stable: 0 });
+  });
+
+  it.each([1, 2, 3])('clasifica %i→%i como estable', (level) => {
+    const metrics = calculateLongitudinalDashboardMetrics(['A'], [
+      visit('a-baseline', 'A', 'baseline', '2026-01-10', 30, level),
+      visit('a-3m', 'A', 'month_3', '2026-04-10', 30, level),
+    ], '2026-09-24');
+
+    expect(metrics).toMatchObject({ improved: 0, worsened: 0, stable: 1 });
   });
 
   it('calcula empeoramiento 3→2 sin mezclar el historial de otro paciente', () => {
@@ -91,6 +116,23 @@ describe('calculateLongitudinalDashboardMetrics', () => {
     expect(metrics.averageBaselineScore).toBe(40);
     expect(metrics.averageLatestScore).toBe(0);
     expect(metrics.improved + metrics.worsened + metrics.stable).toBe(0);
+  });
+
+  it('no clasifica como estable a un paciente sin visita posterior a la basal', () => {
+    const metrics = calculateLongitudinalDashboardMetrics(['baseline-only'], [
+      visit('only-baseline', 'baseline-only', 'baseline', '2026-01-01', 30, 2),
+    ], '2026-04-02');
+
+    expect(metrics).toMatchObject({ improved: 0, worsened: 0, stable: 0 });
+  });
+
+  it('incluye una visita programada con fecha clínica y estratificación válida', () => {
+    const metrics = calculateLongitudinalDashboardMetrics(['scheduled'], [
+      visit('scheduled-baseline', 'scheduled', 'baseline', '2026-01-01', 49, 1, 'scheduled'),
+      visit('scheduled-3m', 'scheduled', 'month_3', '2026-04-01', 26, 3, 'scheduled'),
+    ], '2026-04-02');
+
+    expect(metrics).toMatchObject({ improved: 1, worsened: 0, stable: 0 });
   });
 
   it('excluye visitas canceladas aunque tengan una fecha posterior', () => {
