@@ -80,6 +80,7 @@ export function calculateLongitudinalDashboardMetrics(
 
   const baselinePriorityByPatient = new Map<string, 1 | 2 | 3>();
   const latestPriorityByPatient = new Map<string, 1 | 2 | 3>();
+  const followupPriorityByPatient = new Map<string, 1 | 2 | 3>();
   const baselineScores: number[] = [];
   const latestScores: number[] = [];
   let patientsWithoutFollowup90d = 0;
@@ -103,6 +104,13 @@ export function calculateLongitudinalDashboardMetrics(
       const baselineScore = numericScore(baseline?.score);
       if (baselineLevel !== null) baselinePriorityByPatient.set(patientId, baselineLevel);
       if (baselineScore !== null) baselineScores.push(baselineScore);
+
+      const followupVisits = patientVisits
+        .filter((visit) => visit.visit_type !== 'baseline' && visit.visit_type !== 'basal')
+        .filter((visit) => compareClinicalVisits(visit, baselineVisit) > 0);
+      const followupVisit = followupVisits[followupVisits.length - 1];
+      const followupLevel = priority(followupVisit ? firstScore(followupVisit)?.priority : null);
+      if (followupLevel !== null) followupPriorityByPatient.set(patientId, followupLevel);
     }
 
     const latest = firstScore(latestVisit);
@@ -116,10 +124,10 @@ export function calculateLongitudinalDashboardMetrics(
   let worsened = 0;
   let stable = 0;
   baselinePriorityByPatient.forEach((baselineLevel, patientId) => {
-    const latestLevel = latestPriorityByPatient.get(patientId);
-    if (latestLevel === undefined) return;
-    if (latestLevel > baselineLevel) improved += 1;
-    else if (latestLevel < baselineLevel) worsened += 1;
+    const followupLevel = followupPriorityByPatient.get(patientId);
+    if (followupLevel === undefined) return;
+    if (followupLevel > baselineLevel) improved += 1;
+    else if (followupLevel < baselineLevel) worsened += 1;
     else stable += 1;
   });
 
