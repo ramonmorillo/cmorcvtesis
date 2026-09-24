@@ -167,6 +167,28 @@ describe('calculateLongitudinalDashboardMetrics', () => {
     expect(metrics).toMatchObject({ stable: 1, patientsWithoutFollowup90d: 1 });
   });
 
+  it('el nivel actual es la última estratificación aunque después haya extraordinarias sin score', () => {
+    const metrics = calculateLongitudinalDashboardMetrics(['X'], [
+      visit('x-baseline', 'X', 'baseline', '2026-05-06', 29, 2),
+      visit('x-extra-scored', 'X', 'extra', '2026-06-25', 34, 1),
+      visit('x-extra-unscored', 'X', 'extra', '2026-09-02'),
+    ], '2026-09-24');
+
+    expect(metrics.latestPriorityByPatient.get('X')).toBe(1);
+    expect(metrics).toMatchObject({ worsened: 1, averageLatestScore: 0 });
+  });
+
+  it('trayectoria no monótona N1→N3→N2: compara basal con la última estratificación de seguimiento', () => {
+    const metrics = calculateLongitudinalDashboardMetrics(['T'], [
+      visit('t-baseline', 'T', 'baseline', null, 49, 1, 'scheduled'),
+      visit('t-3m', 'T', 'month_3', null, 26, 3, 'scheduled'),
+      visit('t-6m', 'T', 'month_6', '2026-09-25', 30, 2, 'scheduled'),
+    ].map((row) => (row.id === 't-3m' ? { ...row, scheduled_date: '2026-09-24' } : row)), '2026-09-24');
+
+    expect(metrics).toMatchObject({ improved: 1, worsened: 0, stable: 0, averageBaselineScore: 49, averageLatestScore: 30 });
+    expect(metrics.latestPriorityByPatient.get('T')).toBe(2);
+  });
+
   it('excluye visitas canceladas aunque tengan una fecha posterior', () => {
     const metrics = calculateLongitudinalDashboardMetrics(['cancelled'], [
       visit('valid', 'cancelled', 'baseline', '2026-01-01', 40, 1),

@@ -79,7 +79,8 @@ function roundedAverage(values: number[]): number {
 /**
  * Computes patient-level longitudinal metrics from clinical visit dates.
  * Missing scores are excluded rather than converted to zero. A latest visit
- * without a score does not fall back to an older visit's score.
+ * without a score does not fall back to an older visit's score for the
+ * average latest score, but the current CMO level is the latest stratification.
  */
 export function calculateLongitudinalDashboardMetrics(
   patientIds: string[],
@@ -134,8 +135,11 @@ export function calculateLongitudinalDashboardMetrics(
     }
 
     const latest = firstScore(latestVisit);
-    const latestLevel = priority(latest?.priority);
     const latestScore = numericScore(latest?.score);
+    // Current CMO level = most recent stratification (same as the patient record);
+    // unscored contacts (e.g. extraordinary visits) do not erase it.
+    const latestStratified = [...patientVisits].reverse().find((visit) => priority(firstScore(visit)?.priority) !== null);
+    const latestLevel = priority(latestStratified ? firstScore(latestStratified)?.priority : null);
     if (latestLevel !== null) latestPriorityByPatient.set(patientId, latestLevel);
     if (latestScore !== null) latestScores.push(latestScore);
   }
