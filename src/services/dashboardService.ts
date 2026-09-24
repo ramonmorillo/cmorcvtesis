@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { type CmoPillar } from '../constants/interventionCatalog';
+import { calculateLongitudinalDashboardMetrics, type DashboardScore } from './dashboardAnalytics';
 
 export type DashboardData = {
   pro: {
@@ -71,14 +72,10 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
   }
 
   const now = new Date().toISOString().slice(0, 10);
-  const ninetyDaysAgoDate = new Date();
-  ninetyDaysAgoDate.setDate(ninetyDaysAgoDate.getDate() - 90);
-  const ninetyDaysAgo = ninetyDaysAgoDate.toISOString().slice(0, 10);
 
   const [
     patientsRes,
     visitsForQualityRes,
-    scoresRes,
     scoresByVisitTypeRes,
     upcomingRes,
     visitsRes,
@@ -88,11 +85,7 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
     supabase.from('patients').select('id,age_at_inclusion,sex'),
     supabase
       .from('visits')
-      .select('id,patient_id,visit_type,visit_date,cmo_scores(id),clinical_assessments(id),interventions(id)'),
-    supabase
-      .from('cmo_scores')
-      .select('priority,score,created_at,visits!inner(patient_id,visit_type,visit_date)')
-      .order('created_at', { ascending: false }),
+      .select('id,patient_id,visit_type,visit_date,visit_status,created_at,cmo_scores(id,score,priority),clinical_assessments(id),interventions(id)'),
     supabase
       .from('cmo_scores')
       .select('score,visits!inner(visit_type)'),
@@ -119,7 +112,6 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
   const errors = [
     patientsRes.error,
     visitsForQualityRes.error,
-    scoresRes.error,
     scoresByVisitTypeRes.error,
     upcomingRes.error,
     visitsRes.error,
@@ -129,20 +121,6 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
 
   if (errors.length > 0) {
     return { data: null, errorMessage: errors[0]?.message ?? 'No se pudo cargar dashboard.' };
-  }
-
-  // Count unique patients per priority level using only their most recent CMO score.
-  const patientLatestPriority = new Map<string, 1 | 2 | 3>();
-  for (const row of (scoresRes.data ?? []) as Array<{ priority: number; visits: { patient_id: string } | Array<{ patient_id: string }> }>) {
-    const pid = Array.isArray(row.visits) ? row.visits[0]?.patient_id : row.visits?.patient_id;
-    const p = Number(row.priority) as 1 | 2 | 3;
-    if (pid && !patientLatestPriority.has(pid) && (p === 1 || p === 2 || p === 3)) {
-      patientLatestPriority.set(pid, p);
-    }
-  }
-  const priorities = { 1: 0, 2: 0, 3: 0 } as { 1: number; 2: number; 3: number };
-  for (const p of patientLatestPriority.values()) {
-    priorities[p] += 1;
   }
 
   const byPillar: Record<CmoPillar, number> = {
@@ -172,7 +150,9 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
     patient_id: string;
     visit_type: string | null;
     visit_date: string | null;
-    cmo_scores: { id: string } | Array<{ id: string }> | null;
+    visit_status: string | null;
+    created_at: string | null;
+    cmo_scores: ({ id: string } & DashboardScore) | Array<{ id: string } & DashboardScore> | null;
     clinical_assessments: { id: string } | Array<{ id: string }> | null;
     interventions: { id: string } | Array<{ id: string }> | null;
   }>;
@@ -180,6 +160,15 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
     score: number | string | null;
     visits: { visit_type: string | null } | Array<{ visit_type: string | null }>;
   }>;
+  const longitudinalMetrics = calculateLongitudinalDashboardMetrics(
+    allPatients.map((patient) => patient.id),
+    visitsForQuality,
+    now,
+  );
+  const priorities = { 1: 0, 2: 0, 3: 0 } as { 1: number; 2: number; 3: number };
+  for (const currentPriority of longitudinalMetrics.latestPriorityByPatient.values()) {
+    priorities[currentPriority] += 1;
+  }
 
   const baselineStratifiedPatientIds = new Set<string>();
   for (const visit of visitsForQuality) {
@@ -211,7 +200,6 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
   const interventionsByPatient = new Map<string, number>();
   let visitsWithoutScore = 0;
   let visitsWithoutInterventions = 0;
-  const latestVisitDateByPatient = new Map<string, string>();
   for (const visit of visitsForQuality) {
     const scoreRows = Array.isArray(visit.cmo_scores) ? visit.cmo_scores : (visit.cmo_scores ? [visit.cmo_scores] : []);
     const interventionRows = Array.isArray(visit.interventions)
@@ -221,67 +209,13 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
     if (scoreRows.length === 0) visitsWithoutScore += 1;
     if (interventionRows.length === 0) visitsWithoutInterventions += 1;
     interventionsByPatient.set(visit.patient_id, (interventionsByPatient.get(visit.patient_id) ?? 0) + interventionRows.length);
-
-    if (visit.visit_date) {
-      const previous = latestVisitDateByPatient.get(visit.patient_id);
-      if (!previous || visit.visit_date > previous) {
-        latestVisitDateByPatient.set(visit.patient_id, visit.visit_date);
-      }
-    }
   }
 
   const totalPatients = allPatients.length;
   const avgInterventionsPerPatient = totalPatients === 0 ? 0 : Number(((interventionsAggRes.count ?? 0) / totalPatients).toFixed(2));
 
-  const patientsWithoutFollowup90d = allPatients.reduce((count, patient) => {
-    const latestVisitDate = latestVisitDateByPatient.get(patient.id);
-    if (!latestVisitDate || latestVisitDate < ninetyDaysAgo) {
-      return count + 1;
-    }
-    return count;
-  }, 0);
-
-  const baselinePriorityByPatient = new Map<string, 1 | 2 | 3>();
-  const latestPriorityByPatient = new Map<string, 1 | 2 | 3>();
-  const latestScoreByPatient = new Map<string, number>();
-  let baselineScoreTotal = 0;
-  let baselineScoreCount = 0;
-  for (const row of (scoresRes.data ?? []) as Array<{
-    priority: number;
-    score: number;
-    visits: { patient_id: string; visit_type: string | null } | Array<{ patient_id: string; visit_type: string | null }>;
-  }>) {
-    const pid = Array.isArray(row.visits) ? row.visits[0]?.patient_id : row.visits?.patient_id;
-    const visitType = Array.isArray(row.visits) ? row.visits[0]?.visit_type : row.visits?.visit_type;
-    const p = Number(row.priority) as 1 | 2 | 3;
-    if (!pid || !(p === 1 || p === 2 || p === 3)) continue;
-
-    if (!latestPriorityByPatient.has(pid)) latestPriorityByPatient.set(pid, p);
-    if (!latestScoreByPatient.has(pid)) latestScoreByPatient.set(pid, Number(row.score));
-    baselinePriorityByPatient.set(pid, p);
-
-    if (visitType === 'baseline' || visitType === 'basal') {
-      const baselineScore = Number(row.score);
-      if (Number.isFinite(baselineScore)) {
-        baselineScoreTotal += baselineScore;
-        baselineScoreCount += 1;
-      }
-    }
-  }
-
-  let improved = 0;
-  let worsened = 0;
-  let stable = 0;
-  baselinePriorityByPatient.forEach((baselinePriority, patientId) => {
-    const latestPriority = latestPriorityByPatient.get(patientId);
-    if (!latestPriority) return;
-    if (latestPriority > baselinePriority) improved += 1;
-    else if (latestPriority < baselinePriority) worsened += 1;
-    else stable += 1;
-  });
-
   let level1PatientsWithoutIntervention = 0;
-  latestPriorityByPatient.forEach((priority, patientId) => {
+  longitudinalMetrics.latestPriorityByPatient.forEach((priority, patientId) => {
     if (priority === 1 && (interventionsByPatient.get(patientId) ?? 0) === 0) {
       level1PatientsWithoutIntervention += 1;
     }
@@ -326,11 +260,14 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
     if (visit.visit_type === 'extra' || visit.visit_type === 'extraordinary') visitTypeCount.extra += 1;
   }
 
-  const averageBaselineScore = baselineScoreCount === 0 ? 0 : Number((baselineScoreTotal / baselineScoreCount).toFixed(2));
-  const latestScores = Array.from(latestScoreByPatient.values()).filter((score) => Number.isFinite(score));
-  const averageLatestScore = latestScores.length === 0
-    ? 0
-    : Number((latestScores.reduce((acc, score) => acc + score, 0) / latestScores.length).toFixed(2));
+  const {
+    improved,
+    worsened,
+    stable,
+    averageBaselineScore,
+    averageLatestScore,
+    patientsWithoutFollowup90d,
+  } = longitudinalMetrics;
 
   return {
     data: {
