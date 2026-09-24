@@ -36,6 +36,16 @@ describe('calculateLongitudinalDashboardMetrics', () => {
     expect(metrics).toMatchObject({ improved: 1, worsened: 0, stable: 0, averageBaselineScore: 49, averageLatestScore: 26 });
   });
 
+  it('clasifica el caso real 1→3 usando la visita 3M aunque exista una visita posterior sin nivel CMO', () => {
+    const metrics = calculateLongitudinalDashboardMetrics(['A'], [
+      visit('a-baseline', 'A', 'baseline', '2026-01-10', 49, 1),
+      visit('a-3m', 'A', 'month_3', '2026-04-10', 26, 3),
+      visit('a-extra-without-score', 'A', 'extra', '2026-05-10'),
+    ], '2026-09-24');
+
+    expect(metrics).toMatchObject({ improved: 1, worsened: 0, stable: 0 });
+  });
+
   it.each([
     [3, 1],
     [3, 2],

@@ -107,7 +107,8 @@ export function calculateLongitudinalDashboardMetrics(
 
       const followupVisits = patientVisits
         .filter((visit) => visit.visit_type !== 'baseline' && visit.visit_type !== 'basal')
-        .filter((visit) => compareClinicalVisits(visit, baselineVisit) > 0);
+        .filter((visit) => compareClinicalVisits(visit, baselineVisit) > 0)
+        .filter((visit) => priority(firstScore(visit)?.priority) !== null);
       const followupVisit = followupVisits[followupVisits.length - 1];
       const followupLevel = priority(followupVisit ? firstScore(followupVisit)?.priority : null);
       if (followupLevel !== null) followupPriorityByPatient.set(patientId, followupLevel);
