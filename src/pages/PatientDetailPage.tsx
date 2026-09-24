@@ -3,9 +3,20 @@ import { Link, useParams } from 'react-router-dom';
 
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
+import { CmoLevelBadge } from '../components/ui/CmoLevelBadge';
+import { LoadingState } from '../components/ui/LoadingState';
+import { MetricCard, MetricGrid } from '../components/ui/MetricCard';
+import { Notice } from '../components/ui/Notice';
+import { PatientHeader } from '../components/ui/PatientHeader';
+import { ScoreTrendChart } from '../components/ui/ScoreTrendChart';
+import { SectionHeader } from '../components/ui/SectionHeader';
+import { StatusBadge } from '../components/ui/StatusBadge';
+import { TrendDelta } from '../components/ui/TrendDelta';
+import { VisitTimeline } from '../components/ui/VisitTimeline';
 import { BaselineTrendPanel } from '../features/baseline-trend/BaselineTrendPanel';
 import {
   VISIT_STATUS_OPTIONS,
+  getSexLabel,
   getVisitStatusLabel,
   getVisitTypeLabel,
   getVisitTypeSortOrder,
@@ -20,12 +31,7 @@ import { listInterventionsByPatient, type PriorityLevel } from '../services/inte
 import { getPatientById, type Patient } from '../services/patientService';
 import { getQuestionnairesByPatient, isQuestionnaireVisitType, type QuestionnaireResponseRecord } from '../services/questionnaireService';
 import { listVisitsByPatient, updateVisit, type Visit } from '../services/visitService';
-
-const LEVEL_META = {
-  1: { label: 'Nivel 1 · Prioridad', color: '#dc2626', bg: '#fef2f2', border: '#fca5a5' },
-  2: { label: 'Nivel 2 · Intermedio', color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
-  3: { label: 'Nivel 3 · Basal', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
-} as const;
+import { getFollowupStatus } from '../utils/followupStatus';
 
 const REQUIRED_QUESTIONNAIRES = ['iexpac', 'morisky', 'eq5d'] as const;
 
@@ -60,12 +66,6 @@ function compareCmoDesc(a: CmoScoreHistoryEntry, b: CmoScoreHistoryEntry): numbe
   if (byVisit !== 0) return byVisit;
 
   return (b.updated_at ?? '').localeCompare(a.updated_at ?? '');
-}
-
-function formatDelta(value: number | null): string {
-  if (value === null) return 'N/A';
-  if (value > 0) return `+${value.toFixed(2)}`;
-  return value.toFixed(2);
 }
 
 function isBaselineVisit(visitType: string | null): boolean {
@@ -244,7 +244,6 @@ export function PatientDetailPage() {
   const visitsTimeline = useMemo(() => [...visits].sort(compareVisitsTimeline), [visits]);
   const latestVisitId = useMemo(() => visitsTimeline[visitsTimeline.length - 1]?.id, [visitsTimeline]);
 
-  const cmoMeta = latestCmoScore ? LEVEL_META[latestCmoScore.priority as 1 | 2 | 3] : null;
   const cmoHistoryDesc = useMemo(() => [...cmoHistory].sort(compareCmoDesc), [cmoHistory]);
 
   const scoreByVisitId = useMemo(() => {
@@ -330,283 +329,287 @@ export function PatientDetailPage() {
   const latestHistory = cmoHistoryDesc[0] ?? null;
   const previousHistory = cmoHistoryDesc[1] ?? null;
   const cmoDelta = latestHistory && previousHistory ? latestHistory.score - previousHistory.score : null;
+  const followupStatus = useMemo(() => getFollowupStatus(visits), [visits]);
+  const cmoHistoryAsc = useMemo(() => [...cmoHistoryDesc].reverse(), [cmoHistoryDesc]);
+  const formatHistoryLabel = (entry: CmoScoreHistoryEntry) =>
+    entry.visit_number != null ? `V${entry.visit_number}` : 'Extraordinaria';
 
-  if (loading) return <p>Cargando ficha...</p>;
+  if (loading) return <LoadingState label="Cargando ficha..." />;
   if (errorMessage) return <ErrorState title="No se pudo cargar la ficha" message={errorMessage} />;
   if (!patient) return <EmptyState title="Paciente no encontrado" description="Verifica el identificador o vuelve al listado." />;
 
+  const questionnaireRows = [
+    { key: 'iexpac', label: 'IEXPAC', baseline: baselineIexpac, final: finalIexpac },
+    { key: 'morisky', label: 'Morisky-Green', baseline: baselineMorisky, final: finalMorisky },
+    { key: 'eq5d', label: 'EQ-5D-5L', baseline: baselineEq5d, final: finalEq5d },
+    { key: 'pam10', label: 'PAM-10', baseline: baselinePam10, final: finalPam10 },
+  ];
+  const checkMark = (present: boolean) => (
+    <span className={present ? 'check-cell check-yes' : 'check-cell check-no'}>
+      <span aria-hidden="true">{present ? '✓' : '✗'}</span>
+      <span className="visually-hidden">{present ? 'Registrado' : 'No registrado'}</span>
+    </span>
+  );
+
   return (
     <div className="page-stack">
-      <section className="card iris-hero-card">
-        <div className="section-header">
-          <div>
-            <p className="iris-eyebrow">IRIS Patient View</p>
-            <h1>Ficha de paciente</h1>
-          </div>
-          <div className="actions-inline">
+      <PatientHeader
+        eyebrow="IRIS · Ficha de paciente"
+        studyCode={patient.study_code}
+        sexLabel={getSexLabel(patient.sex)}
+        age={patient.age_at_inclusion}
+        level={latestCmoScore?.priority ?? null}
+        score={latestCmoScore?.score ?? null}
+        lastVisitDate={followupStatus.lastAttendedDate}
+        followup={followupStatus}
+        details={[
+          { label: 'Farmacia', value: patient.pharmacy_site || '-' },
+          { label: 'Investigador/a', value: patient.investigator_name || '-' },
+          {
+            label: 'Consentimiento',
+            value: patient.consent_signed ? <StatusBadge tone="positive">Sí</StatusBadge> : <StatusBadge tone="warning">No</StatusBadge>,
+          },
+        ]}
+        actions={
+          <>
             <Link className="button-link" to={`/patients/${patient.id}/visits/new`}>
               Nueva visita
             </Link>
-            {latestVisitId ? <Link to={`/visits/${latestVisitId}/stratification`}>Estratificación basal</Link> : null}
-          </div>
+            {latestVisitId ? (
+              <Link className="button-link button-secondary" to={`/visits/${latestVisitId}/stratification`}>
+                Estratificación basal
+              </Link>
+            ) : null}
+          </>
+        }
+      />
+
+      {missingQuestionnaireVisits.length > 0 || questionnaireWarning ? (
+        <div className="stack-sm">
+          {missingQuestionnaireVisits.length > 0 ? (
+            <Notice tone="warning">
+              Faltan cuestionarios obligatorios en {missingQuestionnaireVisits.length} visita(s) basal/final.
+            </Notice>
+          ) : null}
+          {questionnaireWarning ? <Notice tone="warning">{questionnaireWarning}</Notice> : null}
         </div>
-        <dl className="patient-summary">
-          <div><dt>Study code</dt><dd>{patient.study_code}</dd></div>
-          <div><dt>Sexo</dt><dd>{patient.sex || '-'}</dd></div>
-          <div><dt>Edad inclusión</dt><dd>{patient.age_at_inclusion ?? '-'}</dd></div>
-          <div><dt>Farmacia</dt><dd>{patient.pharmacy_site || '-'}</dd></div>
-          <div><dt>Investigador/a</dt><dd>{patient.investigator_name || '-'}</dd></div>
-          <div><dt>Consentimiento</dt><dd>{patient.consent_signed ? 'Sí' : 'No'}</dd></div>
-          <div>
-            <dt>Nivel CMO</dt>
-            <dd>
-              {cmoMeta ? (
-                <span style={{ color: cmoMeta.color, fontWeight: 700 }}>
-                  {cmoMeta.label}
-                </span>
-              ) : '-'}
-            </dd>
-          </div>
-        </dl>
+      ) : null}
 
-        {missingQuestionnaireVisits.length > 0 ? (
-          <div className="error-state" style={{ marginTop: '0.8rem' }}>
-            Faltan cuestionarios obligatorios en {missingQuestionnaireVisits.length} visita(s) basal/final.
-          </div>
-        ) : null}
-        {questionnaireWarning ? (
-          <p className="help-text" style={{ marginTop: '0.8rem', color: '#b45309' }}>
-            ⚠️ {questionnaireWarning}
-          </p>
-        ) : null}
-      </section>
-
-      <section className="card">
-        <h2>Longitudinalidad de visitas</h2>
+      <section className="card" aria-labelledby="patient-visits">
+        <SectionHeader id="patient-visits" title="Longitudinalidad de visitas" description="Secuencia cronológica de contactos y su estratificación." />
         {visitsTimeline.length === 0 ? (
           <EmptyState
             title="Sin visitas registradas"
             description="Añade la primera visita para iniciar seguimiento."
-            action={<Link to={`/patients/${patient.id}/visits/new`}>Nueva visita</Link>}
+            action={<Link className="button-link" to={`/patients/${patient.id}/visits/new`}>Nueva visita</Link>}
           />
         ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Tipo</th>
-                  <th>Fecha</th>
-                  <th>Estado</th>
-                  <th style={{ textAlign: 'right' }}>Score CMO</th>
-                  <th>Nivel CMO</th>
-                  <th>Cuestionarios</th>
-                  <th style={{ textAlign: 'right' }}>Intervenciones</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visitsTimeline.map((visit) => {
-                  const scoreEntry = scoreByVisitId.get(visit.id) ?? null;
-                  const levelMeta = scoreEntry ? LEVEL_META[scoreEntry.priority as 1 | 2 | 3] : null;
-                  const interventionsCount = interventionsByVisitId.get(visit.id) ?? 0;
-                  const questionnairesReady = !isQuestionnaireVisitType(visit.visit_type) || isVisitQuestionnaireComplete(visit.id, questionnaireCompletionByVisitId);
+          <>
+            <VisitTimeline
+              visits={visitsTimeline.map((visit) => {
+                const scoreEntry = scoreByVisitId.get(visit.id) ?? null;
+                return {
+                  id: visit.id,
+                  visitType: visit.visit_type,
+                  date: visit.visit_date ?? visit.scheduled_date ?? null,
+                  status: visit.visit_status,
+                  level: scoreEntry?.priority ?? null,
+                  score: scoreEntry?.score ?? null,
+                  href: `/visits/${visit.id}/stratification`,
+                };
+              })}
+            />
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Tipo</th>
+                    <th>Fecha</th>
+                    <th>Estado</th>
+                    <th className="num">Score CMO</th>
+                    <th>Nivel CMO</th>
+                    <th>Cuestionarios</th>
+                    <th className="num">Intervenciones</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visitsTimeline.map((visit) => {
+                    const scoreEntry = scoreByVisitId.get(visit.id) ?? null;
+                    const interventionsCount = interventionsByVisitId.get(visit.id) ?? 0;
+                    const questionnairesReady = !isQuestionnaireVisitType(visit.visit_type) || isVisitQuestionnaireComplete(visit.id, questionnaireCompletionByVisitId);
 
-                  return (
-                    <tr key={visit.id}>
-                      <td>{getVisitTypeLabel(visit.visit_type)}</td>
-                      <td>{visit.visit_date ?? visit.scheduled_date ?? '-'}</td>
-                      <td>
-                        <div className="actions-inline" style={{ alignItems: 'center' }}>
-                          <select
-                            value={visit.visit_status ?? ''}
-                            onChange={(e) => void handleStatusChange(visit.id, e.target.value as VisitStatus)}
-                            style={{ fontSize: '0.85rem' }}
-                          >
-                            <option value="" disabled>Estado</option>
-                            {VISIT_STATUS_OPTIONS.map((o) => (
-                              <option key={o.value} value={o.value}>{o.label}</option>
-                            ))}
-                          </select>
-                          <span>{getVisitStatusLabel(visit.visit_status)}</span>
-                        </div>
-                      </td>
-                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{scoreEntry ? scoreEntry.score : '-'}</td>
-                      <td style={{ color: levelMeta?.color ?? 'inherit', fontWeight: levelMeta ? 600 : 400 }}>
-                        {levelMeta ? levelMeta.label : '-'}
-                      </td>
-                      <td>
-                        {!isQuestionnaireVisitType(visit.visit_type) ? '-' : (
-                          <span className={questionnairesReady ? 'badge-success' : 'badge-danger'}>
-                            {questionnairesReady ? 'Completos' : 'Pendientes'}
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>{interventionsCount}</td>
-                      <td>
-                        <div className="actions-inline">
-                          <Link to={`/patients/${id}/visits/${visit.id}`}>Detalle visita</Link>
-                          <Link to={`/visits/${visit.id}/stratification`}>Evaluación clínica</Link>
-                          <Link to={`/visits/${visit.id}/medications`}>Medicación</Link>
-                          <Link to={`/visits/${visit.id}/interventions`}>Intervenciones</Link>
-                          {isQuestionnaireVisitType(visit.visit_type) ? <Link to={`/visits/${visit.id}/questionnaires`}>Cuestionarios</Link> : null}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                    return (
+                      <tr key={visit.id}>
+                        <td className="strong">{getVisitTypeLabel(visit.visit_type)}</td>
+                        <td className="numeric">{visit.visit_date ?? visit.scheduled_date ?? '-'}</td>
+                        <td>
+                          <div className="table-status">
+                            <select
+                              value={visit.visit_status ?? ''}
+                              onChange={(e) => void handleStatusChange(visit.id, e.target.value as VisitStatus)}
+                              aria-label={`Estado de la visita ${getVisitTypeLabel(visit.visit_type)}`}
+                            >
+                              <option value="" disabled>Estado</option>
+                              {VISIT_STATUS_OPTIONS.map((o) => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                              ))}
+                            </select>
+                            <span className="visually-hidden">{getVisitStatusLabel(visit.visit_status)}</span>
+                          </div>
+                        </td>
+                        <td className="num strong">{scoreEntry ? scoreEntry.score : '-'}</td>
+                        <td>{scoreEntry ? <CmoLevelBadge level={scoreEntry.priority} variant="short" /> : <span className="cell-muted">-</span>}</td>
+                        <td>
+                          {!isQuestionnaireVisitType(visit.visit_type) ? <span className="cell-muted">-</span> : (
+                            <StatusBadge tone={questionnairesReady ? 'positive' : 'warning'}>
+                              {questionnairesReady ? 'Completos' : 'Pendientes'}
+                            </StatusBadge>
+                          )}
+                        </td>
+                        <td className="num">{interventionsCount}</td>
+                        <td>
+                          <div className="table-actions">
+                            <Link to={`/patients/${id}/visits/${visit.id}`}>Detalle visita</Link>
+                            <Link to={`/visits/${visit.id}/stratification`}>Evaluación clínica</Link>
+                            <Link to={`/visits/${visit.id}/medications`}>Medicación</Link>
+                            <Link to={`/visits/${visit.id}/interventions`}>Intervenciones</Link>
+                            {isQuestionnaireVisitType(visit.visit_type) ? <Link to={`/visits/${visit.id}/questionnaires`}>Cuestionarios</Link> : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="card" aria-labelledby="patient-cmo-evolution">
+        <SectionHeader
+          id="patient-cmo-evolution"
+          title="Evolución CMO-RCV"
+          description="Mayor puntuación = mayor complejidad. Bandas según los umbrales del modelo de estratificación."
+        />
+        {latestHistory ? (
+          <>
+            <MetricGrid columns={4}>
+              <MetricCard label="Última puntuación" value={latestHistory.score} unit="pts" />
+              <MetricCard label="Nivel actual" value={<CmoLevelBadge level={latestHistory.priority} />} />
+              <MetricCard label="Visitas previas con score" value={Math.max(cmoHistoryDesc.length - 1, 0)} />
+              <MetricCard
+                label="Cambio respecto a visita anterior"
+                value={<TrendDelta value={cmoDelta} favorable="lower" />}
+                hint={cmoDelta !== null && cmoDelta !== 0 ? (cmoDelta < 0 ? 'Menor complejidad' : 'Mayor complejidad') : undefined}
+              />
+            </MetricGrid>
+
+            {cmoHistoryAsc.length > 1 ? (
+              <div className="section-block dashboard-subsection">
+                <ScoreTrendChart
+                  points={cmoHistoryAsc.map((entry) => ({ id: entry.id, label: formatHistoryLabel(entry), score: entry.score }))}
+                />
+                <div className="table-wrap dashboard-subsection">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Visita</th>
+                        <th>Fecha</th>
+                        <th className="num">Puntuación</th>
+                        <th className="num">Δ vs anterior</th>
+                        <th>Nivel</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cmoHistoryDesc.map((entry, i) => {
+                        const prev = cmoHistoryDesc[i + 1];
+                        const delta = prev ? entry.score - prev.score : null;
+                        return (
+                          <tr key={entry.id}>
+                            <td className="strong">{formatHistoryLabel(entry)}</td>
+                            <td className="numeric">{entry.visit_date ?? entry.scheduled_date ?? entry.updated_at?.slice(0, 10) ?? '-'}</td>
+                            <td className="num strong">{entry.score}</td>
+                            <td className="num">{delta !== null ? <TrendDelta value={delta} favorable="lower" /> : <span className="cell-muted">—</span>}</td>
+                            <td><CmoLevelBadge level={entry.priority} variant="short" /></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <p className="empty-inline">Sin puntuación CMO registrada. Completa la estratificación basal.</p>
         )}
       </section>
 
       <BaselineTrendPanel entries={assessmentHistory} warning={assessmentHistoryWarning} />
+
+      <div className="split-grid">
+        <section className="card" aria-labelledby="patient-questionnaires">
+          <SectionHeader id="patient-questionnaires" title="Resumen de cuestionarios (tesis)" description="Registro basal frente a visita final." />
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Cuestionario</th>
+                  <th>Basal</th>
+                  <th>Final</th>
+                </tr>
+              </thead>
+              <tbody>
+                {questionnaireRows.map((row) => (
+                  <tr key={row.key}>
+                    <td className="strong">{row.label}</td>
+                    <td>{checkMark(Boolean(row.baseline))}</td>
+                    <td>{checkMark(Boolean(row.final))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <dl className="inline-facts">
+            <div>
+              <dt>Δ IEXPAC</dt>
+              <dd><TrendDelta value={deltaIexpac} decimals={2} /></dd>
+            </div>
+            <div>
+              <dt>Δ EQ5D VAS</dt>
+              <dd><TrendDelta value={deltaEq5dVas} decimals={2} /></dd>
+            </div>
+            <div>
+              <dt>Cambio adherencia</dt>
+              <dd className="inline-facts-text">{adherenceChange}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="card" aria-labelledby="patient-interventions">
+          <SectionHeader id="patient-interventions" title="Resumen de intervenciones" />
+          {interventions.length === 0 ? (
+            <p className="empty-inline">No hay intervenciones registradas.</p>
+          ) : (
+            <ul className="simple-list">
+              {interventions.slice(0, 10).map((item) => (
+                <li key={item.id}>
+                  <span>{item.intervention_type}</span>
+                  <span className="cell-muted">{item.priority_level ? PRIORITY_LEVEL_LABEL[item.priority_level] : '-'}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
 
       <PatientMedicationSummary
         medications={activeMedications}
         warning={medicationWarning}
         latestReviewDate={latestMedicationReviewDate}
       />
-
-      <section className="card">
-        <h2>Resumen de cuestionarios (tesis)</h2>
-        <ul className="simple-list">
-          <li>
-            <span>Basal: IEXPAC</span>
-            <strong>{baselineIexpac ? '✓' : '✗'}</strong>
-          </li>
-          <li>
-            <span>Basal: Morisky</span>
-            <strong>{baselineMorisky ? '✓' : '✗'}</strong>
-          </li>
-          <li>
-            <span>Basal: EQ-5D</span>
-            <strong>{baselineEq5d ? '✓' : '✗'}</strong>
-          </li>
-          <li>
-            <span>Basal: PAM-10</span>
-            <strong>{baselinePam10 ? '✓' : '✗'}</strong>
-          </li>
-          <li>
-            <span>Final: IEXPAC</span>
-            <strong>{finalIexpac ? '✓' : '✗'}</strong>
-          </li>
-          <li>
-            <span>Final: Morisky</span>
-            <strong>{finalMorisky ? '✓' : '✗'}</strong>
-          </li>
-          <li>
-            <span>Final: EQ-5D</span>
-            <strong>{finalEq5d ? '✓' : '✗'}</strong>
-          </li>
-          <li>
-            <span>Final: PAM-10</span>
-            <strong>{finalPam10 ? '✓' : '✗'}</strong>
-          </li>
-          <li>
-            <span>Δ IEXPAC</span>
-            <strong>{formatDelta(deltaIexpac)}</strong>
-          </li>
-          <li>
-            <span>Δ EQ5D VAS</span>
-            <strong>{formatDelta(deltaEq5dVas)}</strong>
-          </li>
-          <li>
-            <span>Cambio adherencia</span>
-            <strong>{adherenceChange}</strong>
-          </li>
-        </ul>
-      </section>
-
-      <section className="card">
-        <h2>Resumen de evolución CMO-RCV</h2>
-        {latestHistory ? (
-          <ul className="simple-list">
-            <li>
-              <span>Última puntuación</span>
-              <strong>{latestHistory.score}</strong>
-            </li>
-            <li>
-              <span>Nivel actual</span>
-              <strong style={{ color: LEVEL_META[latestHistory.priority as 1 | 2 | 3].color }}>
-                {LEVEL_META[latestHistory.priority as 1 | 2 | 3].label}
-              </strong>
-            </li>
-            <li>
-              <span>Visitas previas con score</span>
-              <strong>{Math.max(cmoHistoryDesc.length - 1, 0)}</strong>
-            </li>
-            <li>
-              <span>Cambio respecto a visita anterior</span>
-              <strong>
-                {cmoDelta === null
-                  ? 'N/A'
-                  : cmoDelta > 0
-                    ? `+${cmoDelta}`
-                    : `${cmoDelta}`}
-              </strong>
-            </li>
-          </ul>
-        ) : (
-          <p className="help-text">Sin puntuación CMO registrada. Completa la estratificación basal.</p>
-        )}
-      </section>
-
-      {cmoHistoryDesc.length > 1 ? (
-        <section className="card">
-          <h2>Evolución histórica CMO-RCV</h2>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Visita</th>
-                  <th>Fecha</th>
-                  <th style={{ textAlign: 'right' }}>Puntuación</th>
-                  <th>Nivel</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cmoHistoryDesc.map((entry, i) => {
-                  const m = LEVEL_META[entry.priority as 1 | 2 | 3];
-                  const prev = cmoHistoryDesc[i + 1];
-                  const delta = prev ? entry.score - prev.score : null;
-                  return (
-                    <tr key={entry.id}>
-                      <td>{entry.visit_number != null ? `V${entry.visit_number}` : 'Extraordinaria'}</td>
-                      <td>{entry.visit_date ?? entry.scheduled_date ?? entry.updated_at?.slice(0, 10) ?? '-'}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 700, color: m.color }}>
-                        {entry.score}
-                        {delta !== null ? (
-                          <span style={{ fontSize: '0.75rem', fontWeight: 400, color: delta > 0 ? '#dc2626' : delta < 0 ? '#16a34a' : '#6b7280', marginLeft: '0.35rem' }}>
-                            {delta > 0 ? `+${delta}` : delta}
-                          </span>
-                        ) : null}
-                      </td>
-                      <td style={{ color: m.color, fontWeight: 600, fontSize: '0.85rem' }}>{m.label}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ) : null}
-
-      <section className="card">
-        <h2>Resumen de intervenciones</h2>
-        {interventions.length === 0 ? (
-          <p className="help-text">No hay intervenciones registradas.</p>
-        ) : (
-          <ul className="simple-list">
-            {interventions.slice(0, 10).map((item) => (
-              <li key={item.id}>
-                <span>{item.intervention_type}</span>
-                <span>{item.priority_level ? PRIORITY_LEVEL_LABEL[item.priority_level] : '-'}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
     </div>
   );
 }

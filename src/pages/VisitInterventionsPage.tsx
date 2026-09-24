@@ -3,6 +3,11 @@ import { Link, useParams } from 'react-router-dom';
 
 import { ErrorState } from '../components/common/ErrorState';
 import { VisitTabs } from '../components/common/VisitTabs';
+import { CmoLevelBadge } from '../components/ui/CmoLevelBadge';
+import { Notice } from '../components/ui/Notice';
+import { SectionHeader } from '../components/ui/SectionHeader';
+import { StatusBadge } from '../components/ui/StatusBadge';
+import { CMO_LEVEL_META } from '../constants/cmoLevels';
 import { getCmoScoreByVisit, listCmoScoresByPatient, type CmoScoreRecord } from '../services/cmoScoreService';
 import {
   createIntervention,
@@ -74,12 +79,6 @@ const INTERVENTION_CATALOG: InterventionCatalogItem[] = [
   { code: 'L1-COO-02', label: 'Desarrollar planes de actuación asistencial interniveles para transiciones clínicas complejas.', domain: 'Coordinación con atención primaria/equipo asistencial', cmo_pillar: 'oportunidad', min_level: 1 },
   { code: 'L1-ADH-01', label: 'Implementar sistemas personalizados de dosificación para organizar regímenes farmacoterapéuticos complejos, minimizar errores de medicación y mejorar la seguridad en pacientes con alta polimedicación.', domain: 'Mejora de la adherencia terapéutica', cmo_pillar: 'oportunidad', min_level: 1 },
 ];
-
-const LEVEL_META = {
-  1: { label: 'Nivel 1 · Prioridad', color: '#dc2626', bg: '#fef2f2', border: '#fca5a5' },
-  2: { label: 'Nivel 2 · Intermedio', color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
-  3: { label: 'Nivel 3 · Basal', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
-} as const;
 
 const CMO_PILLAR_LABEL: Record<CmoPillar, string> = {
   capacidad: 'Capacidad',
@@ -300,7 +299,6 @@ export function VisitInterventionsPage() {
     setOtherIntervention(catalogItem ? '' : item.intervention_type);
   };
 
-  const cmoMeta = cmoScore ? LEVEL_META[cmoScore.priority as CmoLevel] : null;
   const isOtherIntervention = form.intervention_code === OTHER_INTERVENTION_CODE;
 
   return (
@@ -309,33 +307,23 @@ export function VisitInterventionsPage() {
         <h1>Registro de intervenciones</h1>
         <VisitTabs visitId={visitId} active="interventions" />
 
-        {cmoScore && cmoMeta ? (
-          <div
-            style={{
-              display: 'flex', alignItems: 'center', gap: '1rem',
-              padding: '0.55rem 1rem', borderRadius: '8px', marginBottom: '1rem',
-              background: cmoMeta.bg, border: `1px solid ${cmoMeta.border}`,
-            }}
-          >
-            <span style={{ fontSize: '1.6rem', fontWeight: 700, color: cmoMeta.color, lineHeight: 1, minWidth: '2.5ch', textAlign: 'center' }}>
-              {cmoScore.score}
-            </span>
-            <div>
-              <div style={{ fontWeight: 700, color: cmoMeta.color, fontSize: '0.95rem' }}>{cmoMeta.label}</div>
-              <div className="help-text" style={{ fontSize: '0.8rem', marginTop: '0.1rem' }}>
-                Puntuación CMO-RCV guardada para esta visita
-              </div>
-            </div>
+        {cmoScore ? (
+          <div className="visit-score-summary">
+            <span className="visit-context-label">Puntuación CMO-RCV guardada para esta visita</span>
+            <CmoLevelBadge level={cmoScore.priority} score={cmoScore.score} />
           </div>
         ) : (
-          <p className="help-text" style={{ marginBottom: '1rem' }}>
-            Sin puntuación CMO registrada para esta visita.{' '}
-            <Link to={`/visits/${visitId}/stratification`}>Completar estratificación</Link>
-            <br />
-            {inheritedLevel
-              ? `Nivel CMO vinculado propuesto: ${LEVEL_META[inheritedLevel.level].label} (última estratificación${inheritedLevel.date ? ` del ${inheritedLevel.date}` : ''}).`
-              : 'El paciente no tiene estratificación previa: selecciona el nivel CMO vinculado.'}
-          </p>
+          <Notice tone="info" className="visit-score-notice">
+            <p>
+              Sin puntuación CMO registrada para esta visita.{' '}
+              <Link to={`/visits/${visitId}/stratification`}>Completar estratificación</Link>
+            </p>
+            <p>
+              {inheritedLevel
+                ? `Nivel CMO vinculado propuesto: ${CMO_LEVEL_META[inheritedLevel.level].label} (última estratificación${inheritedLevel.date ? ` del ${inheritedLevel.date}` : ''}).`
+                : 'El paciente no tiene estratificación previa: selecciona el nivel CMO vinculado.'}
+            </p>
+          </Notice>
         )}
 
         <form className="form-grid" onSubmit={handleSubmit}>
@@ -411,7 +399,7 @@ export function VisitInterventionsPage() {
             Notas
             <textarea rows={3} value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} />
           </label>
-          <div className="actions-inline">
+          <div className="form-actions">
             <button type="submit" disabled={saving}>{saving ? 'Guardando...' : editingInterventionId ? 'Guardar cambios' : 'Guardar intervención'}</button>
             {editingInterventionId ? (
               <button type="button" className="secondary" onClick={() => {
@@ -428,28 +416,30 @@ export function VisitInterventionsPage() {
         {errorMessage ? <ErrorState title="No se pudo guardar/cargar intervenciones" message={errorMessage} /> : null}
       </section>
 
-      <section className="card">
-        <h2>Intervenciones de la visita</h2>
+      <section className="card" aria-labelledby="visit-interventions-title">
+        <SectionHeader id="visit-interventions-title" title="Intervenciones de la visita" description={`${items.length} registrada(s)`} />
         {items.length === 0 ? (
-          <p className="help-text">Sin intervenciones registradas para esta visita.</p>
+          <p className="empty-inline">Sin intervenciones registradas para esta visita.</p>
         ) : (
-          <ul className="simple-list">
+          <ul className="intervention-list">
             {items.map((item) => (
               <li key={item.id}>
-                <div style={{ display: 'grid', gap: '0.25rem' }}>
-                  <span>{item.intervention_type}</span>
-                  <span>{item.priority_level ? interventionPriorityLabel[item.priority_level] : '-'}</span>
-                  <span><strong>Pilar CMO:</strong> {getInterventionPillar(item) ? CMO_PILLAR_LABEL[getInterventionPillar(item) as CmoPillar] : 'No asignado'}</span>
-                  <span>{item.delivered ? 'Entregada' : 'Pendiente'}</span>
-                  {item.outcome?.trim() ? <span><strong>Resultado:</strong> {item.outcome.trim()}</span> : null}
-                  {item.notes?.trim() ? <span><strong>Notas:</strong> {item.notes.trim()}</span> : null}
-                  <button type="button" className="secondary" onClick={() => handleEditIntervention(item)}>Editar intervención</button>
+                <div className="intervention-main">
+                  <p className="intervention-title">{item.intervention_type}</p>
+                  <div className="intervention-meta">
+                    <span>{item.priority_level ? interventionPriorityLabel[item.priority_level] : '-'}</span>
+                    <span><strong>Pilar CMO:</strong> {getInterventionPillar(item) ? CMO_PILLAR_LABEL[getInterventionPillar(item) as CmoPillar] : 'No asignado'}</span>
+                    <StatusBadge tone={item.delivered ? 'positive' : 'neutral'}>{item.delivered ? 'Entregada' : 'Pendiente'}</StatusBadge>
+                  </div>
+                  {item.outcome?.trim() ? <p className="intervention-note"><strong>Resultado:</strong> {item.outcome.trim()}</p> : null}
+                  {item.notes?.trim() ? <p className="intervention-note"><strong>Notas:</strong> {item.notes.trim()}</p> : null}
                 </div>
+                <button type="button" className="secondary button-sm" onClick={() => handleEditIntervention(item)}>Editar intervención</button>
               </li>
             ))}
           </ul>
         )}
-        <div className="actions-inline" style={{ marginTop: '1rem' }}>
+        <div className="actions-inline section-footer-actions">
           <Link to={`/visits/${visitId}/stratification`}>Volver a estratificación</Link>
           {visitPatientId ? <Link to={`/patients/${visitPatientId}`}>Volver a paciente</Link> : null}
         </div>

@@ -215,18 +215,18 @@ export function VisitDocumentsPanel({ visitId, currentUserId, className }: Visit
         <h2>Documentos</h2>
       </div>
 
-      <p className="help-text" style={{ marginBottom: '0.85rem' }}>
+      <p className="help-text">
         Adjunta archivos PDF de esta visita clínica (máximo 6 MB por documento).
       </p>
 
       {errorMessage ? (
-        <p className="error-state" role="alert" style={{ marginBottom: '0.85rem' }}>
+        <p className="error-state panel-notice" role="alert">
           {errorMessage}
         </p>
       ) : null}
 
       {successMessage ? (
-        <p className="success-state" role="status" style={{ marginBottom: '0.85rem' }}>
+        <p className="success-state panel-notice" role="status">
           {successMessage}
         </p>
       ) : null}
@@ -287,21 +287,21 @@ export function VisitDocumentsPanel({ visitId, currentUserId, className }: Visit
         </div>
       </form>
 
-      <hr style={{ border: 'none', borderTop: '1px solid #e3edf3', margin: '1rem 0' }} />
+      <hr />
 
       {isLoadingList ? <p>Cargando documentos de la visita...</p> : null}
 
       {!isLoadingList && documents.length === 0 ? (
-        <div style={{ border: '1px dashed #cfe0ea', borderRadius: '10px', padding: '0.9rem', background: '#fbfdff' }}>
-          <p style={{ margin: 0, fontWeight: 600 }}>Todavía no hay documentos cargados.</p>
-          <p style={{ margin: '0.35rem 0 0', color: '#58707b' }}>
+        <div className="empty-state">
+          <h3>Todavía no hay documentos cargados.</h3>
+          <p>
             Puedes empezar subiendo el primer PDF de esta visita.
           </p>
         </div>
       ) : null}
 
       {!isLoadingList && documents.length > 0 ? (
-        <div className="table-wrap" style={{ marginTop: '0.5rem' }}>
+        <div className="table-wrap">
           <table>
             <thead>
               <tr>

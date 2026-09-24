@@ -8,7 +8,7 @@ type EmptyStateProps = {
 
 export function EmptyState({ title, description, action }: EmptyStateProps) {
   return (
-    <section className="card empty-state">
+    <section className="empty-state">
       <h2>{title}</h2>
       {description ? <p>{description}</p> : null}
       {action ? <div className="empty-state-action">{action}</div> : null}

@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 
 import { ErrorState } from '../components/common/ErrorState';
 import { VisitTabs } from '../components/common/VisitTabs';
-import { getVisitTypeLabel } from '../constants/enums';
+import { Notice } from '../components/ui/Notice';
 import {
   isQuestionnaireVisitType,
   listQuestionnairesByVisit,
@@ -347,14 +347,8 @@ export function VisitQuestionnairesPage() {
         <h1>Cuestionarios PRO</h1>
         <VisitTabs visitId={visitId} active="questionnaires" />
 
-        <p className="help-text" style={{ marginTop: '0.75rem' }}>
-          Visita actual: <strong>{getVisitTypeLabel(visitType)}</strong>
-        </p>
-
         {!questionnaireEnabled ? (
-          <p className="help-text" style={{ marginTop: '0.75rem' }}>
-            Este bloque solo aplica a visitas basal y final (Mes 12 provisional).
-          </p>
+          <Notice tone="info">Este bloque solo aplica a visitas basal y final (Mes 12 provisional).</Notice>
         ) : null}
       </section>
 
@@ -367,8 +361,8 @@ export function VisitQuestionnairesPage() {
               {IEXPAC_QUESTIONS.map((question, index) => {
                 const key = `q${index + 1}` as (typeof IEXPAC_ITEM_KEYS)[number];
                 return (
-                  <div key={key}>
-                    <p style={{ marginBottom: '0.35rem', fontWeight: 600 }}>{index + 1}. {question}</p>
+                  <fieldset key={key} className="questionnaire-item">
+                    <legend>{index + 1}. {question}</legend>
                     <div className="radio-row">
                       {LIKERT_LABELS.map((item) => (
                         <label key={item.value} className="radio-inline">
@@ -384,12 +378,12 @@ export function VisitQuestionnairesPage() {
                         </label>
                       ))}
                     </div>
-                  </div>
+                  </fieldset>
                 );
               })}
 
-              <div>
-                <p style={{ marginBottom: '0.35rem', fontWeight: 600 }}>12. Tras alta hospitalaria, ¿hubo continuidad asistencial? (opcional)</p>
+              <fieldset className="questionnaire-item">
+                <legend>12. Tras alta hospitalaria, ¿hubo continuidad asistencial? (opcional)</legend>
                 <div className="radio-row">
                   <label className="radio-inline">
                     <input
@@ -415,10 +409,10 @@ export function VisitQuestionnairesPage() {
                     </label>
                   ))}
                 </div>
-              </div>
+              </fieldset>
             </div>
 
-            <p className="help-text" style={{ marginTop: '0.75rem' }}>
+            <p className="questionnaire-result">
               Score global IEXPAC: <strong>{iexpacMetrics ? iexpacMetrics.totalScore.toFixed(2) : '-'}</strong> / 10
             </p>
           </article>
@@ -451,9 +445,9 @@ export function VisitQuestionnairesPage() {
               })}
             </div>
 
-            <p className="help-text" style={{ marginTop: '0.75rem' }}>
+            <p className="questionnaire-result">
               Estado adherencia:{' '}
-              <span className={moriskyMetrics?.totalScore === 1 ? 'badge-success' : 'badge-muted'}>
+              <span className={moriskyMetrics?.totalScore === 1 ? 'status-badge status-positive' : 'status-badge'}>
                 {moriskyMetrics?.adherenceLabel ?? 'Pendiente'}
               </span>
             </p>
@@ -466,8 +460,8 @@ export function VisitQuestionnairesPage() {
               {PAM10_QUESTIONS.map((question, index) => {
                 const key = `q${index + 1}` as (typeof PAM10_ITEM_KEYS)[number];
                 return (
-                  <div key={key}>
-                    <p style={{ marginBottom: '0.35rem', fontWeight: 600 }}>{index + 1}. {question}</p>
+                  <fieldset key={key} className="questionnaire-item">
+                    <legend>{index + 1}. {question}</legend>
                     <div className="radio-row">
                       {[
                         { value: 1, label: 'Totalmente en desacuerdo' },
@@ -489,12 +483,12 @@ export function VisitQuestionnairesPage() {
                         </label>
                       ))}
                     </div>
-                  </div>
+                  </fieldset>
                 );
               })}
             </div>
 
-            <p className="help-text" style={{ marginTop: '0.75rem' }}>
+            <p className="questionnaire-result">
               Puntuación total PAM-10: <strong>{pam10Metrics?.totalScore ?? '-'}</strong>
             </p>
           </article>
@@ -539,15 +533,17 @@ export function VisitQuestionnairesPage() {
               </label>
             </div>
 
-            <p className="help-text" style={{ marginTop: '0.75rem' }}>
+            <p className="questionnaire-result">
               Perfil EQ-5D: <strong>{eq5dMetrics?.profile ?? '-'}</strong> · VAS: <strong>{eq5dMetrics?.secondaryScore ?? '-'}</strong>
             </p>
           </article>
 
-          <button type="submit" disabled={!questionnaireEnabled || saving}>{saving ? 'Guardando...' : 'Guardar cuestionarios'}</button>
+          <div className="form-actions questionnaire-actions">
+            <button type="submit" disabled={!questionnaireEnabled || saving}>{saving ? 'Guardando...' : 'Guardar cuestionarios'}</button>
+          </div>
         </form>
 
-        {successMessage ? <div className="success-state" style={{ marginTop: '0.8rem' }}>{successMessage}</div> : null}
+        {successMessage ? <Notice tone="success">{successMessage}</Notice> : null}
         {errorMessage ? <ErrorState title="No se pudieron guardar los cuestionarios" message={errorMessage} /> : null}
       </section>
 

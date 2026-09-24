@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react';
 
+import { Notice } from '../../components/ui/Notice';
+import { SectionHeader } from '../../components/ui/SectionHeader';
+import { TrendDelta } from '../../components/ui/TrendDelta';
 import type { ClinicalAssessmentHistoryEntry } from '../../services/assessmentService';
 import {
   TREND_PARAMETERS,
@@ -22,8 +25,8 @@ const CHART_WIDTH = 640;
 const CHART_HEIGHT = 220;
 const PADDING = { top: 16, right: 16, bottom: 32, left: 48 };
 const LINE_COLOR = '#0e5e78';
-const GRID_COLOR = '#d6e3eb';
-const AXIS_TEXT_COLOR = '#58707b';
+const GRID_COLOR = '#dde5ea';
+const AXIS_TEXT_COLOR = '#5c717a';
 const MAX_DIRECT_LABELS = 8;
 
 function formatVisitLabel(entry: ClinicalAssessmentHistoryEntry): string {
@@ -79,13 +82,17 @@ export function BaselineTrendPanel({ entries, warning }: BaselineTrendPanelProps
   }, [points]);
 
   return (
-    <section className="card">
-      <h2>Evolución de parámetros basales</h2>
+    <section className="card" aria-labelledby="baseline-trend-title">
+      <SectionHeader
+        id="baseline-trend-title"
+        title="Evolución de parámetros basales"
+        description="Valores registrados en cada visita, en orden cronológico."
+      />
 
-      {warning ? <p className="help-text" style={{ color: '#b45309' }}>⚠️ {warning}</p> : null}
+      {warning ? <Notice tone="warning" className="trend-warning">{warning}</Notice> : null}
 
-      <div className="actions-inline" style={{ marginBottom: '0.8rem', flexWrap: 'wrap' }}>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', minWidth: '260px' }}>
+      <div className="trend-controls">
+        <label>
           <span>Parámetro</span>
           <select
             value={selectedKey}
@@ -105,14 +112,28 @@ export function BaselineTrendPanel({ entries, warning }: BaselineTrendPanelProps
         </label>
 
         {points.length >= 2 ? (
-          <button type="button" onClick={() => setShowTable((v) => !v)}>
+          <button type="button" className="button-secondary" onClick={() => setShowTable((v) => !v)}>
             {showTable ? 'Ver gráfico' : 'Ver como tabla'}
           </button>
         ) : null}
       </div>
 
+      {points.length >= 2 ? (
+        <p className="trend-summary">
+          <span>
+            Primera: <strong>{formatValue(points[0].value)}</strong> {selectedParameter.unit} ({points[0].label})
+          </span>
+          <span>
+            Última: <strong>{formatValue(points[points.length - 1].value)}</strong> {selectedParameter.unit} ({points[points.length - 1].label})
+          </span>
+          <span>
+            Cambio: <TrendDelta value={points[points.length - 1].value - points[0].value} decimals={Number.isInteger(points[0].value) && Number.isInteger(points[points.length - 1].value) ? 0 : 1} unit={selectedParameter.unit} />
+          </span>
+        </p>
+      ) : null}
+
       {points.length < 2 ? (
-        <p className="help-text">
+        <p className="empty-inline">
           Aún no hay suficientes visitas con "{selectedParameter.label}" registrado para representar una evolución
           ({points.length} {points.length === 1 ? 'valor disponible' : 'valores disponibles'}; se necesitan al menos 2).
         </p>
@@ -122,14 +143,14 @@ export function BaselineTrendPanel({ entries, warning }: BaselineTrendPanelProps
             <thead>
               <tr>
                 <th>Visita</th>
-                <th style={{ textAlign: 'right' }}>{selectedParameter.label} ({selectedParameter.unit})</th>
+                <th className="num">{selectedParameter.label} ({selectedParameter.unit})</th>
               </tr>
             </thead>
             <tbody>
               {points.map((point) => (
                 <tr key={point.visitId}>
                   <td>{point.label}</td>
-                  <td style={{ textAlign: 'right' }}>{formatValue(point.value)}</td>
+                  <td className="num strong">{formatValue(point.value)}</td>
                 </tr>
               ))}
             </tbody>
@@ -140,8 +161,7 @@ export function BaselineTrendPanel({ entries, warning }: BaselineTrendPanelProps
           role="img"
           aria-label={`Evolución de ${selectedParameter.label} a lo largo de ${points.length} visitas, de ${formatValue(points[0].value)} a ${formatValue(points[points.length - 1].value)} ${selectedParameter.unit}`}
           viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
-          width="100%"
-          style={{ maxWidth: `${CHART_WIDTH}px`, display: 'block' }}
+          className="trend-chart trend-chart-parameter"
           onMouseLeave={() => setHoverIndex(null)}
         >
           {[0, 0.5, 1].map((fraction) => {

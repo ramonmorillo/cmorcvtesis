@@ -3,6 +3,9 @@ import { Link, useParams } from 'react-router-dom';
 
 import { SMOKER_STATUS_OPTIONS } from '../constants/enums';
 import { ErrorState } from '../components/common/ErrorState';
+import { CmoResultPanel } from '../components/ui/CmoResultPanel';
+import { Notice } from '../components/ui/Notice';
+import { SectionHeader } from '../components/ui/SectionHeader';
 import { VisitTabs } from '../components/common/VisitTabs';
 import {
   type ClinicalAssessment,
@@ -15,7 +18,6 @@ import { getPatientById } from '../services/patientService';
 import {
   scoreCmo,
   type BiologicalSex,
-  type CmoLevel,
   type CmoScoringInput,
   type CmoScoringResult,
   type EducationLevel,
@@ -106,12 +108,6 @@ function toSmokingStatus(value: string): SmokingStatus {
 function toPhysicalActivityPattern(value: string): PhysicalActivityPattern {
   return value === 'sedentary' || value === 'intense' || value === 'normal' || value === 'unknown' ? value : 'unknown';
 }
-
-const LEVEL_META: Record<CmoLevel, { label: string; color: string; bg: string; border: string }> = {
-  1: { label: 'Nivel 1 · Prioridad', color: '#dc2626', bg: '#fef2f2', border: '#fca5a5' },
-  2: { label: 'Nivel 2 · Intermedio', color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
-  3: { label: 'Nivel 3 · Basal', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
-};
 
 const NUMERIC_FIELDS: [string, string][] = [
   ['non_hdl_mg_dl', 'No-HDL (mg/dL)'],
@@ -349,7 +345,6 @@ export function BaselineStratificationPage() {
   const hasUnsavedChanges = isEditingStratification && hasSavedAssessment;
   const displayedScore = hasUnsavedChanges || !savedCmoScore ? cmoResult.totalScore : savedCmoScore.score;
   const displayedLevel = hasUnsavedChanges || !savedCmoScore ? cmoResult.level : savedCmoScore.priority;
-  const meta = LEVEL_META[displayedLevel as CmoLevel];
 
   const assessmentPayload = useMemo<NewClinicalAssessmentInput>(() => ({
     visit_id: visitId,
@@ -449,34 +444,16 @@ export function BaselineStratificationPage() {
         <h1>Estratificación basal</h1>
         <VisitTabs visitId={visitId} active="clinical" />
 
-        <div
-          style={{
-            display: 'flex', alignItems: 'center', gap: '1rem',
-            padding: '0.65rem 1rem', borderRadius: '8px', marginBottom: '1rem',
-            background: meta.bg, border: `1px solid ${meta.border}`,
-          }}
-        >
-          <span
-            style={{
-              fontSize: '2rem', fontWeight: 700, lineHeight: 1,
-              minWidth: '2.5ch', textAlign: 'center', color: meta.color,
-            }}
-          >
-{displayedScore}
-          </span>
-          <div>
-            <div style={{ fontWeight: 700, color: meta.color }}>{meta.label}</div>
-            <div className="help-text" style={{ fontSize: '0.8rem', marginTop: '0.1rem' }}>
-{hasUnsavedChanges || !savedCmoScore ? 'puntos CMO-RCV · actualizado en tiempo real' : 'puntos CMO-RCV · guardado para esta visita'}
-            </div>
-          </div>
-        </div>
+        <CmoResultPanel
+          sticky
+          score={displayedScore}
+          level={displayedLevel}
+          statusText={hasUnsavedChanges || !savedCmoScore ? 'puntos CMO-RCV · actualizado en tiempo real' : 'puntos CMO-RCV · guardado para esta visita'}
+        />
 
         <form className="form-grid" onSubmit={handleSave}>
-          <div>
-            <p className="help-text" style={{ fontSize: '0.8rem', marginBottom: '0.5rem', fontWeight: 600 }}>
-              DEMOGRÁFICAS
-            </p>
+          <fieldset className="form-section">
+            <legend>Demográficas</legend>
             <div className="grid-2">
               <label>
                 Edad (años)
@@ -517,12 +494,10 @@ export function BaselineStratificationPage() {
                 </select>
               </label>
             </div>
-          </div>
+          </fieldset>
 
-          <div>
-            <p className="help-text" style={{ fontSize: '0.8rem', marginBottom: '0.5rem', fontWeight: 600 }}>
-              CLÍNICAS
-            </p>
+          <fieldset className="form-section">
+            <legend>Clínicas</legend>
             <div className="grid-2">
               <label>
                 HTA documentada
@@ -561,12 +536,10 @@ export function BaselineStratificationPage() {
                 </label>
               ))}
             </div>
-          </div>
+          </fieldset>
 
-          <div>
-            <p className="help-text" style={{ fontSize: '0.8rem', marginBottom: '0.5rem', fontWeight: 600 }}>
-              SOCIALES Y SANITARIAS
-            </p>
+          <fieldset className="form-section">
+            <legend>Sociales y sanitarias</legend>
             <div className="grid-2">
               <label>
                 Tabaquismo
@@ -596,12 +569,10 @@ export function BaselineStratificationPage() {
                 </select>
               </label>
             </div>
-          </div>
+          </fieldset>
 
-          <div>
-            <p className="help-text" style={{ fontSize: '0.8rem', marginBottom: '0.5rem', fontWeight: 600 }}>
-              FARMACOTERAPÉUTICAS
-            </p>
+          <fieldset className="form-section">
+            <legend>Farmacoterapéuticas</legend>
             <div className="grid-2">
               <label>
                 Nº medicamentos crónicos
@@ -632,9 +603,9 @@ export function BaselineStratificationPage() {
                 </select>
               </label>
             </div>
-          </div>
+          </fieldset>
 
-          <div className="actions-inline">
+          <div className="form-actions">
             {hasSavedAssessment && !isEditingStratification ? (
               <button type="button" onClick={handleStartEditStratification}>
                 Editar estratificación
@@ -647,7 +618,7 @@ export function BaselineStratificationPage() {
                   {saving ? 'Guardando...' : hasSavedAssessment ? 'Guardar cambios' : 'Guardar evaluación'}
                 </button>
                 {hasSavedAssessment ? (
-                  <button type="button" onClick={handleCancelEditStratification} disabled={saving}>
+                  <button type="button" className="button-secondary" onClick={handleCancelEditStratification} disabled={saving}>
                     Cancelar
                   </button>
                 ) : null}
@@ -657,15 +628,7 @@ export function BaselineStratificationPage() {
         </form>
 
         {saveSuccess ? (
-          <div
-            style={{
-              marginTop: '0.75rem', padding: '0.65rem 1rem', borderRadius: '8px',
-              background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d',
-              fontWeight: 600, fontSize: '0.9rem',
-            }}
-          >
-            Evaluación y puntuación CMO guardadas correctamente.
-          </div>
+          <Notice tone="success">Evaluación y puntuación CMO guardadas correctamente.</Notice>
         ) : null}
         {errorMessage ? (
           <ErrorState title="No se pudo guardar evaluación" message={errorMessage} />
@@ -673,23 +636,27 @@ export function BaselineStratificationPage() {
       </section>
 
       {hasFormData ? (
-        <section className="card">
-          <h2 style={{ marginBottom: '0.75rem' }}>Factores contribuyentes</h2>
+        <section className="card" aria-labelledby="cmo-factors">
+          <SectionHeader
+            id="cmo-factors"
+            title="Factores contribuyentes"
+            description="Variables del modelo CMO-RCV que suman puntuación con los datos introducidos."
+          />
 
           {cmoResult.triggeredVariables.length === 0 ? (
-            <p className="help-text">Ningún factor activo con los datos introducidos.</p>
+            <p className="empty-inline">Ningún factor activo con los datos introducidos.</p>
           ) : (
             <ul className="simple-list">
               {cmoResult.triggeredVariables.map((v) => (
                 <li key={v.code}>
                   <span>{v.rationale}</span>
-                  <strong style={{ color: meta.color }}>+{v.points}</strong>
+                  <strong className="points-chip">+{v.points}</strong>
                 </li>
               ))}
             </ul>
           )}
 
-          <div className="actions-inline" style={{ marginTop: '1rem' }}>
+          <div className="form-actions section-footer-actions">
             <Link className="button-link" to={`/visits/${visitId}/interventions`}>
               Registrar intervenciones
             </Link>

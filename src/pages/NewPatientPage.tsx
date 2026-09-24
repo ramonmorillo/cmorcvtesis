@@ -1,9 +1,10 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { SEX_TYPE_OPTIONS } from '../constants/enums';
 import type { SexType } from '../constants/enums';
 import { ErrorState } from '../components/common/ErrorState';
+import { PageHeader } from '../components/ui/PageHeader';
 import { createPatient } from '../services/patientService';
 
 export function NewPatientPage() {
@@ -71,12 +72,17 @@ export function NewPatientPage() {
   };
 
   return (
+    <div className="page-stack">
+      <PageHeader
+        eyebrow="IRIS · Cohorte"
+        title="Alta de paciente"
+        description="Registro de inclusión en el estudio. Los campos marcados con * son obligatorios."
+      />
     <section className="card">
-      <h1>Alta de paciente</h1>
       <form className="form-grid" onSubmit={handleSubmit}>
         <div className="grid-2">
           <label>
-            Study code
+            <span>Study code <span className="required-mark" aria-hidden="true">*</span></span>
             <input value={form.study_code} onChange={(e) => setForm((p) => ({ ...p, study_code: e.target.value }))} required />
           </label>
           <label>
@@ -121,7 +127,7 @@ export function NewPatientPage() {
             />
           </label>
           <label>
-            Sexo
+            <span>Sexo <span className="required-mark" aria-hidden="true">*</span></span>
             <select value={form.sex} onChange={(e) => setForm((p) => ({ ...p, sex: e.target.value as SexType }))} required>
               <option value="" disabled>
                 Selecciona una opción
@@ -142,11 +148,17 @@ export function NewPatientPage() {
           />
           Consentimiento firmado
         </label>
-        <button type="submit" disabled={saving}>
-          {saving ? 'Guardando...' : 'Guardar paciente'}
-        </button>
+        <div className="form-actions">
+          <button type="submit" disabled={saving}>
+            {saving ? 'Guardando...' : 'Guardar paciente'}
+          </button>
+          <Link className="button-link button-secondary" to="/patients">
+            Cancelar
+          </Link>
+        </div>
       </form>
       {errorMessage ? <ErrorState title="No se pudo guardar" message={errorMessage} /> : null}
     </section>
+    </div>
   );
 }

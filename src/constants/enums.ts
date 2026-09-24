@@ -107,3 +107,8 @@ export const SMOKER_STATUS_OPTIONS = [
 ] as const;
 
 export type SmokerStatus = (typeof SMOKER_STATUS_OPTIONS)[number]['value'];
+
+export function getSexLabel(sex: string | null | undefined): string {
+  if (!sex) return '-';
+  return SEX_TYPE_OPTIONS.find((option) => option.value === sex)?.label ?? sex;
+}

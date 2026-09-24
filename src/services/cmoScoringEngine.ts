@@ -72,7 +72,7 @@ export interface CmoScoringResult {
   triggeredVariables: CmoTriggeredVariable[];
 }
 
-const LEVEL_THRESHOLDS: ReadonlyArray<{ minScore: number; level: CmoLevel }> = [
+export const LEVEL_THRESHOLDS: ReadonlyArray<{ minScore: number; level: CmoLevel }> = [
   { minScore: 37, level: 1 },
   { minScore: 27, level: 2 },
   { minScore: 0, level: 3 },

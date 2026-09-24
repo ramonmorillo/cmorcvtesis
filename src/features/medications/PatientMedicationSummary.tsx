@@ -1,3 +1,5 @@
+import { Notice } from '../../components/ui/Notice';
+import { SectionHeader } from '../../components/ui/SectionHeader';
 import type { PatientMedication } from './types';
 import { normalizeMedicationDisplayName } from './displayFormat';
 
@@ -25,28 +27,26 @@ export function PatientMedicationSummary({ medications, warning, latestReviewDat
   const formattedLatestReviewDate = formatStartDate(latestReviewDate);
 
   return (
-    <section className="card">
-      <h2>Medicación activa actual</h2>
+    <section className="card" aria-labelledby="active-medication-title">
+      <SectionHeader
+        id="active-medication-title"
+        title="Medicación activa actual"
+        description={`Tratamientos activos: ${medications.length} · Última revisión de medicación: ${formattedLatestReviewDate || 'No disponible'}`}
+      />
 
-      {warning ? (
-        <p className="help-text" style={{ marginBottom: '0.8rem', color: '#b45309' }}>
-          ⚠️ {warning}
-        </p>
-      ) : null}
+      {warning ? <Notice tone="warning" className="trend-warning">{warning}</Notice> : null}
 
       {medications.length === 0 ? (
-        <p className="help-text">Sin medicación activa registrada actualmente.</p>
+        <p className="empty-inline">Sin medicación activa registrada actualmente.</p>
       ) : (
         <>
           <ul className="simple-list">
             {medications.map((item) => (
               <li key={item.id}>
-                <div style={{ width: '100%' }}>
+                <div className="medication-item">
                   <strong>{normalizeMedicationDisplayName(item.medication_catalog?.display_name ?? 'Medicamento sin nombre')}</strong>
                   {item.medication_catalog?.source === 'external_cima' ? (
-                    <span className="badge-success" style={{ marginLeft: '0.45rem' }}>
-                      CIMA
-                    </span>
+                    <span className="status-badge status-info medication-source">CIMA</span>
                   ) : null}
                   {(() => {
                     const startDate = formatStartDate(item.start_date);
@@ -62,11 +62,9 @@ export function PatientMedicationSummary({ medications, warning, latestReviewDat
                     }
 
                     return (
-                      <div style={{ marginTop: '0.2rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                      <div className="medication-details">
                         {details.map((detail) => (
-                          <span key={detail} className="help-text">
-                            {detail}
-                          </span>
+                          <span key={detail}>{detail}</span>
                         ))}
                       </div>
                     );
@@ -77,9 +75,6 @@ export function PatientMedicationSummary({ medications, warning, latestReviewDat
           </ul>
         </>
       )}
-      <p className="help-text" style={{ marginTop: '0.8rem' }}>
-        Tratamientos activos: {medications.length} · Última revisión de medicación: {formattedLatestReviewDate || 'No disponible'}
-      </p>
     </section>
   );
 }

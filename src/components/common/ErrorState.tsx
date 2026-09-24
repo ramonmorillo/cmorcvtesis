@@ -5,7 +5,7 @@ type ErrorStateProps = {
 
 export function ErrorState({ title = 'Ha ocurrido un error', message }: ErrorStateProps) {
   return (
-    <section className="card error-state" role="alert">
+    <section className="error-state" role="alert">
       <h2>{title}</h2>
       <p>{message}</p>
     </section>
