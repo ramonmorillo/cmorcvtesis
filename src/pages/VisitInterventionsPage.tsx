@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 
 import { ErrorState } from '../components/common/ErrorState';
 import { VisitTabs } from '../components/common/VisitTabs';
-import { getCmoScoreByVisit, type CmoScoreRecord } from '../services/cmoScoreService';
+import { getCmoScoreByVisit, listCmoScoresByPatient, type CmoScoreRecord } from '../services/cmoScoreService';
 import {
   createIntervention,
   updateIntervention,
@@ -12,6 +12,7 @@ import {
   type PriorityLevel,
 } from '../services/interventionService';
 import { getVisitById } from '../services/visitService';
+import { pickReferenceStratification } from '../utils/referenceStratification';
 
 type CmoPillar = 'capacidad' | 'motivacion' | 'oportunidad';
 type CmoLevel = 1 | 2 | 3;
@@ -121,6 +122,7 @@ export function VisitInterventionsPage() {
   const { visitId = '' } = useParams();
   const [visitPatientId, setVisitPatientId] = useState('');
   const [cmoScore, setCmoScore] = useState<CmoScoreRecord | null>(null);
+  const [inheritedLevel, setInheritedLevel] = useState<{ level: CmoLevel; date: string | null } | null>(null);
   const [items, setItems] = useState<Intervention[]>([]);
   const [form, setForm] = useState({
     intervention_code: '',
@@ -129,7 +131,8 @@ export function VisitInterventionsPage() {
     cmo_pillar: '' as CmoPillar | '',
     priority_level: 'low' as PriorityLevel,
     delivered: true,
-    linked_to_cmo_level: '3',
+    // No default level: it must come from the visit's (or latest prior) stratification or be chosen explicitly.
+    linked_to_cmo_level: '',
     outcome: '',
     notes: '',
   });
@@ -151,9 +154,22 @@ export function VisitInterventionsPage() {
   };
 
   useEffect(() => {
-    void getCmoScoreByVisit(visitId).then(({ data }) => {
+    void (async () => {
+      const { data: visitScore } = await getCmoScoreByVisit(visitId);
+      let data = visitScore;
+      if (visitScore) {
+        setCmoScore(visitScore);
+      } else {
+        // Visit without its own score: the patient's current level is the latest prior stratification.
+        const { data: visit } = await getVisitById(visitId);
+        if (!visit?.patient_id) return;
+        const { data: history } = await listCmoScoresByPatient(visit.patient_id);
+        const reference = pickReferenceStratification(history, visit.visit_date ?? visit.scheduled_date);
+        if (!reference) return;
+        data = reference;
+        setInheritedLevel({ level: Number(reference.priority) as CmoLevel, date: reference.visit_date ?? reference.scheduled_date });
+      }
       if (data) {
-        setCmoScore(data);
         const level = Number(data.priority) as CmoLevel;
         setForm({
           intervention_code: '',
@@ -167,7 +183,7 @@ export function VisitInterventionsPage() {
           notes: '',
         });
       }
-    });
+    })();
   }, [visitId]);
 
   const linkedLevel = Number(form.linked_to_cmo_level) as CmoLevel;
@@ -315,6 +331,10 @@ export function VisitInterventionsPage() {
           <p className="help-text" style={{ marginBottom: '1rem' }}>
             Sin puntuación CMO registrada para esta visita.{' '}
             <Link to={`/visits/${visitId}/stratification`}>Completar estratificación</Link>
+            <br />
+            {inheritedLevel
+              ? `Nivel CMO vinculado propuesto: ${LEVEL_META[inheritedLevel.level].label} (última estratificación${inheritedLevel.date ? ` del ${inheritedLevel.date}` : ''}).`
+              : 'El paciente no tiene estratificación previa: selecciona el nivel CMO vinculado.'}
           </p>
         )}
 
@@ -370,7 +390,8 @@ export function VisitInterventionsPage() {
             </label>
             <label>
               Nivel CMO vinculado
-              <select value={form.linked_to_cmo_level} onChange={(e) => setForm((p) => ({ ...p, linked_to_cmo_level: e.target.value }))}>
+              <select required value={form.linked_to_cmo_level} onChange={(e) => setForm((p) => ({ ...p, linked_to_cmo_level: e.target.value }))}>
+                <option value="" disabled>Seleccionar nivel</option>
                 <option value="1">1 · Prioridad</option>
                 <option value="2">2 · Intermedio</option>
                 <option value="3">3 · Basal</option>
