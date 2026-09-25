@@ -35,7 +35,7 @@ npm run dev
 npm run build
 ```
 
-La configuración `base: '/cmorcvtesis/'` evita rutas rotas en Pages.
+La configuración `base: '/'` sirve los assets desde la raíz del dominio personalizado de GitHub Pages.
 
 ## Motor PDF en navegador (producción)
 
