@@ -125,9 +125,9 @@ export function AppShell() {
             </NavLink>
           </nav>
           <div className="topbar-meta">
-            <span className="system-status" title="Sesión autenticada en el entorno clínico de IRIS">
+            <span className="system-status" title="Sesión autenticada en el entorno profesional de IRIS">
               <span className="system-status-dot" aria-hidden="true" />
-              Entorno clínico activo
+              Entorno profesional seguro
             </span>
             <button type="button" className="nav-signout" onClick={handleSignOut} disabled={isSigningOut}>
               {isSigningOut ? 'Saliendo...' : 'Cerrar sesión'}

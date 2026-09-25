@@ -9,6 +9,7 @@ import { NewVisitPage } from './pages/NewVisitPage';
 import { PatientDetailPage } from './pages/PatientDetailPage';
 import { PatientsPage } from './pages/PatientsPage';
 import { ProjectPage } from './pages/ProjectPage';
+import { PublicInfoPage } from './pages/PublicInfoPage';
 import { VisitInterventionsPage } from './pages/VisitInterventionsPage';
 import { VisitMedicationsPage } from './pages/VisitMedicationsPage';
 import { VisitQuestionnairesPage } from './pages/VisitQuestionnairesPage';
@@ -19,12 +20,16 @@ import { VisitProcessPage } from './pages/VisitProcessPage';
 export const router = createHashRouter([
   {
     path: '/',
-    element: <Navigate to="/login" replace />,
+    element: <LoginPage />,
   },
   {
     path: '/login',
     element: <LoginPage />,
   },
+  ...['/legal', '/privacy', '/security', '/cookies'].map((path) => ({
+    path,
+    element: <PublicInfoPage />,
+  })),
   {
     path: '/',
     element: <AppShell />,
