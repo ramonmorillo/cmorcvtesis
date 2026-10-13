@@ -147,6 +147,14 @@ function toSuggestionSet(values: readonly string[]): Set<string> {
 }
 
 const FREQUENCY_SET = toSuggestionSet(FREQUENCY_SUGGESTIONS);
+
+// Opción del desplegable de frecuencia que corresponde al valor guardado ('otra' = texto libre).
+function frequencySelectValue(value: string, isCustom: boolean): string {
+  if (isCustom) return 'otra';
+  const normalized = normalizeSuggestionToken(value);
+  if (!normalized) return '';
+  return FREQUENCY_SUGGESTIONS.find((option) => option !== 'otra' && normalizeSuggestionToken(option) === normalized) ?? 'otra';
+}
 const INDICATION_SET = toSuggestionSet(INDICATION_SUGGESTIONS);
 
 function isSuggestedValue(value: string, suggestionSet: ReadonlySet<string>): boolean {
@@ -188,6 +196,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [customFrequencyRows, setCustomFrequencyRows] = useState<Set<number>>(new Set());
 
   const [externalCatalogQuery, setExternalCatalogQuery] = useState('');
   const [externalCatalogOptions, setExternalCatalogOptions] = useState<ExternalMedicationSearchItem[]>([]);
@@ -221,6 +230,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
     items: Awaited<ReturnType<typeof listVisitMedicationSnapshot>>['data'],
     justCreatedId?: string | null,
   ) => {
+    setCustomFrequencyRows(new Set());
     setRows(
       items.map((item) => ({
         ...(item.medication_catalog
@@ -689,12 +699,37 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
               </label>
               <label>
                 Frecuencia
-                <input
-                  list="medication-frequency-options"
-                  value={row.frequency_text}
-                  onChange={(event) => handleChange(index, 'frequency_text', event.target.value)}
-                  placeholder="Ej. 1 vez/día o cada 12 h"
-                />
+                <select
+                  value={frequencySelectValue(row.frequency_text, customFrequencyRows.has(index))}
+                  onChange={(event) => {
+                    const selected = event.target.value;
+                    const isCustom = selected === 'otra';
+                    setCustomFrequencyRows((prev) => {
+                      const next = new Set(prev);
+                      if (isCustom) next.add(index);
+                      else next.delete(index);
+                      return next;
+                    });
+                    if (!isCustom) handleChange(index, 'frequency_text', selected);
+                    else if (isSuggestedValue(row.frequency_text, FREQUENCY_SET)) handleChange(index, 'frequency_text', '');
+                  }}
+                >
+                  <option value="">Seleccionar frecuencia</option>
+                  {FREQUENCY_SUGGESTIONS.filter((option) => option !== 'otra').map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                  <option value="otra">Otra (texto libre)</option>
+                </select>
+                {frequencySelectValue(row.frequency_text, customFrequencyRows.has(index)) === 'otra' ? (
+                  <input
+                    value={row.frequency_text}
+                    onChange={(event) => handleChange(index, 'frequency_text', event.target.value)}
+                    placeholder="Ej. cada 48 h"
+                    aria-label="Frecuencia (texto libre)"
+                  />
+                ) : null}
                 {!isSuggestedValue(row.frequency_text, FREQUENCY_SET) ? (
                   <span className="help-text text-warning">
                     ⚠ Valor fuera de sugerencias. Se guardará como texto libre.
@@ -755,11 +790,6 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
           </article>
         ))}
 
-        <datalist id="medication-frequency-options">
-          {FREQUENCY_SUGGESTIONS.map((option) => (
-            <option key={option} value={option} />
-          ))}
-        </datalist>
         <datalist id="medication-indication-options">
           {INDICATION_SUGGESTIONS.map((option) => (
             <option key={option} value={option} />
