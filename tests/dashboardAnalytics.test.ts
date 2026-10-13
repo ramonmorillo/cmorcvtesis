@@ -199,3 +199,15 @@ describe('calculateLongitudinalDashboardMetrics', () => {
     expect(metrics.patientsWithoutFollowup90d).toBe(1);
   });
 });
+
+describe('desglose nominal sin seguimiento >90 días', () => {
+  it('lista exactamente los pacientes que suman al contador', () => {
+    const metrics = calculateLongitudinalDashboardMetrics(
+      ['p1', 'p2'],
+      [visit('v1', 'p1', 'baseline', '2026-01-01', 30, 2), visit('v2', 'p2', 'baseline', '2026-09-01', 30, 2)],
+      '2026-10-13',
+    );
+    expect(metrics.patientIdsWithoutFollowup90d).toEqual(['p1']);
+    expect(metrics.patientsWithoutFollowup90d).toBe(1);
+  });
+});

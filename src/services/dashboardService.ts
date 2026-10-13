@@ -2,6 +2,15 @@ import { supabase } from '../lib/supabase';
 import { type CmoPillar } from '../constants/interventionCatalog';
 import { calculateLongitudinalDashboardMetrics, type DashboardScore } from './dashboardAnalytics';
 
+export type DashboardPatientRef = { id: string; study_code: string | null };
+export type DashboardVisitRef = {
+  id: string;
+  patient_id: string;
+  study_code: string | null;
+  visit_type: string | null;
+  date: string | null;
+};
+
 export type DashboardData = {
   pro: {
     cohort: {
@@ -45,6 +54,14 @@ export type DashboardData = {
     visitsWithoutInterventions: number;
     level1PatientsWithoutIntervention: number;
   };
+  /** Listados nominales que respaldan los contadores de seguimiento y calidad de datos (mismo criterio de cálculo). */
+  drilldown: {
+    patientsWithoutFollowup90d: DashboardPatientRef[];
+    patientsWithoutBaselineStratification: DashboardPatientRef[];
+    level1PatientsWithoutIntervention: DashboardPatientRef[];
+    visitsWithoutScore: DashboardVisitRef[];
+    visitsWithoutInterventions: DashboardVisitRef[];
+  };
   kpiFallbackNotes: string[];
   upcomingVisits: Array<{ id: string; patient_id: string; study_code: string | null; visit_type: string | null; scheduled_date: string | null }>;
   recentVisits: Array<{ id: string; patient_id: string; study_code: string | null; visit_type: string | null; visit_date: string | null }>;
@@ -82,7 +99,7 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
     interventionsRes,
     interventionsAggRes,
   ] = await Promise.all([
-    supabase.from('patients').select('id,age_at_inclusion,sex'),
+    supabase.from('patients').select('id,study_code,age_at_inclusion,sex'),
     supabase
       .from('visits')
       .select('id,patient_id,visit_type,visit_date,scheduled_date,visit_status,created_at,cmo_scores(id,score,priority),clinical_assessments(id),interventions(id)'),
@@ -144,7 +161,11 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
     if (pillar) byPillar[pillar] += 1;
   }
 
-  const allPatients = (patientsRes.data ?? []) as Array<{ id: string; age_at_inclusion: number | null; sex: string | null }>;
+  const allPatients = (patientsRes.data ?? []) as Array<{ id: string; study_code: string | null; age_at_inclusion: number | null; sex: string | null }>;
+  const studyCodeByPatientId = new Map(allPatients.map((patient) => [patient.id, patient.study_code ?? null]));
+  const toPatientRef = (patientId: string): DashboardPatientRef => ({ id: patientId, study_code: studyCodeByPatientId.get(patientId) ?? null });
+  const byStudyCode = (a: { study_code: string | null }, b: { study_code: string | null }) =>
+    (a.study_code ?? '').localeCompare(b.study_code ?? '', 'es', { numeric: true });
   const visitsForQuality = (visitsForQualityRes.data ?? []) as Array<{
     id: string;
     patient_id: string;
@@ -187,9 +208,10 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
     }
   }
 
-  const patientsWithoutBaselineStratification = allPatients.reduce((count, patient) => {
-    return count + (baselineStratifiedPatientIds.has(patient.id) ? 0 : 1);
-  }, 0);
+  const patientsWithoutBaselineList = allPatients
+    .filter((patient) => !baselineStratifiedPatientIds.has(patient.id))
+    .map((patient) => toPatientRef(patient.id));
+  const patientsWithoutBaselineStratification = patientsWithoutBaselineList.length;
   const kpiFallbackNotes: string[] = [];
 
   if (baselineStratifiedPatientIds.size === 0 && allPatients.length > 0) {
@@ -199,28 +221,41 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
   }
 
   const interventionsByPatient = new Map<string, number>();
-  let visitsWithoutScore = 0;
-  let visitsWithoutInterventions = 0;
+  const visitsWithoutScoreList: DashboardVisitRef[] = [];
+  const visitsWithoutInterventionsList: DashboardVisitRef[] = [];
   for (const visit of visitsForQuality) {
     const scoreRows = Array.isArray(visit.cmo_scores) ? visit.cmo_scores : (visit.cmo_scores ? [visit.cmo_scores] : []);
     const interventionRows = Array.isArray(visit.interventions)
       ? visit.interventions
       : (visit.interventions ? [visit.interventions] : []);
 
-    if (scoreRows.length === 0) visitsWithoutScore += 1;
-    if (interventionRows.length === 0) visitsWithoutInterventions += 1;
+    const visitRef: DashboardVisitRef = {
+      id: visit.id,
+      patient_id: visit.patient_id,
+      study_code: studyCodeByPatientId.get(visit.patient_id) ?? null,
+      visit_type: visit.visit_type,
+      date: visit.visit_date ?? visit.scheduled_date ?? null,
+    };
+    if (scoreRows.length === 0) visitsWithoutScoreList.push(visitRef);
+    if (interventionRows.length === 0) visitsWithoutInterventionsList.push(visitRef);
     interventionsByPatient.set(visit.patient_id, (interventionsByPatient.get(visit.patient_id) ?? 0) + interventionRows.length);
   }
 
   const totalPatients = allPatients.length;
   const avgInterventionsPerPatient = totalPatients === 0 ? 0 : Number(((interventionsAggRes.count ?? 0) / totalPatients).toFixed(2));
 
-  let level1PatientsWithoutIntervention = 0;
+  const visitsWithoutScore = visitsWithoutScoreList.length;
+  const visitsWithoutInterventions = visitsWithoutInterventionsList.length;
+  const byVisitOrder = (a: DashboardVisitRef, b: DashboardVisitRef) =>
+    byStudyCode(a, b) || (a.date ?? '9999-12-31').localeCompare(b.date ?? '9999-12-31');
+
+  const level1WithoutInterventionList: DashboardPatientRef[] = [];
   longitudinalMetrics.latestPriorityByPatient.forEach((priority, patientId) => {
     if (priority === 1 && (interventionsByPatient.get(patientId) ?? 0) === 0) {
-      level1PatientsWithoutIntervention += 1;
+      level1WithoutInterventionList.push(toPatientRef(patientId));
     }
   });
+  const level1PatientsWithoutIntervention = level1WithoutInterventionList.length;
 
   const scoreAggregation = new Map<string, { total: number; count: number }>();
   for (const row of scoresByVisitType) {
@@ -313,6 +348,13 @@ export async function loadDashboardData(): Promise<{ data: DashboardData | null;
         visitsWithoutScore,
         visitsWithoutInterventions,
         level1PatientsWithoutIntervention,
+      },
+      drilldown: {
+        patientsWithoutFollowup90d: longitudinalMetrics.patientIdsWithoutFollowup90d.map(toPatientRef).sort(byStudyCode),
+        patientsWithoutBaselineStratification: patientsWithoutBaselineList.sort(byStudyCode),
+        level1PatientsWithoutIntervention: level1WithoutInterventionList.sort(byStudyCode),
+        visitsWithoutScore: visitsWithoutScoreList.sort(byVisitOrder),
+        visitsWithoutInterventions: visitsWithoutInterventionsList.sort(byVisitOrder),
       },
       kpiFallbackNotes,
       upcomingVisits: ((upcomingRes.data ?? []) as Array<{

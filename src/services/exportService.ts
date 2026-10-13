@@ -34,6 +34,7 @@ type ScoreRow = {
   visit_id: string;
   score: number | null;
   priority: number | null;
+  calculated_priority: number | null;
 };
 
 type InterventionRow = {
@@ -428,7 +429,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
   ] = await Promise.all([
     supabase.from('patients').select('id,study_code,inclusion_date,age_at_inclusion,sex,created_at').order('created_at', { ascending: true }),
     supabase.from('visits').select('id,patient_id,visit_type,visit_number,visit_date,scheduled_date,created_at').order('created_at', { ascending: true }),
-    supabase.from('cmo_scores').select('visit_id,score,priority'),
+    supabase.from('cmo_scores').select('visit_id,score,priority,calculated_priority'),
     supabase.from('interventions').select('id,visit_id,intervention_type,intervention_domain,priority_level,delivered,linked_to_cmo_level,outcome,notes,created_at').order('created_at', { ascending: true }),
     supabase.from('clinical_assessments').select('visit_id,education_level,pregnancy_postpartum,biological_sex,race_ethnicity_risk,hypertension_present,cv_pathology_present,comorbidities_present,recent_cvd_12m,hospital_er_use_12m,physical_activity_pattern,social_support_absent,psychosocial_stress,chronic_med_count,recent_regimen_change,regimen_complexity_present,adherence_problem,systolic_bp,diastolic_bp,heart_rate,weight_kg,height_cm,bmi,waist_cm,ldl_mg_dl,hdl_mg_dl,non_hdl_mg_dl,fasting_glucose_mg_dl,hba1c_pct,score2_value,framingham_value,cv_risk_level,smoker_status,diet_score,adverse_events_count,high_risk_medication_present'),
     listAllQuestionnaires(),
@@ -544,6 +545,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
       patient_id: anonymizedPatientIdByRawId.get(visit.patient_id) ?? '',
       score_cmo: score?.score ?? null,
       nivel_cmo: score?.priority ?? null,
+      nivel_cmo_calculado: score?.calculated_priority ?? score?.priority ?? null,
       IEXPAC: q?.get('iexpac')?.total_score ?? null,
       Morisky: q?.get('morisky')?.total_score ?? null,
       EQ5D_vas: q?.get('eq5d')?.secondary_score ?? null,
@@ -627,6 +629,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
       sexo: patient?.sex ?? assessment?.biological_sex ?? '',
       score_cmo: score?.score ?? null,
       nivel_cmo: score?.priority ?? null,
+      nivel_cmo_calculado: score?.calculated_priority ?? score?.priority ?? null,
       IEXPAC: qByType?.get('iexpac')?.total_score ?? null,
       Morisky: qByType?.get('morisky')?.total_score ?? null,
       EQ5D_vas: qByType?.get('eq5d')?.secondary_score ?? null,
@@ -773,7 +776,8 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
     edad: 'Edad en el momento de inclusion',
     sexo: 'Sexo',
     score_cmo: 'Puntuacion CMO total',
-    nivel_cmo: 'Nivel CMO (prioridad)',
+    nivel_cmo: 'Nivel CMO final (prioridad, incluye ajuste clinico)',
+    nivel_cmo_calculado: 'Nivel CMO calculado por el modelo',
     IEXPAC: 'Puntuacion IEXPAC (capacitacion paciente)',
     Morisky: 'Puntuacion Morisky (adherencia)',
     EQ5D_vas: 'EQ5D VAS (calidad de vida)',

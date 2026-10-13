@@ -139,3 +139,29 @@ export async function deletePatientById(id: string): Promise<{ success: boolean;
 
   return { success: true, errorMessage: null };
 }
+
+export async function updatePatientConsent(
+  id: string,
+  consentSigned: boolean,
+): Promise<{ data: Patient | null; errorMessage: string | null }> {
+  if (!supabase) {
+    return { data: null, errorMessage: 'Supabase no está configurado. No se puede actualizar el consentimiento.' };
+  }
+
+  const { data, error } = await supabase
+    .from('patients')
+    .update({ consent_signed: consentSigned })
+    .eq('id', id)
+    .select(PATIENT_SELECT)
+    .maybeSingle();
+
+  if (error) {
+    return { data: null, errorMessage: extractErrorMessage(error) };
+  }
+  if (!data) {
+    // RLS: solo quien creó el paciente (o un admin) puede modificarlo; la fila no se devuelve si no hay permiso.
+    return { data: null, errorMessage: 'No tienes permiso para modificar este paciente (solo su creador o un administrador).' };
+  }
+
+  return { data: data as Patient, errorMessage: null };
+}

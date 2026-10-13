@@ -1101,3 +1101,29 @@ html { scroll-behavior: smooth; scroll-padding-top: 5rem; }
   html { scroll-padding-top: 4rem; }.public-nav { min-height: 64px; }.public-nav nav > a:not(.public-access-link) { display: none; }.public-nav .public-access-link { min-height: 40px; padding-inline: var(--sp-3); }.public-hero { min-height: 0; padding: 7.5rem 0 4rem; }.hero-copy h1 { font-size: clamp(2.25rem, 12vw, 3.25rem); }.hero-actions > a { flex: 1 1 auto; justify-content: center; }.longitudinal-card { padding: var(--sp-3); }.public-section { padding: 3.75rem 0; }.value-grid, .feature-grid { grid-template-columns: 1fr; }.value-card, .value-card:first-child, .value-card:last-child { padding: var(--sp-5) 0; border-right: 0; border-bottom: 1px solid var(--iris-border); }.value-card:last-child { border-bottom: 0; }.value-card > span { margin-bottom: var(--sp-3); }.process-list { grid-template-columns: 1fr; gap: 0; }.process-list li { min-height: 70px; grid-template-columns: 34px 1fr; align-items: start; }.process-list li:not(:last-child)::after { top: 34px; bottom: 0; left: 17px; right: auto; width: 1px; height: auto; }.process-list strong { padding-top: 7px; }.mockup-body { grid-template-columns: 72px 1fr; }.mockup-body aside { padding-inline: var(--sp-2); }.mockup-content { padding: var(--sp-3); }.mockup-metrics span { padding: var(--sp-2); }.cmo-pillars { grid-template-columns: 1fr; }.cmo-pillars span { grid-template-columns: 45px 1fr; align-items: center; border-left: 0; border-top: 1px solid rgba(255,255,255,.17); }.access-grid { display: block; }.access-section .auth-card { margin-top: var(--sp-8); }.public-footer nav { gap: var(--sp-3) var(--sp-5); }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .timeline-point { animation: none; } }
+
+.consent-control { display: inline-flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+
+.drilldown { margin-top: var(--sp-2); font-size: var(--fs-sm); font-weight: 400; }
+.drilldown > summary { cursor: pointer; color: var(--iris-teal-800); font-weight: 600; }
+.drilldown-list { list-style: none; margin: var(--sp-2) 0 0; padding: 0; display: grid; gap: var(--sp-1); max-height: 14rem; overflow-y: auto; }
+.drilldown-list li { display: flex; justify-content: space-between; gap: var(--sp-2); }
+.drilldown-meta { color: var(--iris-muted); font-variant-numeric: tabular-nums; }
+
+/* Agenda */
+.agenda-layout { display: grid; grid-template-columns: minmax(0, 22rem) minmax(0, 1fr); gap: var(--sp-5); align-items: start; }
+@media (max-width: 860px) { .agenda-layout { grid-template-columns: minmax(0, 1fr); } }
+.agenda-calendar-header, .agenda-day-header { display: flex; align-items: center; gap: var(--sp-2); }
+.agenda-calendar-header { justify-content: space-between; margin-bottom: var(--sp-3); }
+.agenda-day-title { margin: 0 0 0 var(--sp-2); font-size: 1.05rem; text-transform: capitalize; }
+.agenda-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.agenda-weekday { text-align: center; font-size: var(--fs-xs); font-weight: 600; color: var(--iris-muted); padding: var(--sp-1) 0; }
+.agenda-grid button.agenda-day { position: relative; min-height: 2.4rem; padding: 0; background: transparent; border: 1px solid transparent; color: var(--iris-text); font-weight: 500; font-variant-numeric: tabular-nums; }
+.agenda-grid button.agenda-day:hover:not(:disabled) { background: var(--iris-teal-50); color: var(--iris-teal-900); border-color: transparent; }
+.agenda-grid button.agenda-day-outside { color: var(--iris-muted); opacity: 0.55; }
+.agenda-grid button.agenda-day-today { border-color: var(--iris-teal-800); }
+.agenda-grid button.agenda-day-selected, .agenda-grid button.agenda-day-selected:hover:not(:disabled) { background: var(--iris-teal-800); color: #ffffff; }
+.agenda-day-count { position: absolute; top: 2px; right: 3px; min-width: 1rem; height: 1rem; padding: 0 3px; border-radius: 999px; background: #a3c23a; color: #1f2a07; font-size: 0.65rem; font-weight: 700; line-height: 1rem; }
+.agenda-day-panel .activity-list { margin-top: var(--sp-4); }
+.agenda-create { display: flex; flex-wrap: wrap; align-items: end; gap: var(--sp-3); margin-top: var(--sp-5); padding-top: var(--sp-4); border-top: 1px solid var(--iris-divider); }
+.agenda-create label { flex: 1 1 14rem; }

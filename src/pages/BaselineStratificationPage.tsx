@@ -1,6 +1,7 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
+import { CMO_LEVEL_META, toCmoLevel } from '../constants/cmoLevels';
 import { SMOKER_STATUS_OPTIONS } from '../constants/enums';
 import { ErrorState } from '../components/common/ErrorState';
 import { CmoResultPanel } from '../components/ui/CmoResultPanel';
@@ -132,6 +133,14 @@ const YES_NO_UNKNOWN_OPTIONS: Array<{ value: string; label: string }> = [
   { value: '', label: 'No registrado' },
 ];
 
+type PriorityOverrideState = { level: '' | '1' | '2' | '3'; reason: string };
+
+// Recupera el ajuste clínico guardado: solo existe si el nivel final difiere del calculado por el modelo.
+function overrideFromScore(score: CmoScoreRecord | null): PriorityOverrideState {
+  if (!score || score.calculated_priority == null || score.priority === score.calculated_priority) return { level: '', reason: '' };
+  return { level: String(score.priority) as '1' | '2' | '3', reason: score.priority_override_reason ?? '' };
+}
+
 function ageFromBirthAndInclusionDate(birthDate: string | null, inclusionDate: string | null): number | null {
   if (!birthDate || !inclusionDate) return null;
   const birth = new Date(birthDate);
@@ -168,6 +177,7 @@ export function BaselineStratificationPage() {
     regimen_complexity_present: '',
     adherence_problem: '',
   });
+  const [priorityOverride, setPriorityOverride] = useState<PriorityOverrideState>({ level: '', reason: '' });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -228,7 +238,10 @@ export function BaselineStratificationPage() {
       const patientId = visitRes.data?.patient_id ?? '';
       if (patientId) setVisitPatientId(patientId);
       if (assessmentRes.errorMessage) setErrorMessage(assessmentRes.errorMessage);
-      if (!scoreRes.errorMessage) setSavedCmoScore(scoreRes.data);
+      if (!scoreRes.errorMessage) {
+        setSavedCmoScore(scoreRes.data);
+        setPriorityOverride(overrideFromScore(scoreRes.data));
+      }
 
       if (patientId) {
         const patientRes = await getPatientById(patientId);
@@ -344,7 +357,12 @@ export function BaselineStratificationPage() {
   const cmoResult: CmoScoringResult = useMemo(() => scoreCmo(cmoInput), [cmoInput]);
   const hasUnsavedChanges = isEditingStratification && hasSavedAssessment;
   const displayedScore = hasUnsavedChanges || !savedCmoScore ? cmoResult.totalScore : savedCmoScore.score;
-  const displayedLevel = hasUnsavedChanges || !savedCmoScore ? cmoResult.level : savedCmoScore.priority;
+  const overrideLevel = toCmoLevel(priorityOverride.level);
+  const isOverridden = overrideLevel !== null && overrideLevel !== cmoResult.level;
+  const displayedLevel = hasUnsavedChanges || !savedCmoScore ? (isOverridden ? overrideLevel : cmoResult.level) : savedCmoScore.priority;
+  const displayedIsOverridden = hasUnsavedChanges || !savedCmoScore
+    ? isOverridden
+    : savedCmoScore.calculated_priority != null && savedCmoScore.priority !== savedCmoScore.calculated_priority;
 
   const assessmentPayload = useMemo<NewClinicalAssessmentInput>(() => ({
     visit_id: visitId,
@@ -388,6 +406,10 @@ export function BaselineStratificationPage() {
 
   const handleSave = async (event: FormEvent) => {
     event.preventDefault();
+    if (isOverridden && !priorityOverride.reason.trim()) {
+      setErrorMessage('Indica el motivo clínico del cambio de nivel de prioridad.');
+      return;
+    }
     setSaving(true);
     setErrorMessage(null);
     setSaveSuccess(false);
@@ -399,7 +421,11 @@ export function BaselineStratificationPage() {
       return;
     }
 
-    const { data: savedScoreData, errorMessage: scoreErr } = await upsertCmoScore(visitId, cmoResult);
+    const { data: savedScoreData, errorMessage: scoreErr } = await upsertCmoScore(
+      visitId,
+      cmoResult,
+      isOverridden && overrideLevel !== null ? { priority: overrideLevel, reason: priorityOverride.reason } : null,
+    );
     if (scoreErr) {
       setErrorMessage(scoreErr);
       setSaving(false);
@@ -415,6 +441,7 @@ export function BaselineStratificationPage() {
 
     applyAssessmentToForm(latestSaved.data);
     setSavedCmoScore(savedScoreData);
+    setPriorityOverride(overrideFromScore(savedScoreData));
     setOriginalStratificationSnapshot({ ...form });
     setHasSavedAssessment(true);
     setIsEditingStratification(false);
@@ -431,6 +458,7 @@ export function BaselineStratificationPage() {
 
   const handleCancelEditStratification = () => {
     if (originalStratificationSnapshot) setForm(originalStratificationSnapshot);
+    setPriorityOverride(overrideFromScore(savedCmoScore));
     setErrorMessage(null);
     setSaveSuccess(false);
     setIsEditingStratification(false);
@@ -448,7 +476,7 @@ export function BaselineStratificationPage() {
           sticky
           score={displayedScore}
           level={displayedLevel}
-          statusText={hasUnsavedChanges || !savedCmoScore ? 'puntos CMO-RCV · actualizado en tiempo real' : 'puntos CMO-RCV · guardado para esta visita'}
+          statusText={`${hasUnsavedChanges || !savedCmoScore ? 'puntos CMO-RCV · actualizado en tiempo real' : 'puntos CMO-RCV · guardado para esta visita'}${displayedIsOverridden ? ' · nivel ajustado por criterio clínico' : ''}`}
         />
 
         <form className="form-grid" onSubmit={handleSave}>
@@ -602,6 +630,40 @@ export function BaselineStratificationPage() {
                   {YES_NO_UNKNOWN_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </label>
+            </div>
+          </fieldset>
+
+          <fieldset className="form-section">
+            <legend>Nivel de prioridad final</legend>
+            <p className="help-text">
+              Nivel calculado por el modelo: <strong>{CMO_LEVEL_META[cmoResult.level].label}</strong>. Puedes ajustarlo por criterio
+              clínico; el nivel final es el que se usa en la ficha y en el dashboard, y el calculado se conserva para trazabilidad.
+            </p>
+            <div className="grid-2">
+              <label>
+                Nivel de prioridad
+                <select
+                  value={priorityOverride.level}
+                  disabled={hasSavedAssessment && !isEditingStratification}
+                  onChange={(e) => setPriorityOverride((prev) => ({ ...prev, level: e.target.value as PriorityOverrideState['level'] }))}
+                >
+                  <option value="">Según modelo ({CMO_LEVEL_META[cmoResult.level].shortLabel})</option>
+                  {([1, 2, 3] as const).map((level) => (
+                    <option key={level} value={String(level)}>{CMO_LEVEL_META[level].label}</option>
+                  ))}
+                </select>
+              </label>
+              {isOverridden ? (
+                <label>
+                  Motivo del ajuste (obligatorio)
+                  <input
+                    value={priorityOverride.reason}
+                    disabled={hasSavedAssessment && !isEditingStratification}
+                    onChange={(e) => setPriorityOverride((prev) => ({ ...prev, reason: e.target.value }))}
+                    placeholder="Ej. reciente ingreso no recogido en las variables del modelo"
+                  />
+                </label>
+              ) : null}
             </div>
           </fieldset>
 
