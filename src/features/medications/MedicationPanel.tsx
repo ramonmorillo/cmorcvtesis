@@ -13,6 +13,7 @@ import {
 } from './medicationsService';
 import { resolveMedicationOrigin } from './catalogSource';
 import { normalizeMedicationDisplayName } from './displayFormat';
+import { DOSE_UNIT_OPTIONS, buildDoseText, splitSavedDoseText, type DoseUnitOptionValue } from './doseText';
 import type { MedicationCatalogItem, PatientMedicationDraft, VisitMedicationEvent } from './types';
 
 type MedicationPanelProps = {
@@ -72,10 +73,6 @@ const INDICATION_SUGGESTIONS = [
   'dolor',
   'otra',
 ] as const;
-const DOSE_UNIT_OPTIONS = ['mg', 'g', 'UI', 'ml', 'comprimido(s)', 'cápsula(s)', 'gota(s)', 'puff(s)', 'otra'] as const;
-
-type DoseUnitOptionValue = (typeof DOSE_UNIT_OPTIONS)[number];
-
 const STATUS_META: Record<MedicationChangeStatus, { label: string; tone: StatusTone }> = {
   unchanged: { label: 'Sin cambios', tone: 'neutral' },
   modified: { label: 'Modificado', tone: 'warning' },
@@ -116,45 +113,6 @@ function emptyDraft(catalog: MedicationCatalogItem): MedicationFormRow {
 
 function normalizeTextValue(value: string | null | undefined): string {
   return (value ?? '').trim();
-}
-
-function inferDoseUnitHint(doseText: string | null | undefined): DoseUnitOptionValue | '' {
-  const normalized = normalizeTextValue(doseText).toLowerCase();
-  const matched = DOSE_UNIT_OPTIONS.find((unit) => unit !== 'otra' && normalized.includes(unit.toLowerCase()));
-  return matched ?? '';
-}
-
-function inferDoseAmount(doseText: string | null | undefined): string {
-  const normalized = normalizeTextValue(doseText).replace(',', '.');
-  const matched = normalized.match(/^([0-9]+(?:\.[0-9]+)?)\b/);
-  return matched?.[1]?.replace('.', ',') ?? '';
-}
-
-function buildDoseTextForSave(row: MedicationFormRow): string {
-  const freeDoseText = normalizeTextValue(row.dose_text);
-  const normalizedAmount = normalizeTextValue(row.dose_amount);
-
-  if (normalizedAmount) {
-    if (!row.dose_unit_hint || row.dose_unit_hint === 'otra') {
-      return normalizedAmount;
-    }
-    return `${normalizedAmount} ${row.dose_unit_hint}`;
-  }
-
-  if (!freeDoseText) {
-    return '';
-  }
-
-  if (!row.dose_unit_hint || row.dose_unit_hint === 'otra') {
-    return freeDoseText;
-  }
-
-  const isMostlyNumeric = /^[0-9]+([.,][0-9]+)?$/.test(freeDoseText);
-  const hasKnownUnit = DOSE_UNIT_OPTIONS.some((unit) => unit !== 'otra' && freeDoseText.toLowerCase().includes(unit.toLowerCase()));
-  if (isMostlyNumeric && !hasKnownUnit) {
-    return `${freeDoseText} ${row.dose_unit_hint}`;
-  }
-  return freeDoseText;
 }
 
 function getSemanticWarnings(row: MedicationFormRow): string[] {
@@ -213,7 +171,7 @@ function getMedicationStatus(row: MedicationFormRow): MedicationChangeStatus {
   }
 
   const hasChanged =
-    normalizeTextValue(row.dose_text) !== normalizeTextValue(row.previous.dose_text) ||
+    buildDoseText(row) !== normalizeTextValue(row.previous.dose_text) ||
     normalizeTextValue(row.frequency_text) !== normalizeTextValue(row.previous.frequency_text) ||
     normalizeTextValue(row.route_text) !== normalizeTextValue(row.previous.route_text) ||
     normalizeTextValue(row.indication) !== normalizeTextValue(row.previous.indication) ||
@@ -279,15 +237,13 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
         id: item.id,
         medication_catalog_id: item.medication_catalog_id,
         display_name: normalizeMedicationDisplayName(item.medication_catalog?.display_name ?? 'Medicamento'),
-        dose_text: item.dose_text ?? '',
-        dose_amount: inferDoseAmount(item.dose_text),
+        ...splitSavedDoseText(item.dose_text),
         frequency_text: item.frequency_text ?? '',
         route_text: item.route_text ?? '',
         indication: item.indication ?? '',
         start_date: item.start_date ?? '',
         notes: item.notes ?? '',
         is_active: item.is_active,
-        dose_unit_hint: inferDoseUnitHint(item.dose_text),
         previous: item,
         isInitialCompletion: Boolean(justCreatedId) && item.id === justCreatedId,
       })),
@@ -493,7 +449,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
     const payload = rows.map((row) => ({
       id: row.id,
       medication_catalog_id: row.medication_catalog_id,
-      dose_text: buildDoseTextForSave(row),
+      dose_text: buildDoseText(row),
       frequency_text: row.frequency_text,
       route_text: row.route_text,
       indication: row.indication,
@@ -784,7 +740,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
               <textarea rows={2} value={row.notes} onChange={(event) => handleChange(index, 'notes', event.target.value)} />
             </label>
             {(() => {
-              const preview = buildDoseTextForSave(row);
+              const preview = buildDoseText(row);
               return preview ? (
                 <p className="help-text">
                   Dosis final a guardar: <strong>{preview}</strong>

@@ -28,7 +28,7 @@ import { getLatestMedicationReviewDate, listActivePatientMedications } from '../
 import type { PatientMedication } from '../features/medications/types';
 import { getLatestCmoScoreByPatient, listCmoScoresByPatient, type CmoScoreHistoryEntry, type CmoScoreRecord } from '../services/cmoScoreService';
 import { listInterventionsByPatient, type PriorityLevel } from '../services/interventionService';
-import { getPatientById, type Patient } from '../services/patientService';
+import { getPatientById, updatePatientConsent, type Patient } from '../services/patientService';
 import { getQuestionnairesByPatient, isQuestionnaireVisitType, type QuestionnaireResponseRecord } from '../services/questionnaireService';
 import { listVisitsByPatient, updateVisit, type Visit } from '../services/visitService';
 import { getFollowupStatus } from '../utils/followupStatus';
@@ -119,6 +119,8 @@ export function PatientDetailPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [questionnaireWarning, setQuestionnaireWarning] = useState<string | null>(null);
   const [medicationWarning, setMedicationWarning] = useState<string | null>(null);
+  const [updatingConsent, setUpdatingConsent] = useState(false);
+  const [consentError, setConsentError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadData() {
@@ -239,6 +241,26 @@ export function PatientDetailPage() {
     if (!err && data) {
       setVisits((prev) => prev.map((v) => (v.id === visitId ? { ...v, ...data } : v)).sort(compareVisitsTimeline));
     }
+  };
+
+  const handleConsentToggle = async () => {
+    if (!patient) return;
+    const next = !patient.consent_signed;
+    const confirmed = window.confirm(
+      next
+        ? '¿Confirmas que el paciente ha firmado el consentimiento informado?'
+        : '¿Confirmas que quieres marcar el consentimiento informado como NO firmado?',
+    );
+    if (!confirmed) return;
+    setUpdatingConsent(true);
+    setConsentError(null);
+    const { data, errorMessage: err } = await updatePatientConsent(patient.id, next);
+    if (err || !data) {
+      setConsentError(err ?? 'No se pudo actualizar el consentimiento.');
+    } else {
+      setPatient(data);
+    }
+    setUpdatingConsent(false);
   };
 
   const visitsTimeline = useMemo(() => [...visits].sort(compareVisitsTimeline), [visits]);
@@ -367,7 +389,19 @@ export function PatientDetailPage() {
           { label: 'Investigador/a', value: patient.investigator_name || '-' },
           {
             label: 'Consentimiento',
-            value: patient.consent_signed ? <StatusBadge tone="positive">Sí</StatusBadge> : <StatusBadge tone="warning">No</StatusBadge>,
+            value: (
+              <span className="consent-control">
+                {patient.consent_signed ? <StatusBadge tone="positive">Sí</StatusBadge> : <StatusBadge tone="warning">No</StatusBadge>}
+                <button
+                  type="button"
+                  className="button-ghost button-sm"
+                  onClick={() => void handleConsentToggle()}
+                  disabled={updatingConsent}
+                >
+                  {updatingConsent ? 'Guardando...' : patient.consent_signed ? 'Marcar como no firmado' : 'Marcar como firmado'}
+                </button>
+              </span>
+            ),
           },
         ]}
         actions={
@@ -383,6 +417,8 @@ export function PatientDetailPage() {
           </>
         }
       />
+
+      {consentError ? <Notice tone="danger">{consentError}</Notice> : null}
 
       {missingQuestionnaireVisits.length > 0 || questionnaireWarning ? (
         <div className="stack-sm">

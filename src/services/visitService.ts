@@ -148,3 +148,30 @@ export async function updateVisit(visitId: string, updates: VisitUpdateInput): P
 
   return { data: data ? normalizeVisit(data as Visit) : null, errorMessage: null };
 }
+
+export type AgendaVisit = Visit & { study_code: string | null };
+
+/** Visitas con fecha programada o realizada dentro del rango [from, to] (YYYY-MM-DD), para la agenda. */
+export async function listVisitsInDateRange(from: string, to: string): Promise<{ data: AgendaVisit[]; errorMessage: string | null }> {
+  if (!supabase) {
+    return { data: [], errorMessage: 'Supabase no está configurado. No se puede cargar la agenda.' };
+  }
+
+  const { data, error } = await supabase
+    .from('visits')
+    .select(`${VISIT_SELECT},patients!inner(study_code)`)
+    .or(`and(scheduled_date.gte.${from},scheduled_date.lte.${to}),and(visit_date.gte.${from},visit_date.lte.${to})`);
+
+  if (error) {
+    return { data: [], errorMessage: extractErrorMessage(error) };
+  }
+
+  const rows = (data ?? []) as Array<Visit & { patients: { study_code: string | null } | Array<{ study_code: string | null }> }>;
+  return {
+    data: rows.map(({ patients, ...visit }) => ({
+      ...normalizeVisit(visit),
+      study_code: (Array.isArray(patients) ? patients[0]?.study_code : patients?.study_code) ?? null,
+    })),
+    errorMessage: null,
+  };
+}

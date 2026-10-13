@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { VISIT_STATUS_OPTIONS, VISIT_TYPE_OPTIONS } from '../constants/enums';
 import type { VisitStatus, VisitType } from '../constants/enums';
@@ -47,7 +47,10 @@ export function NewVisitPage() {
   const { id = '', visitId = '' } = useParams();
   const navigate = useNavigate();
   const isExistingVisit = Boolean(visitId);
-  const [form, setForm] = useState<VisitForm>(INITIAL_FORM);
+  const [searchParams] = useSearchParams();
+  // Prefill de fecha programada al crear la cita desde la agenda (?date=YYYY-MM-DD).
+  const prefillDate = !isExistingVisit && /^\d{4}-\d{2}-\d{2}$/.test(searchParams.get('date') ?? '') ? searchParams.get('date') ?? '' : '';
+  const [form, setForm] = useState<VisitForm>({ ...INITIAL_FORM, scheduled_date: prefillDate });
   const [initialSnapshot, setInitialSnapshot] = useState<VisitForm | null>(null);
   const [isEditingVisit, setIsEditingVisit] = useState(false);
   const [saving, setSaving] = useState(false);

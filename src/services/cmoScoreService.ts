@@ -1,11 +1,17 @@
 import { supabase } from '../lib/supabase';
 import type { CmoScoringResult } from './cmoScoringEngine';
 
+const SCORE_SELECT =
+  'id,visit_id,score,priority,calculated_priority,priority_override_reason,factors,recommendations,calculated_by,created_at,updated_at';
+
 export type CmoScoreRecord = {
   id: string;
   visit_id: string;
   score: number;
   priority: 1 | 2 | 3;
+  /** Nivel asignado por el modelo; priority puede diferir si hubo ajuste clínico. */
+  calculated_priority: 1 | 2 | 3 | null;
+  priority_override_reason: string | null;
   factors: unknown;
   recommendations: unknown;
   calculated_by: string;
@@ -35,9 +41,12 @@ function extractError(err: unknown): string {
  * and silently skipped from cmo_score_item_results (catalog population is an
  * admin concern, not a clinician concern).
  */
+export type CmoPriorityOverride = { priority: 1 | 2 | 3; reason: string };
+
 export async function upsertCmoScore(
   visitId: string,
   result: CmoScoringResult,
+  override: CmoPriorityOverride | null = null,
 ): Promise<{ data: CmoScoreRecord | null; errorMessage: string | null }> {
   if (!supabase) {
     return { data: null, errorMessage: 'Supabase no está configurado.' };
@@ -83,14 +92,17 @@ export async function upsertCmoScore(
       {
         visit_id: visitId,
         score: result.totalScore,
-        priority: result.level,
+        // priority = nivel final (ajuste clínico si existe); calculated_priority = nivel del modelo.
+        priority: override && override.priority !== result.level ? override.priority : result.level,
+        calculated_priority: result.level,
+        priority_override_reason: override && override.priority !== result.level ? override.reason.trim() : null,
         factors,
         recommendations: [],
         calculated_by: user.id,
       },
       { onConflict: 'visit_id' },
     )
-    .select('id,visit_id,score,priority,factors,recommendations,calculated_by,created_at,updated_at')
+    .select(SCORE_SELECT)
     .maybeSingle();
 
   if (scoreError) {
@@ -147,8 +159,6 @@ export async function upsertCmoScore(
   return { data: scoreData as CmoScoreRecord, errorMessage: null };
 }
 
-const SCORE_SELECT =
-  'id,visit_id,score,priority,factors,recommendations,calculated_by,created_at,updated_at';
 
 /** Returns the saved CMO score for a specific visit, or null if none exists yet. */
 export async function getCmoScoreByVisit(

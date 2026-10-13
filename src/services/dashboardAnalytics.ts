@@ -23,6 +23,7 @@ export type LongitudinalDashboardMetrics = {
   averageBaselineScore: number;
   averageLatestScore: number;
   patientsWithoutFollowup90d: number;
+  patientIdsWithoutFollowup90d: string[];
 };
 
 const INVALID_CLINICAL_STATUSES = new Set(['cancelled', 'cancelada', 'no_show', 'no_presentada']);
@@ -100,7 +101,7 @@ export function calculateLongitudinalDashboardMetrics(
   const followupPriorityByPatient = new Map<string, 1 | 2 | 3>();
   const baselineScores: number[] = [];
   const latestScores: number[] = [];
-  let patientsWithoutFollowup90d = 0;
+  const patientIdsWithoutFollowup90d: string[] = [];
 
   const threshold = new Date(`${today}T00:00:00Z`);
   threshold.setUTCDate(threshold.getUTCDate() - 90);
@@ -116,7 +117,7 @@ export function calculateLongitudinalDashboardMetrics(
     // Follow-up recency only uses attended dates (never scheduled/future dates).
     const attendedDates = patientVisits.map((visit) => visit.visit_date).filter((date): date is string => Boolean(date));
     const latestAttendedDate = attendedDates.sort()[attendedDates.length - 1];
-    if (latestAttendedDate && latestAttendedDate < thresholdDate) patientsWithoutFollowup90d += 1;
+    if (latestAttendedDate && latestAttendedDate < thresholdDate) patientIdsWithoutFollowup90d.push(patientId);
 
     if (baselineVisit) {
       const baseline = firstScore(baselineVisit);
@@ -163,6 +164,7 @@ export function calculateLongitudinalDashboardMetrics(
     stable,
     averageBaselineScore: roundedAverage(baselineScores),
     averageLatestScore: roundedAverage(latestScores),
-    patientsWithoutFollowup90d,
+    patientsWithoutFollowup90d: patientIdsWithoutFollowup90d.length,
+    patientIdsWithoutFollowup90d,
   };
 }

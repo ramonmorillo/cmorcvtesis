@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 
 import { ErrorState } from '../components/common/ErrorState';
 import { DistributionBar } from '../components/ui/DistributionBar';
+import { DrilldownList } from '../components/ui/DrilldownList';
 import { LoadingState } from '../components/ui/LoadingState';
 import { MetricCard, MetricGrid } from '../components/ui/MetricCard';
 import { Notice } from '../components/ui/Notice';
@@ -80,6 +81,9 @@ export function DashboardPage() {
     { key: 'm6', label: '6 meses', value: followup.month6Visits },
   ];
   const dq = data.dataQuality;
+  const dd = data.drilldown;
+  const asPatients = (rows: typeof dd.patientsWithoutFollowup90d) => rows.map((row) => ({ kind: 'patient' as const, ...row }));
+  const asVisits = (rows: typeof dd.visitsWithoutScore) => rows.map((row) => ({ kind: 'visit' as const, ...row }));
 
   return (
     <div className="page-stack">
@@ -160,6 +164,7 @@ export function DashboardPage() {
                 ) : (
                   <span className="text-muted">0 · sin pendientes</span>
                 )}
+                <DrilldownList items={asPatients(dd.patientsWithoutFollowup90d)} />
               </dd>
             </div>
           </dl>
@@ -309,13 +314,23 @@ export function DashboardPage() {
             label="Pacientes sin estratificación basal"
             value={dq.patientsWithoutBaselineStratification}
             tone={dq.patientsWithoutBaselineStratification > 0 ? 'warning' : 'default'}
+            hint={<DrilldownList items={asPatients(dd.patientsWithoutBaselineStratification)} />}
           />
-          <MetricCard label="Visitas sin score" value={dq.visitsWithoutScore} />
-          <MetricCard label="Visitas sin intervenciones" value={dq.visitsWithoutInterventions} />
+          <MetricCard
+            label="Visitas sin score"
+            value={dq.visitsWithoutScore}
+            hint={<DrilldownList items={asVisits(dd.visitsWithoutScore)} visitHref={(id) => `/visits/${id}/stratification`} />}
+          />
+          <MetricCard
+            label="Visitas sin intervenciones"
+            value={dq.visitsWithoutInterventions}
+            hint={<DrilldownList items={asVisits(dd.visitsWithoutInterventions)} visitHref={(id) => `/visits/${id}/interventions`} />}
+          />
           <MetricCard
             label="Pacientes nivel 1 sin intervención"
             value={dq.level1PatientsWithoutIntervention}
             tone={dq.level1PatientsWithoutIntervention > 0 ? 'warning' : 'default'}
+            hint={<DrilldownList items={asPatients(dd.level1PatientsWithoutIntervention)} />}
           />
         </MetricGrid>
         {data.kpiFallbackNotes.length > 0 && (
