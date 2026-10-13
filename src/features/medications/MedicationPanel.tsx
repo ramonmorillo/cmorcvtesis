@@ -147,6 +147,22 @@ function toSuggestionSet(values: readonly string[]): Set<string> {
 }
 
 const FREQUENCY_SET = toSuggestionSet(FREQUENCY_SUGGESTIONS);
+
+// Opción del desplegable que corresponde al valor guardado ('otra' = texto libre).
+function suggestionSelectValue(value: string, isCustom: boolean, suggestions: readonly string[]): string {
+  if (isCustom) return 'otra';
+  const normalized = normalizeSuggestionToken(value);
+  if (!normalized) return '';
+  return suggestions.find((option) => option !== 'otra' && normalizeSuggestionToken(option) === normalized) ?? 'otra';
+}
+
+function frequencySelectValue(value: string, isCustom: boolean): string {
+  return suggestionSelectValue(value, isCustom, FREQUENCY_SUGGESTIONS);
+}
+
+function indicationSelectValue(value: string, isCustom: boolean): string {
+  return suggestionSelectValue(value, isCustom, INDICATION_SUGGESTIONS);
+}
 const INDICATION_SET = toSuggestionSet(INDICATION_SUGGESTIONS);
 
 function isSuggestedValue(value: string, suggestionSet: ReadonlySet<string>): boolean {
@@ -188,6 +204,8 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [customFrequencyRows, setCustomFrequencyRows] = useState<Set<number>>(new Set());
+  const [customIndicationRows, setCustomIndicationRows] = useState<Set<number>>(new Set());
 
   const [externalCatalogQuery, setExternalCatalogQuery] = useState('');
   const [externalCatalogOptions, setExternalCatalogOptions] = useState<ExternalMedicationSearchItem[]>([]);
@@ -221,6 +239,8 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
     items: Awaited<ReturnType<typeof listVisitMedicationSnapshot>>['data'],
     justCreatedId?: string | null,
   ) => {
+    setCustomFrequencyRows(new Set());
+    setCustomIndicationRows(new Set());
     setRows(
       items.map((item) => ({
         ...(item.medication_catalog
@@ -689,12 +709,37 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
               </label>
               <label>
                 Frecuencia
-                <input
-                  list="medication-frequency-options"
-                  value={row.frequency_text}
-                  onChange={(event) => handleChange(index, 'frequency_text', event.target.value)}
-                  placeholder="Ej. 1 vez/día o cada 12 h"
-                />
+                <select
+                  value={frequencySelectValue(row.frequency_text, customFrequencyRows.has(index))}
+                  onChange={(event) => {
+                    const selected = event.target.value;
+                    const isCustom = selected === 'otra';
+                    setCustomFrequencyRows((prev) => {
+                      const next = new Set(prev);
+                      if (isCustom) next.add(index);
+                      else next.delete(index);
+                      return next;
+                    });
+                    if (!isCustom) handleChange(index, 'frequency_text', selected);
+                    else if (isSuggestedValue(row.frequency_text, FREQUENCY_SET)) handleChange(index, 'frequency_text', '');
+                  }}
+                >
+                  <option value="">Seleccionar frecuencia</option>
+                  {FREQUENCY_SUGGESTIONS.filter((option) => option !== 'otra').map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                  <option value="otra">Otra (texto libre)</option>
+                </select>
+                {frequencySelectValue(row.frequency_text, customFrequencyRows.has(index)) === 'otra' ? (
+                  <input
+                    value={row.frequency_text}
+                    onChange={(event) => handleChange(index, 'frequency_text', event.target.value)}
+                    placeholder="Ej. cada 48 h"
+                    aria-label="Frecuencia (texto libre)"
+                  />
+                ) : null}
                 {!isSuggestedValue(row.frequency_text, FREQUENCY_SET) ? (
                   <span className="help-text text-warning">
                     ⚠ Valor fuera de sugerencias. Se guardará como texto libre.
@@ -717,12 +762,37 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
               </label>
               <label>
                 Indicación
-                <input
-                  list="medication-indication-options"
-                  value={row.indication}
-                  onChange={(event) => handleChange(index, 'indication', event.target.value)}
-                  placeholder="Ej. prevención secundaria"
-                />
+                <select
+                  value={indicationSelectValue(row.indication, customIndicationRows.has(index))}
+                  onChange={(event) => {
+                    const selected = event.target.value;
+                    const isCustom = selected === 'otra';
+                    setCustomIndicationRows((prev) => {
+                      const next = new Set(prev);
+                      if (isCustom) next.add(index);
+                      else next.delete(index);
+                      return next;
+                    });
+                    if (!isCustom) handleChange(index, 'indication', selected);
+                    else if (isSuggestedValue(row.indication, INDICATION_SET)) handleChange(index, 'indication', '');
+                  }}
+                >
+                  <option value="">Seleccionar indicación</option>
+                  {INDICATION_SUGGESTIONS.filter((option) => option !== 'otra').map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                  <option value="otra">Otra (texto libre)</option>
+                </select>
+                {indicationSelectValue(row.indication, customIndicationRows.has(index)) === 'otra' ? (
+                  <input
+                    value={row.indication}
+                    onChange={(event) => handleChange(index, 'indication', event.target.value)}
+                    placeholder="Ej. prevención primaria"
+                    aria-label="Indicación (texto libre)"
+                  />
+                ) : null}
                 {!isSuggestedValue(row.indication, INDICATION_SET) ? (
                   <span className="help-text text-warning">
                     ⚠ Indicación no estandarizada. Se permite texto libre.
@@ -755,16 +825,6 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
           </article>
         ))}
 
-        <datalist id="medication-frequency-options">
-          {FREQUENCY_SUGGESTIONS.map((option) => (
-            <option key={option} value={option} />
-          ))}
-        </datalist>
-        <datalist id="medication-indication-options">
-          {INDICATION_SUGGESTIONS.map((option) => (
-            <option key={option} value={option} />
-          ))}
-        </datalist>
 
         <div className="actions-inline">
           <button type="submit" disabled={saving || loading || rows.length === 0}>
