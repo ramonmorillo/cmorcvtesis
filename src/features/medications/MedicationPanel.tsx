@@ -6,10 +6,12 @@ import {
   createMedicationCatalogItem,
   importExternalMedicationToVisit,
   listVisitMedicationEvents,
+  listVisitMedicationHistory,
   listVisitMedicationSnapshotWithContext,
   saveVisitMedicationChanges,
   searchExternalMedicationCatalog,
   type ExternalMedicationSearchItem,
+  type VisitMedicationHistory,
 } from './medicationsService';
 import { resolveMedicationOrigin } from './catalogSource';
 import { normalizeMedicationDisplayName } from './displayFormat';
@@ -198,6 +200,12 @@ function getMedicationStatus(row: MedicationFormRow): MedicationChangeStatus {
   return hasChanged ? 'modified' : 'unchanged';
 }
 
+function formatHistoryDate(value: string | null): string {
+  if (!value) return 'No consta';
+  const parsed = new Date(`${value.slice(0, 10)}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString('es-ES');
+}
+
 // Visita histórica: se muestra su farmacoterapia, pero sin controles de edición.
 // Sin bloqueo, el DOM es idéntico al anterior.
 function HistoricalLock({ locked, children }: { locked: boolean; children: ReactNode }) {
@@ -214,6 +222,8 @@ function HistoricalLock({ locked, children }: { locked: boolean; children: React
 export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
   const [rows, setRows] = useState<MedicationFormRow[]>([]);
   const [isHistoricalVisit, setIsHistoricalVisit] = useState(false);
+  const [medicationHistory, setMedicationHistory] = useState<VisitMedicationHistory | null>(null);
+  const [historyReloadKey, setHistoryReloadKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -302,6 +312,19 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
       setLoading(false);
     })();
   }, [visitId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const result = await listVisitMedicationHistory(visitId);
+      if (!cancelled) {
+        setMedicationHistory(result.errorMessage ? null : result.data);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [visitId, historyReloadKey]);
 
   useEffect(() => {
     void (async () => {
@@ -512,6 +535,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
     }
 
     hydrateRowsFromSnapshot(result.data);
+    setHistoryReloadKey((key) => key + 1);
 
     const eventResult = await listVisitMedicationEvents(visitId);
     if (!eventResult.errorMessage) {
@@ -676,6 +700,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
       </div>
 
       <form onSubmit={handleSave} className="form-grid">
+        <h3>Tratamiento activo en esta visita</h3>
         {loading ? <p>Cargando medicación activa...</p> : null}
 
         {!loading && rows.length === 0 ? (
@@ -862,6 +887,46 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
       </form>
       </HistoricalLock>
 
+      <details className="drilldown panel-block">
+        <summary>
+          Tratamientos suspendidos / históricos
+          {medicationHistory ? ` · Medicamentos suspendidos hasta esta visita: ${medicationHistory.suspendedMedicationCount}` : ''}
+        </summary>
+        {!medicationHistory ? (
+          <p className="help-text">No se pudo cargar el histórico de tratamientos.</p>
+        ) : medicationHistory.suspended.length === 0 ? (
+          <p className="help-text">No constan tratamientos suspendidos al cierre de esta visita.</p>
+        ) : (
+          <>
+            <p className="help-text">
+              Estado al cierre de esta visita. Cada entrada es un episodio de tratamiento; el contador cuenta medicamentos distintos
+              suspendidos y no reintroducidos. El modelo actual no registra un motivo de suspensión específico: se muestran las
+              observaciones registradas, si constan.
+            </p>
+            <ul className="simple-list">
+              {medicationHistory.suspended.map((episode) => (
+                <li key={episode.row.id}>
+                  <div className="medication-item">
+                    <div className="medication-row-title">
+                      <strong>{normalizeMedicationDisplayName(episode.row.medication_catalog?.display_name ?? 'Medicamento')}</strong>
+                      <StatusBadge tone="neutral">{episode.reintroduced ? 'Suspendido · reintroducido después' : 'Suspendido'}</StatusBadge>
+                    </div>
+                    <div className="medication-details">
+                      <span>Última dosis: {episode.lastDoseText ?? 'No consta'}</span>
+                      <span>Posología: {episode.lastFrequencyText ?? 'No consta'}</span>
+                      <span>Inicio: {formatHistoryDate(episode.startDate)}</span>
+                      <span>Suspensión: {formatHistoryDate(episode.suspensionDate)}</span>
+                      <span>Documentado en: {episode.documentedInVisitLabel ?? 'No consta'}</span>
+                      {episode.row.notes ? <span>Observaciones: {episode.row.notes}</span> : null}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </details>
+
       <article className="panel-summary">
         <h3>Resumen de cambios de medicación en esta visita</h3>
         {eventSummary.length === 0 ? (
@@ -869,7 +934,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
         ) : (
           <>
             <p className="help-text">
-              Nuevos: {visitEventStats.added.length} · Modificados: {visitEventStats.modified.length} · Suspendidos:{' '}
+              Nuevos: {visitEventStats.added.length} · Modificados: {visitEventStats.modified.length} · Suspendidos en esta visita:{' '}
               {visitEventStats.stopped.length} · Sin cambios: {visitEventStats.unchanged.length}
             </p>
             <div className="grid-2 panel-block">
