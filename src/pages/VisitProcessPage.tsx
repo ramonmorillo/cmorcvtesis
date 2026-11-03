@@ -119,17 +119,19 @@ export function VisitProcessPage() {
       const user = userRes.data?.user ?? null;
       setProfessionalLabel(user?.email ?? user?.id ?? 'No disponible');
 
-      if (processRes.data) {
-        setForm(mapRecordToForm(processRes.data));
-        return;
-      }
-
-      const hasInterventions = interventionsRes.data.length > 0;
-      setForm((prev) => ({
-        ...prev,
-        intervention_registered: hasInterventions ? 'yes' : prev.intervention_registered,
-        intervention_count: hasInterventions ? String(interventionsRes.data.length) : prev.intervention_count,
-      }));
+      // Fuente de verdad del contador: intervenciones persistidas de la visita. Se aplica también
+      // cuando el registro de proceso ya existe, para que las intervenciones añadidas después de
+      // guardarlo se reflejen (antes se mostraba el valor almacenado, desactualizado).
+      const hasInterventions = !interventionsRes.errorMessage && interventionsRes.data.length > 0;
+      const baseForm = processRes.data ? mapRecordToForm(processRes.data) : null;
+      setForm((prev) => {
+        const current = baseForm ?? prev;
+        return {
+          ...current,
+          intervention_registered: hasInterventions ? 'yes' : current.intervention_registered,
+          intervention_count: hasInterventions ? String(interventionsRes.data.length) : current.intervention_count,
+        };
+      });
     }
 
     void loadData();

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { ErrorState } from '../../components/common/ErrorState';
 import { StatusBadge, type StatusTone } from '../../components/ui/StatusBadge';
@@ -6,7 +6,7 @@ import {
   createMedicationCatalogItem,
   importExternalMedicationToVisit,
   listVisitMedicationEvents,
-  listVisitMedicationSnapshot,
+  listVisitMedicationSnapshotWithContext,
   saveVisitMedicationChanges,
   searchExternalMedicationCatalog,
   type ExternalMedicationSearchItem,
@@ -198,8 +198,22 @@ function getMedicationStatus(row: MedicationFormRow): MedicationChangeStatus {
   return hasChanged ? 'modified' : 'unchanged';
 }
 
+// Visita histórica: se muestra su farmacoterapia, pero sin controles de edición.
+// Sin bloqueo, el DOM es idéntico al anterior.
+function HistoricalLock({ locked, children }: { locked: boolean; children: ReactNode }) {
+  if (!locked) {
+    return <>{children}</>;
+  }
+  return (
+    <fieldset disabled style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+      {children}
+    </fieldset>
+  );
+}
+
 export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
   const [rows, setRows] = useState<MedicationFormRow[]>([]);
+  const [isHistoricalVisit, setIsHistoricalVisit] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -236,7 +250,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
   }, []);
 
   const hydrateRowsFromSnapshot = (
-    items: Awaited<ReturnType<typeof listVisitMedicationSnapshot>>['data'],
+    items: Awaited<ReturnType<typeof listVisitMedicationSnapshotWithContext>>['data'],
     justCreatedId?: string | null,
   ) => {
     setCustomFrequencyRows(new Set());
@@ -274,7 +288,8 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
     void (async () => {
       setLoading(true);
       setErrorMessage(null);
-      const result = await listVisitMedicationSnapshot(visitId);
+      setIsHistoricalVisit(false);
+      const result = await listVisitMedicationSnapshotWithContext(visitId);
 
       if (result.errorMessage) {
         setErrorMessage(result.errorMessage);
@@ -282,6 +297,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
         return;
       }
 
+      setIsHistoricalVisit(result.isHistorical);
       hydrateRowsFromSnapshot(result.data);
       setLoading(false);
     })();
@@ -343,7 +359,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
   );
 
   const handleImportExternalMedication = async (externalId: string) => {
-    if (!externalId) {
+    if (!externalId || isHistoricalVisit) {
       return;
     }
 
@@ -459,6 +475,9 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
 
   const handleSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isHistoricalVisit) {
+      return;
+    }
 
     setSaving(true);
     setErrorMessage(null);
@@ -524,6 +543,14 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
         </p>
       ) : null}
 
+      {!loading && isHistoricalVisit ? (
+        <p className="notice notice-warning panel-notice">
+          Visita histórica: se muestra la farmacoterapia registrada al cierre de esta visita. Existen visitas posteriores con medicación
+          registrada, por lo que no se puede modificar desde aquí sin alterar la trazabilidad longitudinal.
+        </p>
+      ) : null}
+
+      <HistoricalLock locked={isHistoricalVisit}>
       <div className="grid-2 panel-block">
         <label>
           Buscar en catálogo externo (CIMA)
@@ -833,6 +860,7 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
           <span className="help-text">Tratamientos activos: {activeCount}</span>
         </div>
       </form>
+      </HistoricalLock>
 
       <article className="panel-summary">
         <h3>Resumen de cambios de medicación en esta visita</h3>

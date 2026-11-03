@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
-import { getVisitById } from '../../services/visitService';
+import { getVisitById, listVisitsByPatient } from '../../services/visitService';
+import { reconstructMedicationStateAtVisit, type MedicationHistoryEvent } from './visitMedicationHistory';
 import { searchRemoteCimaMedications } from './cimaSearchService';
 import { normalizeMedicationCatalogSource } from './catalogSource';
 import { mapExternalMedicationPayloadToNormalizedCandidate, upsertNormalizedMedicationFromExternal } from './normalizedCatalog';
@@ -436,6 +437,11 @@ export async function importExternalMedicationToVisit(input: {
     return { data: [], errorMessage: 'Supabase no está configurado. No se puede importar medicación externa.', newMedicationId: null };
   }
 
+  const editBlockedMessage = await ensureVisitMedicationEditable(input.visitId, input.patientId);
+  if (editBlockedMessage) {
+    return { data: [], errorMessage: editBlockedMessage, newMedicationId: null };
+  }
+
   const candidate = mapExternalMedicationPayloadToNormalizedCandidate(input.sourcePayload);
   const normalizedSelectedLabel = input.selectedLabel.trim();
   const resolvedDisplayName = normalizedSelectedLabel.length > 0
@@ -592,16 +598,110 @@ export async function listActivePatientMedications(patientId: string): Promise<S
   };
 }
 
-export async function listVisitMedicationSnapshot(visitId: string): Promise<ServiceResult<PatientMedication[]>> {
+const HISTORICAL_VISIT_EDIT_BLOCKED_MESSAGE =
+  'Esta visita tiene visitas posteriores con medicación registrada: su farmacoterapia es histórica y no se puede modificar desde aquí para no alterar la trazabilidad longitudinal.';
+
+type VisitMedicationContext = {
+  patientId: string;
+  /** Eventos de medicación registrados en visitas cronológicamente posteriores. */
+  laterVisitEvents: MedicationHistoryEvent[];
+};
+
+async function resolveVisitMedicationContext(visitId: string): Promise<NullableServiceResult<VisitMedicationContext>> {
+  if (!supabase) {
+    return { data: null, errorMessage: 'Supabase no está configurado. No se puede consultar la medicación de la visita.' };
+  }
+
   const visitResponse = await getVisitById(visitId);
   if (visitResponse.errorMessage || !visitResponse.data?.patient_id) {
+    return { data: null, errorMessage: visitResponse.errorMessage ?? 'No se pudo resolver el paciente de la visita.' };
+  }
+  const patientId = visitResponse.data.patient_id;
+
+  const visitsResponse = await listVisitsByPatient(patientId);
+  if (visitsResponse.errorMessage) {
+    return { data: null, errorMessage: visitsResponse.errorMessage };
+  }
+  const visitIndex = visitsResponse.data.findIndex((visit) => visit.id === visitId);
+  const laterVisitIds = visitIndex >= 0 ? visitsResponse.data.slice(visitIndex + 1).map((visit) => visit.id) : [];
+  if (laterVisitIds.length === 0) {
+    return { data: { patientId, laterVisitEvents: [] }, errorMessage: null };
+  }
+
+  const { data, error } = await supabase
+    .from('visit_medication_events')
+    .select('visit_id,patient_medication_id,event_type,old_value,created_at')
+    .in('visit_id', laterVisitIds);
+
+  if (error) {
+    return { data: null, errorMessage: extractErrorMessage(error, 'No fue posible consultar la medicación de visitas posteriores.') };
+  }
+
+  return { data: { patientId, laterVisitEvents: (data ?? []) as MedicationHistoryEvent[] }, errorMessage: null };
+}
+
+/**
+ * Farmacoterapia correspondiente a la visita indicada.
+ * - Visita sin medicación registrada en visitas posteriores: estado vigente del paciente (comportamiento previo).
+ * - Visita histórica: estado reconstruido al cierre de esa visita (no el más reciente) y `isHistorical = true`.
+ */
+export async function listVisitMedicationSnapshotWithContext(
+  visitId: string,
+): Promise<ServiceResult<PatientMedication[]> & { isHistorical: boolean }> {
+  const context = await resolveVisitMedicationContext(visitId);
+  if (context.errorMessage || !context.data) {
+    return { data: [], errorMessage: context.errorMessage ?? 'No se pudo resolver la medicación de la visita.', isHistorical: false };
+  }
+
+  if (context.data.laterVisitEvents.length === 0) {
+    const current = await listActivePatientMedications(context.data.patientId);
+    return { ...current, isHistorical: false };
+  }
+
+  if (!supabase) {
+    return { data: [], errorMessage: 'Supabase no está configurado. No se puede consultar la medicación de la visita.', isHistorical: true };
+  }
+
+  const { data, error } = await supabase
+    .from('patient_medications')
+    .select(PATIENT_MEDICATION_SELECT)
+    .eq('patient_id', context.data.patientId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
     return {
       data: [],
-      errorMessage: visitResponse.errorMessage ?? 'No se pudo resolver el paciente de la visita.',
+      errorMessage: extractErrorMessage(error, 'No fue posible consultar la medicación histórica del paciente.'),
+      isHistorical: true,
     };
   }
 
-  return listActivePatientMedications(visitResponse.data.patient_id);
+  const allRows = ((data ?? []) as Array<PatientMedication & { medication_catalog?: MedicationCatalogItem | MedicationCatalogItem[] }>).map(
+    normalizePatientMedication,
+  );
+
+  return {
+    data: reconstructMedicationStateAtVisit(allRows, context.data.laterVisitEvents),
+    errorMessage: null,
+    isHistorical: true,
+  };
+}
+
+export async function listVisitMedicationSnapshot(visitId: string): Promise<ServiceResult<PatientMedication[]>> {
+  const { data, errorMessage } = await listVisitMedicationSnapshotWithContext(visitId);
+  return { data, errorMessage };
+}
+
+/** Impide escribir sobre `patient_medications` desde una visita histórica (sobrescribiría el estado vigente). */
+async function ensureVisitMedicationEditable(visitId: string, patientId: string): Promise<string | null> {
+  const context = await resolveVisitMedicationContext(visitId);
+  if (context.errorMessage || !context.data) {
+    return context.errorMessage ?? 'No se pudo verificar la visita antes de guardar la medicación.';
+  }
+  if (context.data.patientId !== patientId) {
+    return 'La visita no pertenece al paciente indicado. No se ha guardado ningún cambio.';
+  }
+  return context.data.laterVisitEvents.length > 0 ? HISTORICAL_VISIT_EDIT_BLOCKED_MESSAGE : null;
 }
 
 export async function getLatestMedicationReviewDate(patientId: string): Promise<ServiceResult<string | null>> {
@@ -630,6 +730,11 @@ export async function getLatestMedicationReviewDate(patientId: string): Promise<
 export async function saveVisitMedicationChanges(input: SaveVisitMedicationInput): Promise<ServiceResult<PatientMedication[]>> {
   if (!supabase) {
     return { data: [], errorMessage: 'Supabase no está configurado. No se puede guardar la medicación.' };
+  }
+
+  const editBlockedMessage = await ensureVisitMedicationEditable(input.visitId, input.patientId);
+  if (editBlockedMessage) {
+    return { data: [], errorMessage: editBlockedMessage };
   }
 
   const upserted: PatientMedication[] = [];

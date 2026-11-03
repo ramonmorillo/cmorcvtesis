@@ -56,6 +56,11 @@ function compareVisitsChronologically(a: Visit, b: Visit): number {
   return (a.created_at ?? '').localeCompare(b.created_at ?? '');
 }
 
+/** Mismo criterio cronológico que listVisitsByPatient, para registros de visita sin normalizar. */
+export function compareVisitRecordsChronologically(a: Visit, b: Visit): number {
+  return compareVisitsChronologically(normalizeVisit(a), normalizeVisit(b));
+}
+
 export async function listVisitsByPatient(patientId: string): Promise<{ data: Visit[]; errorMessage: string | null }> {
   if (!supabase) {
     return {

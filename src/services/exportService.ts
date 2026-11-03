@@ -4,6 +4,8 @@ import { getVisitTypeLabel } from '../constants/enums';
 import { supabase } from '../lib/supabase';
 import { buildSavFile } from '../utils/spssWriter';
 import { listAllQuestionnaires } from './questionnaireService';
+import { compareVisitRecordsChronologically, type Visit } from './visitService';
+import { reconstructMedicationStateAtVisit, type MedicationHistoryEvent } from '../features/medications/visitMedicationHistory';
 
 type ExportOutcome = {
   success: boolean;
@@ -426,6 +428,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
     assessmentsResult,
     questionnairesResult,
     patientMedicationsResult,
+    medicationEventsResult,
   ] = await Promise.all([
     supabase.from('patients').select('id,study_code,inclusion_date,age_at_inclusion,sex,created_at').order('created_at', { ascending: true }),
     supabase.from('visits').select('id,patient_id,visit_type,visit_number,visit_date,scheduled_date,created_at').order('created_at', { ascending: true }),
@@ -439,6 +442,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
         'id,patient_id,medication_catalog_id,catalog_concept_id,catalog_product_id,selection_source,selected_label_snapshot,dose_text,frequency_text,route_text,indication,start_date,end_date,is_active,notes,created_at,updated_at,medication_catalog:medication_catalog_id(display_name,active_ingredient,atc_code)',
       )
       .order('created_at', { ascending: true }),
+    supabase.from('visit_medication_events').select('visit_id,patient_medication_id,event_type,old_value,created_at'),
   ]);
 
   const firstError = [
@@ -449,6 +453,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
     assessmentsResult.error,
     questionnairesResult.errorMessage ? { message: questionnairesResult.errorMessage } : null,
     patientMedicationsResult.error,
+    medicationEventsResult.error,
   ].find(Boolean);
 
   if (firstError) {
@@ -484,13 +489,21 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
     return acc;
   }, new Map());
 
-  const activeMedicationByPatientId = patientMedications.reduce<Map<string, NormalizedPatientMedicationRow[]>>((acc, medication) => {
-    if (!medication.is_active) return acc;
-    const list = acc.get(medication.patient_id) ?? [];
-    list.push(medication);
-    acc.set(medication.patient_id, list);
-    return acc;
-  }, new Map());
+  // Farmacoterapia de cada visita: estado vigente deshaciendo los eventos de visitas posteriores
+  // (ver visitMedicationHistory.ts). Para la última visita coincide con la medicación activa actual.
+  const medicationEvents = (medicationEventsResult.data ?? []) as MedicationHistoryEvent[];
+  const medicationStateByVisitId = new Map<string, NormalizedPatientMedicationRow[]>();
+  new Set(visits.map((visit) => visit.patient_id)).forEach((patientId) => {
+    const patientRows = patientMedications.filter((medication) => medication.patient_id === patientId);
+    const chronologicalVisits = visits
+      .filter((visit) => visit.patient_id === patientId)
+      .sort((a, b) => compareVisitRecordsChronologically(a as unknown as Visit, b as unknown as Visit));
+    chronologicalVisits.forEach((visit, index) => {
+      const laterVisitIds = new Set(chronologicalVisits.slice(index + 1).map((later) => later.id));
+      const laterEvents = medicationEvents.filter((event) => laterVisitIds.has(event.visit_id));
+      medicationStateByVisitId.set(visit.id, reconstructMedicationStateAtVisit(patientRows, laterEvents));
+    });
+  });
 
   const patientsCsvRows = patients.map((patient) => {
     const patientVisits = visits.filter((v) => v.patient_id === patient.id);
@@ -616,7 +629,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
     const assessment = assessmentByVisitId.get(visit.id);
     const visitInterventions = interventionsByVisitId.get(visit.id) ?? [];
     const qByType = questionnaireByVisitAndType.get(visit.id);
-    const activeMedicationList = activeMedicationByPatientId.get(visit.patient_id) ?? [];
+    const activeMedicationList = medicationStateByVisitId.get(visit.id) ?? [];
     const atcGroups = new Set(activeMedicationList.map((medication) => normalizeAtcGroup(medication.medication_catalog?.atc_code)).filter(Boolean));
 
     return {
@@ -682,7 +695,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
   let medicationRowCounter = 0;
   const medicationByVisitRows = visits.flatMap((visit) => {
     const patient = patients.find((row) => row.id === visit.patient_id);
-    const activeMedicationList = (activeMedicationByPatientId.get(visit.patient_id) ?? []).filter((medication) => {
+    const activeMedicationList = (medicationStateByVisitId.get(visit.id) ?? []).filter((medication) => {
       const visitDate = visit.visit_date ?? visit.scheduled_date;
       if (!visitDate) return true;
       const started = !medication.start_date || medication.start_date <= visitDate;
