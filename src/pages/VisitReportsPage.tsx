@@ -5,6 +5,7 @@ import { ErrorState } from '../components/common/ErrorState';
 import { VisitTabs } from '../components/common/VisitTabs';
 import { LoadingState } from '../components/ui/LoadingState';
 import { Notice } from '../components/ui/Notice';
+import { ReferralReportEditor } from '../features/referral-report/ReferralReportEditor';
 import {
   downloadClinicianVisitReportPdf,
   downloadPatientVisitReportPdf,
@@ -24,6 +25,7 @@ export function VisitReportsPage() {
   const [downloading, setDownloading] = useState<'patient' | 'clinician' | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showReferral, setShowReferral] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -106,6 +108,9 @@ export function VisitReportsPage() {
           <button type="button" onClick={() => void handleClinicianPdfDownload()} disabled={Boolean(downloading)}>
             {downloading === 'clinician' ? 'Generando PDF médico...' : 'Descargar informe médico (PDF)'}
           </button>
+          <button type="button" className="button-secondary" onClick={() => setShowReferral((prev) => !prev)} aria-expanded={showReferral}>
+            {showReferral ? 'Cerrar informe de derivación' : 'Generar informe de derivación a MAP'}
+          </button>
           {visitPatientId ? (
             <Link className="button-link button-secondary" to={`/patients/${visitPatientId}`}>
               Volver a ficha paciente
@@ -115,6 +120,8 @@ export function VisitReportsPage() {
 
         <p className="help-text">Los informes se generan directamente en formato PDF profesional, sin popups ni HTML intermedio.</p>
       </section>
+
+      {showReferral ? <ReferralReportEditor visitId={visitId} /> : null}
     </div>
   );
 }
