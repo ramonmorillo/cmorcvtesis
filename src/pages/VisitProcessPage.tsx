@@ -5,6 +5,7 @@ import { ErrorState } from '../components/common/ErrorState';
 import { VisitTabs } from '../components/common/VisitTabs';
 import { Notice } from '../components/ui/Notice';
 import { StatusBadge } from '../components/ui/StatusBadge';
+import { VisitCostItemsPanel } from '../features/visit-costs/VisitCostItemsPanel';
 import { listInterventionsByVisit } from '../services/interventionService';
 import { supabase } from '../lib/supabase';
 import { getVisitById, type Visit } from '../services/visitService';
@@ -335,6 +336,14 @@ export function VisitProcessPage() {
             {saveSuccess ? <StatusBadge tone="positive">Guardado correctamente.</StatusBadge> : null}
           </div>
         </form>
+
+        {visit?.patient_id ? (
+          <VisitCostItemsPanel
+            visitId={visitId}
+            patientId={visit.patient_id}
+            onUseQuantifiedTotal={(total) => setForm((prev) => ({ ...prev, equipment_cost: total.toFixed(2) }))}
+          />
+        ) : null}
 
         {errorMessage ? (
           <Notice tone="danger">{errorMessage}</Notice>

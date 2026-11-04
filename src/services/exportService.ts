@@ -6,6 +6,7 @@ import { buildSavFile } from '../utils/spssWriter';
 import { listAllQuestionnaires } from './questionnaireService';
 import { compareVisitRecordsChronologically, type Visit } from './visitService';
 import { reconstructMedicationStateAtVisit, type MedicationHistoryEvent } from '../features/medications/visitMedicationHistory';
+import { computeLineTotal, getCostStatus, type VisitCostItem } from '../features/visit-costs/costMath';
 
 type ExportOutcome = {
   success: boolean;
@@ -872,6 +873,41 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
   // ── Downloads ─────────────────────────────────────────────────────────────
 
   downloadCsv('pacientes.csv', patientsCsv);
+  // Partidas de coste por visita (módulo aditivo). Si la tabla aún no existe (migración
+  // pendiente) o falla la consulta, se omite sin alterar el resto de la exportación.
+  const costItemsResult = await supabase
+    .from('visit_cost_items')
+    .select('visit_id,patient_id,concept_label_snapshot,quantity,unit_price_applied,price_source,price_applied_at,notes,created_at')
+    .order('created_at', { ascending: true });
+  const visitById = new Map(visits.map((visit) => [visit.id, visit]));
+  const costRows = costItemsResult.error
+    ? null
+    : ((costItemsResult.data ?? []) as unknown as VisitCostItem[]).map((item) => {
+        const quantity = Number(item.quantity);
+        const unitPrice = item.unit_price_applied === null ? null : Number(item.unit_price_applied);
+        const status = getCostStatus({ price_source: item.price_source, unit_price_applied: unitPrice });
+        const visit = visitById.get(item.visit_id);
+        return {
+          visit_id: anonymizedVisitIdByRawId.get(item.visit_id) ?? '',
+          patient_id: anonymizedPatientIdByRawId.get(item.patient_id) ?? '',
+          study_code: patients.find((row) => row.id === item.patient_id)?.study_code ?? '',
+          visit_type: getVisitTypeLabel(visit?.visit_type ?? null),
+          visit_date: visit?.visit_date ?? visit?.scheduled_date ?? '',
+          concepto: item.concept_label_snapshot,
+          cantidad: quantity,
+          precio_unitario_aplicado: unitPrice,
+          coste_total: status === 'pending' ? null : computeLineTotal(quantity, unitPrice),
+          estado_coste: status === 'pending' ? 'pendiente' : status === 'zero' ? 'cero' : 'conocido',
+          origen_precio: item.price_source,
+          fecha_valoracion: item.price_applied_at ?? '',
+          observaciones: item.notes ?? '',
+        };
+      });
+  const normalizedCostRows = costRows ? normalizeRowsForExport(costRows) : null;
+  if (normalizedCostRows) {
+    downloadCsv('costes_por_visita.csv', toCsv(Object.keys(normalizedCostRows[0] ?? { visit_id: '', patient_id: '' }), normalizedCostRows));
+  }
+
   downloadCsv('visitas.csv', visitsCsv);
   downloadCsv('estratificaciones.csv', stratificationCsv);
   downloadCsv('intervenciones.csv', interventionsCsv);
@@ -890,6 +926,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
     { name: 'Medicacion', rows: normalizedMedicationByVisitRows },
     { name: 'Cuestionarios', rows: normalizedQuestionnairesRows },
     { name: 'DatasetMaestro', rows: normalizedDatasetMaestroRows },
+    ...(normalizedCostRows ? [{ name: 'Costes', rows: normalizedCostRows }] : []),
   ]);
   downloadBinaryFile('investigacion_iris.xlsx', xlsxBinary, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 
@@ -922,6 +959,7 @@ export async function exportThesisDataCsvBundle(): Promise<ExportOutcome> {
       'investigacion_iris.xlsx',
       'dataset_maestro.sav',
       'medicacion_por_visita.sav',
+      ...(normalizedCostRows ? ['costes_por_visita.csv'] : []),
     ],
   };
 }

@@ -1,6 +1,13 @@
 import { supabase } from '../../lib/supabase';
 import { getVisitById, listVisitsByPatient } from '../../services/visitService';
-import { reconstructMedicationStateAtVisit, type MedicationHistoryEvent } from './visitMedicationHistory';
+import {
+  buildMedicationHistoryAtVisit,
+  reconstructMedicationStateAtVisit,
+  type HistoryEventWithValues,
+  type MedicationHistoryEvent,
+  type SuspendedMedicationEpisode,
+} from './visitMedicationHistory';
+import { getVisitTypeLabel } from '../../constants/enums';
 import { searchRemoteCimaMedications } from './cimaSearchService';
 import { normalizeMedicationCatalogSource } from './catalogSource';
 import { mapExternalMedicationPayloadToNormalizedCandidate, upsertNormalizedMedicationFromExternal } from './normalizedCatalog';
@@ -684,6 +691,79 @@ export async function listVisitMedicationSnapshotWithContext(
     data: reconstructMedicationStateAtVisit(allRows, context.data.laterVisitEvents),
     errorMessage: null,
     isHistorical: true,
+  };
+}
+
+export type VisitSuspendedMedication = SuspendedMedicationEpisode<PatientMedication> & {
+  /** Etiqueta legible de la visita donde se documentó la suspensión (tipo · fecha), o null si no consta. */
+  documentedInVisitLabel: string | null;
+};
+
+export type VisitMedicationHistory = {
+  suspended: VisitSuspendedMedication[];
+  suspendedMedicationCount: number;
+};
+
+/**
+ * Tratamientos suspendidos / históricos al cierre de la visita indicada (solo lectura).
+ * Ver unidad de conteo en visitMedicationHistory.ts.
+ */
+export async function listVisitMedicationHistory(visitId: string): Promise<NullableServiceResult<VisitMedicationHistory>> {
+  if (!supabase) {
+    return { data: null, errorMessage: 'Supabase no está configurado. No se puede consultar el histórico de medicación.' };
+  }
+
+  const visitResponse = await getVisitById(visitId);
+  if (visitResponse.errorMessage || !visitResponse.data?.patient_id) {
+    return { data: null, errorMessage: visitResponse.errorMessage ?? 'No se pudo resolver el paciente de la visita.' };
+  }
+  const patientId = visitResponse.data.patient_id;
+
+  const visitsResponse = await listVisitsByPatient(patientId);
+  if (visitsResponse.errorMessage) {
+    return { data: null, errorMessage: visitsResponse.errorMessage };
+  }
+  const visits = visitsResponse.data;
+  const visitIds = visits.map((visit) => visit.id);
+
+  const [rowsResponse, eventsResponse] = await Promise.all([
+    supabase.from('patient_medications').select(PATIENT_MEDICATION_SELECT).eq('patient_id', patientId).order('created_at', { ascending: true }),
+    visitIds.length > 0
+      ? supabase
+          .from('visit_medication_events')
+          .select('visit_id,patient_medication_id,event_type,old_value,new_value,created_at')
+          .in('visit_id', visitIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (rowsResponse.error || eventsResponse.error) {
+    return {
+      data: null,
+      errorMessage: extractErrorMessage(rowsResponse.error ?? eventsResponse.error, 'No fue posible consultar el histórico de medicación.'),
+    };
+  }
+
+  const rows = ((rowsResponse.data ?? []) as Array<PatientMedication & { medication_catalog?: MedicationCatalogItem | MedicationCatalogItem[] }>).map(
+    normalizePatientMedication,
+  );
+  const history = buildMedicationHistoryAtVisit(rows, (eventsResponse.data ?? []) as HistoryEventWithValues[], visitIds, visitId);
+
+  const visitLabelById = new Map(
+    visits.map((visit) => {
+      const date = visit.visit_date ?? visit.scheduled_date;
+      return [visit.id, `${getVisitTypeLabel(visit.visit_type)}${date ? ` · ${new Date(`${date}T00:00:00`).toLocaleDateString('es-ES')}` : ''}`];
+    }),
+  );
+
+  return {
+    data: {
+      suspended: history.suspended.map((episode) => ({
+        ...episode,
+        documentedInVisitLabel: episode.documentedInVisitId ? visitLabelById.get(episode.documentedInVisitId) ?? null : null,
+      })),
+      suspendedMedicationCount: history.suspendedMedicationCount,
+    },
+    errorMessage: null,
   };
 }
 

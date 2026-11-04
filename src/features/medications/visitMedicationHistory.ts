@@ -37,11 +37,11 @@ const SNAPSHOT_KEYS = [
 ] as const;
 
 /**
- * Devuelve los tratamientos ACTIVOS al cierre de la visita, a partir de TODAS las
- * filas del paciente (activas e inactivas) y de los eventos registrados en las
- * visitas cronológicamente posteriores a ella. No muta las entradas.
+ * Estado de TODAS las filas que existían al cierre de la visita (activas e inactivas),
+ * a partir de todas las filas del paciente y de los eventos de visitas posteriores.
+ * No muta las entradas.
  */
-export function reconstructMedicationStateAtVisit<T extends MedicationStateRow>(
+export function reconstructAllMedicationRowsAtVisit<T extends MedicationStateRow>(
   allPatientRows: T[],
   laterVisitEvents: MedicationHistoryEvent[],
 ): T[] {
@@ -59,7 +59,6 @@ export function reconstructMedicationStateAtVisit<T extends MedicationStateRow>(
       (event) => event.event_type === 'added' || ((event.event_type === 'modified' || event.event_type === 'stopped') && event.old_value),
     );
 
-    let stateAtVisit: T = { ...row };
     if (firstInformative?.event_type === 'added') {
       continue;
     }
@@ -70,13 +69,117 @@ export function reconstructMedicationStateAtVisit<T extends MedicationStateRow>(
           restored[key] = firstInformative.old_value[key];
         }
       }
-      stateAtVisit = { ...row, ...restored } as T;
+      result.push({ ...row, ...restored } as T);
+      continue;
     }
-
-    if (stateAtVisit.is_active) {
-      result.push(stateAtVisit);
-    }
+    result.push({ ...row });
   }
 
   return result;
+}
+
+/**
+ * Devuelve los tratamientos ACTIVOS al cierre de la visita, a partir de TODAS las
+ * filas del paciente (activas e inactivas) y de los eventos registrados en las
+ * visitas cronológicamente posteriores a ella. No muta las entradas.
+ */
+export function reconstructMedicationStateAtVisit<T extends MedicationStateRow>(
+  allPatientRows: T[],
+  laterVisitEvents: MedicationHistoryEvent[],
+): T[] {
+  return reconstructAllMedicationRowsAtVisit(allPatientRows, laterVisitEvents).filter((row) => row.is_active);
+}
+
+// ---------------------------------------------------------------------------
+// Tratamientos suspendidos / históricos al cierre de una visita.
+//
+// Unidad de conteo: EPISODIO TERAPÉUTICO = una fila de patient_medications
+// (desde su alta hasta su suspensión). Una reintroducción crea una fila nueva,
+// es decir, un episodio nuevo. El contador "medicamentos suspendidos" cuenta
+// medicamentos distintos (medication_catalog_id) con algún episodio suspendido
+// y SIN episodio activo en esa visita, para no contar dos veces el mismo
+// medicamento ni contar como suspendido uno reintroducido.
+// ---------------------------------------------------------------------------
+
+type HistoryRow = MedicationStateRow & {
+  medication_catalog_id: string;
+  dose_text?: string | null;
+  frequency_text?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  notes?: string | null;
+};
+
+export type HistoryEventWithValues = MedicationHistoryEvent & { new_value?: Record<string, unknown> | null };
+
+export type SuspendedMedicationEpisode<T extends HistoryRow> = {
+  row: T;
+  /** Última dosis/posología registrada mientras estuvo activo (old_value del evento de suspensión), si consta. */
+  lastDoseText: string | null;
+  lastFrequencyText: string | null;
+  startDate: string | null;
+  /** Fecha de fin registrada (end_date); null si no consta. */
+  suspensionDate: string | null;
+  /** Visita en la que se documentó la suspensión; null si no consta un evento 'stopped'. */
+  documentedInVisitId: string | null;
+  /** Hay otro episodio activo del mismo medicamento en esta visita. */
+  reintroduced: boolean;
+};
+
+export type MedicationHistoryAtVisit<T extends HistoryRow> = {
+  active: T[];
+  suspended: SuspendedMedicationEpisode<T>[];
+  /** Medicamentos distintos suspendidos y no reintroducidos al cierre de la visita. */
+  suspendedMedicationCount: number;
+};
+
+function textOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+/**
+ * @param chronologicalVisitIds visitas del paciente en orden cronológico.
+ * @param allPatientEvents eventos de medicación de TODAS las visitas del paciente.
+ */
+export function buildMedicationHistoryAtVisit<T extends HistoryRow>(
+  allPatientRows: T[],
+  allPatientEvents: HistoryEventWithValues[],
+  chronologicalVisitIds: string[],
+  visitId: string,
+): MedicationHistoryAtVisit<T> {
+  const visitIndex = chronologicalVisitIds.indexOf(visitId);
+  const laterIds = new Set(visitIndex >= 0 ? chronologicalVisitIds.slice(visitIndex + 1) : []);
+  const upToIds = new Set(visitIndex >= 0 ? chronologicalVisitIds.slice(0, visitIndex + 1) : chronologicalVisitIds);
+
+  const rowsAtVisit = reconstructAllMedicationRowsAtVisit(
+    allPatientRows,
+    allPatientEvents.filter((event) => laterIds.has(event.visit_id)),
+  );
+  const active = rowsAtVisit.filter((row) => row.is_active);
+  const activeCatalogIds = new Set(active.map((row) => row.medication_catalog_id));
+
+  const suspended = rowsAtVisit
+    .filter((row) => !row.is_active)
+    .map((row) => {
+      const stoppedEvent = allPatientEvents
+        .filter((event) => event.patient_medication_id === row.id && event.event_type === 'stopped' && upToIds.has(event.visit_id))
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+      const lastActive = stoppedEvent?.old_value ?? null;
+      return {
+        row,
+        lastDoseText: textOrNull(lastActive?.dose_text) ?? textOrNull(row.dose_text),
+        lastFrequencyText: textOrNull(lastActive?.frequency_text) ?? textOrNull(row.frequency_text),
+        startDate: textOrNull(row.start_date) ?? textOrNull(lastActive?.start_date),
+        suspensionDate: textOrNull(row.end_date) ?? textOrNull(stoppedEvent?.new_value?.end_date),
+        documentedInVisitId: stoppedEvent?.visit_id ?? null,
+        reintroduced: activeCatalogIds.has(row.medication_catalog_id),
+      };
+    })
+    .sort((a, b) => (b.suspensionDate ?? '').localeCompare(a.suspensionDate ?? ''));
+
+  const suspendedMedicationCount = new Set(
+    suspended.filter((episode) => !episode.reintroduced).map((episode) => episode.row.medication_catalog_id),
+  ).size;
+
+  return { active, suspended, suspendedMedicationCount };
 }
