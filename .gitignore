@@ -5,3 +5,9 @@ dist/
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
+
+# Generated from locked npm dependencies; never clinical data.
+public/medication-import/
+
+test-results/
+playwright-report/

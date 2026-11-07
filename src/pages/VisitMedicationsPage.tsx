@@ -12,8 +12,12 @@ export function VisitMedicationsPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    setPatientId('');
+    setErrorMessage(null);
     void (async () => {
       const result = await getVisitById(visitId);
+      if (cancelled) return;
       if (result.errorMessage || !result.data?.patient_id) {
         setErrorMessage(result.errorMessage ?? 'No se pudo resolver el paciente de la visita.');
         return;
@@ -21,6 +25,7 @@ export function VisitMedicationsPage() {
       setPatientId(result.data.patient_id);
       setErrorMessage(null);
     })();
+    return () => { cancelled = true; };
   }, [visitId]);
 
   return (
@@ -31,7 +36,7 @@ export function VisitMedicationsPage() {
       </section>
 
       {errorMessage ? <ErrorState title="No se pudo cargar la medicación" message={errorMessage} /> : null}
-      {patientId ? <MedicationPanel visitId={visitId} patientId={patientId} /> : null}
+      {patientId ? <MedicationPanel key={`${patientId}-${visitId}`} visitId={visitId} patientId={patientId} /> : null}
     </div>
   );
 }
