@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   duplicateReason,
+  manualCatalogSelection,
   isDrugOnlyQuery,
   parseMedicationPages,
   pendingFields,
@@ -120,5 +121,93 @@ describe('document medication proposals', () => {
       'a@b.es',
     ])
       expect(isDrugOnlyQuery(query)).toBe(false);
+  });
+});
+
+describe('reviewed catalogue selection drafts', () => {
+  it('accepts an explicit CIMA presentation without a second local selection', () => {
+    const row = {
+      ...ready(),
+      catalog: undefined,
+      catalogSelection: {
+        source: 'external_cima' as const,
+        source_code: '321999',
+        display_name: 'Atorvastatina 40 mg',
+      },
+    };
+    const [draft] = prepareImportDrafts([row], []);
+    expect(draft.medication_catalog_id).toBe('');
+    expect(draft.catalogSelection).toEqual(row.catalogSelection);
+  });
+  it('rejects CIMA presentations with no stable identifier', () => {
+    expect(() =>
+      prepareImportDrafts(
+        [
+          {
+            ...ready(),
+            catalog: undefined,
+            catalogSelection: { source: 'external_cima', display_name: 'Atorvastatina 40 mg' },
+          },
+        ],
+        [],
+      ),
+    ).toThrow();
+  });
+  it('detects duplicate CIMA identifiers before resolving catalogue entries', () => {
+    const row = {
+      ...ready(),
+      catalog: undefined,
+      catalogSelection: {
+        source: 'external_cima' as const,
+        source_code: '321999',
+        display_name: 'Atorvastatina 40 mg',
+      },
+    };
+    expect(() => prepareImportDrafts([row, { ...row, id: 'second', name: 'Otra etiqueta' }], [])).toThrow();
+  });
+});
+
+describe('catalogue preparation boundaries', () => {
+  it('keeps concentration in a manual identity so different strengths do not share a generic label', () => {
+    expect(
+      manualCatalogSelection({ ...ready(), name: 'Atorvastatina', strength: '20 mg', form: 'comprimidos' })
+        .display_name,
+    ).toBe('Atorvastatina 20 mg comprimidos');
+    expect(
+      manualCatalogSelection({ ...ready(), name: 'Atorvastatina', strength: '40 mg', form: 'comprimidos' })
+        .display_name,
+    ).toBe('Atorvastatina 40 mg comprimidos');
+  });
+  it('never includes document or patient metadata in a deferred catalogue selection', () => {
+    const catalogSelection = {
+      source: 'manual',
+      display_name: 'Atorvastatina 40 mg',
+      original: 'SYNTHETIC FRAGMENT',
+      patient_id: 'synthetic-patient',
+      raw_payload: { clinical: 'synthetic' },
+    } as unknown as NonNullable<Proposal['catalogSelection']>;
+    expect(prepareImportDrafts([{ ...ready(), catalog: undefined, catalogSelection }], [])[0].catalogSelection).toEqual(
+      { source: 'manual', display_name: 'Atorvastatina 40 mg' },
+    );
+  });
+  it('warns about the same ingredient after selecting a different CIMA brand', () => {
+    const row = {
+      ...ready(),
+      catalog: undefined,
+      name: 'Otra marca 40 mg',
+      catalogSelection: {
+        source: 'external_cima' as const,
+        source_code: '321999',
+        display_name: 'Otra marca 40 mg',
+        active_ingredient: 'Atorvastatina',
+      },
+    };
+    expect(
+      duplicateReason(
+        row,
+        [{ medication_catalog_id: 'other', display_name: 'Marca anterior', active_ingredient: 'Atorvastatina' }],
+        [],
+      ),
+    ).toBeTruthy();
   });
 });

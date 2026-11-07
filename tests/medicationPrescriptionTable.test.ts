@@ -106,7 +106,7 @@ describe('prescription table rows (synthetic, no personal identifiers)', () => {
     const issues = importBlockingIssues([{ ...row, selected: true }], []);
     expect(issues).toHaveLength(1);
     expect(issues[0]).toContain('Tratamiento 1 · OMEPRAZOL');
-    expect(issues[0]).toContain('Catálogo y normalización');
+    expect(issues[0]).toContain('elige catálogo local');
     expect(issues[0]).toContain('estado');
     expect(issues[0]).toContain('revisión profesional');
     expect(importBlockingIssues([row], [])[0]).toContain('Selecciona al menos');

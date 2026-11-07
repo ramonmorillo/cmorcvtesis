@@ -1142,3 +1142,30 @@ html { scroll-behavior: smooth; scroll-padding-top: 5rem; }
 .medication-import details { margin-block: .75rem; }
 .medication-import input[type="checkbox"] { width: auto; margin-right: .4rem; }
 .medication-import-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+
+/* Keep long pharmaceutical names within their column; never push review controls off-screen. */
+.medication-import { container: medication-review / inline-size; }
+.medication-import, .medication-import-catalog, .medication-import-selection { min-width: 0; overflow-wrap: anywhere; }
+.medication-import-table { overflow-x: visible; }
+.medication-import table { table-layout: fixed; min-width: 0; width: 100%; }
+.medication-import th:nth-child(1) { width: 14%; }
+.medication-import th:nth-child(2) { width: 31%; }
+.medication-import th:nth-child(3) { width: 23%; }
+.medication-import th:nth-child(4) { width: 32%; }
+.medication-import td { min-width: 0; overflow-wrap: anywhere; }
+.medication-import input, .medication-import select, .medication-import button { min-width: 0; max-width: 100%; }
+.medication-import button { white-space: normal; overflow-wrap: anywhere; }
+.medication-import-results { max-height: 18rem; overflow-y: auto; overflow-x: hidden; margin-block: .5rem; }
+.medication-import-results button { display: block; width: 100%; text-align: left; margin-block: .35rem; }
+.medication-import label:has(> input[type="checkbox"]) { display: flex; align-items: flex-start; gap: .5rem; }
+.medication-import label > input[type="checkbox"] { flex: 0 0 1rem; margin-top: .2rem; }
+@container medication-review (max-width: 900px) {
+  .medication-import table, .medication-import tbody { display: block; }
+  .medication-import thead { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
+  .medication-import tbody > tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--iris-border); border-radius: .5rem; margin-block: .75rem; }
+  .medication-import td { display: block; border: 0; }
+  .medication-import caption { display: block; }
+}
+@container medication-review (max-width: 540px) {
+  .medication-import tbody > tr { grid-template-columns: minmax(0, 1fr); }
+}

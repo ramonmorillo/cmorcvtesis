@@ -1,25 +1,44 @@
 import { supabase } from '../../../lib/supabase';
-import type { PatientMedicationDraft } from '../types';
+import type { DocumentMedicationDraft, MedicationCatalogItem } from '../types';
+import { resolveDocumentMedicationCatalog } from '../medicationsService';
 
 export async function persistMedicationImport(input: {
   operationId: string;
   patientId: string;
   visitId: string;
-  rows: PatientMedicationDraft[];
+  rows: DocumentMedicationDraft[];
+  onCatalogResolved?: (index: number, catalog: MedicationCatalogItem) => void;
 }): Promise<{ ids: string[]; error: string | null }> {
   if (!supabase) return { ids: [], error: 'Supabase no está configurado.' };
   // Whitelist confirmed fields; never forward fragments, names, documents, CIMA payloads or notes.
   try {
+    const prepared = [];
+    for (const [index, row] of input.rows.entries()) {
+      let catalogId = row.medication_catalog_id;
+      if (!catalogId) {
+        if (!row.catalogSelection)
+          return { ids: [], error: `Tratamiento ${index + 1}: falta elegir la identidad del medicamento.` };
+        const resolved = await resolveDocumentMedicationCatalog(row.catalogSelection);
+        if (resolved.errorMessage || !resolved.data)
+          return {
+            ids: [],
+            error: `Tratamiento ${index + 1}: no se pudo preparar su catálogo. No se ha enviado el lote de tratamientos. Revisa la sesión y reintenta.`,
+          };
+        catalogId = resolved.data.id;
+        input.onCatalogResolved?.(index, resolved.data);
+      }
+      prepared.push({
+        medication_catalog_id: catalogId,
+        dose_text: row.dose_text,
+        frequency_text: row.frequency_text,
+        route_text: row.route_text,
+      });
+    }
     const { data, error } = await supabase.rpc('import_visit_medication_document', {
       p_operation_id: input.operationId,
       p_patient_id: input.patientId,
       p_visit_id: input.visitId,
-      p_rows: input.rows.map((row) => ({
-        medication_catalog_id: row.medication_catalog_id,
-        dose_text: row.dose_text,
-        frequency_text: row.frequency_text,
-        route_text: row.route_text,
-      })),
+      p_rows: prepared,
     });
     if (error) {
       const message =
