@@ -9,6 +9,7 @@ import { persistMedicationImport } from './importService';
 import { extractDocument } from './extractDocument';
 import {
   duplicateReason,
+  importBlockingIssues,
   isDrugOnlyQuery,
   normalizeDrug,
   parseMedicationPages,
@@ -194,6 +195,11 @@ export function MedicationDocumentImport({ patientId, visitId, existing, disable
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [confirmed, setConfirmed] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const feedback = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (submitError) feedback.current?.focus();
+  }, [submitError]);
   const controller = useRef<AbortController>();
   const generation = useRef(0);
   const input = useRef<HTMLInputElement>(null);
@@ -217,6 +223,7 @@ export function MedicationDocumentImport({ patientId, visitId, existing, disable
     setPages([]);
     setBusy(false);
     setMessage('');
+    setSubmitError('');
     setConfirmed(false);
     setOpen(false);
     if (input.current) input.current.value = '';
@@ -228,6 +235,7 @@ export function MedicationDocumentImport({ patientId, visitId, existing, disable
     const abort = new AbortController();
     controller.current = abort;
     operation.current = undefined;
+    setSubmitError('');
     setPages([]);
     setRows([]);
     setConfirmed(false);
@@ -260,12 +268,19 @@ export function MedicationDocumentImport({ patientId, visitId, existing, disable
     }
   };
   const update = (id: string, patch: Partial<Proposal>) => {
+    setSubmitError('');
     operation.current = undefined;
     setRows((previous) => previous.map((row) => (row.id === id ? { ...row, ...patch } : row)));
     setConfirmed(false);
   };
   const prepare = async () => {
     if (disabled || busy || saving || !confirmed) return;
+    setSubmitError('');
+    const issues = importBlockingIssues(rows, existing);
+    if (issues.length) {
+      setSubmitError('No se ha guardado ningún tratamiento. Completa los puntos indicados antes de confirmar.');
+      return;
+    }
     try {
       const drafts = prepareImportDrafts(rows, existing);
       operation.current ??= crypto.randomUUID();
@@ -277,7 +292,7 @@ export function MedicationDocumentImport({ patientId, visitId, existing, disable
         rows: drafts,
       });
       if (result.error) {
-        setMessage(result.error);
+        setSubmitError(result.error);
         return;
       }
       // Clear the source before refreshing; refresh failures must never invite a second insert.
@@ -288,7 +303,9 @@ export function MedicationDocumentImport({ patientId, visitId, existing, disable
       operation.current = undefined;
       await onImported();
     } catch {
-      setMessage('Revisa el lote. Si ya confirmaste, comprueba el registro antes de volver a importar.');
+      setSubmitError(
+        'No se pudo completar la confirmación. Si ya enviaste el lote, comprueba el registro antes de iniciar otro.',
+      );
     } finally {
       setSaving(false);
     }
@@ -386,6 +403,7 @@ export function MedicationDocumentImport({ patientId, visitId, existing, disable
                           onClick={() => {
                             setRows((items) => items.filter((item) => item.id !== row.id));
                             setConfirmed(false);
+                            setSubmitError('');
                           }}
                         >
                           Descartar
@@ -452,6 +470,28 @@ export function MedicationDocumentImport({ patientId, visitId, existing, disable
         )}
         {rows.length > 0 && (
           <>
+            <div className="notice notice-info" aria-label="Preparación de la incorporación">
+              <strong>
+                {rows.filter((row) => row.selected).length} tratamientos seleccionados de {rows.length}.
+              </strong>
+              {importBlockingIssues(rows, existing).length ? (
+                <>
+                  <p>Para incorporar los seleccionados, completa:</p>
+                  <ul>
+                    {importBlockingIssues(rows, existing).map((issue) => (
+                      <li key={issue}>{issue}</li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p>Selección lista. Marca la confirmación final y pulsa «Confirmar e incorporar tratamientos».</p>
+              )}
+            </div>
+            {submitError && (
+              <div ref={feedback} tabIndex={-1} role="alert" className="notice notice-danger">
+                {submitError}
+              </div>
+            )}
             <p>
               Se incorporan solo tratamientos activos con catálogo elegido. Los suspendidos se muestran para revisión,
               sin suspender ni reactivar registros de IRIS. Concentración, forma y fragmento quedan solo en esta

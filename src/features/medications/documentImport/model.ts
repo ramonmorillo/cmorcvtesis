@@ -1,3 +1,4 @@
+import { readPrescriptionTable, type DocumentWord, type PrescriptionTableRow } from './tableLayout';
 import type { MedicationCatalogItem, PatientMedicationDraft } from '../types';
 
 export type TreatmentStatus = 'unknown' | 'active' | 'stopped';
@@ -19,7 +20,13 @@ export type Proposal = {
   reviewed: boolean;
   catalog?: MedicationCatalogItem;
 };
-export type DocumentPage = { page: number; text: string; method: 'text' | 'ocr' };
+export type DocumentPage = {
+  page: number;
+  text: string;
+  method: 'text' | 'ocr';
+  words?: DocumentWord[];
+  tableRows?: PrescriptionTableRow[];
+};
 export const normalizeDrug = (value: string) =>
   value
     .normalize('NFD')
@@ -39,10 +46,37 @@ const frequencyPattern =
   /\bcada\s+\d+(?:[.,]\d+)?\s*(?:horas?|h|días?|dias?|semanas?)\b|\b\d+\s*ve(?:z|ces)\s*(?:al|por|\/)\s*d[ií]a\b|\b[0-9½]+\s*-\s*[0-9½]+\s*-\s*[0-9½]+\b|\b(?:desayuno y cena|desayuno|comida|cena|según necesidad|segun necesidad)\b/i;
 const routePattern =
   /\b(?:oral|subcutánea|subcutanea|intravenosa|inhalada|tópica|topica|oftálmica|oftalmica|intramuscular|rectal)\b/i;
-function makeProposal(original: string, page: number, id: string): Proposal {
-  const strength = original.match(strengthPattern)?.[0] ?? '';
+function cleanMedicationPrefix(text: string): string {
+  return text
+    .replace(/^\s*(?:[A-Z0-9]{6,12}\s+)?\d{6}\s*/i, '')
+    .replace(/^\s*[-•\d.)]+\s*/, '')
+    .replace(/^(?:medicamento|tratamiento)\s*:/i, '')
+    .trim();
+}
+function makeProposal(original: string, page: number, id: string, table?: PrescriptionTableRow): Proposal {
+  const medication = cleanMedicationPrefix(table?.medication ?? original);
+  const identity = medication.split(
+    /;|\b(?:dosis|pauta|frecuencia)\s*[:=]|\b\d+(?:[.,]\d+)?\s*(?:comprimidos?|c[áa]psulas?|sobres?)\b|\bcada\b/i,
+  )[0];
+  const strengths = [...identity.matchAll(new RegExp(strengthPattern.source, 'gi'))];
+  const strength = strengths.map((match) => match[0]).join(' / ');
+  const names: string[] = [];
+  let end = 0;
+  for (const match of strengths) {
+    const part = identity
+      .slice(end, match.index)
+      .replace(/^[\s/+,-]+|[\s/+,-]+$/g, '')
+      .trim();
+    if (part && !formPattern.test(part) && !routePattern.test(part)) names.push(part);
+    end = match.index! + match[0].length;
+  }
+  const name = (names.length ? names.join(' / ') : identity).trim().slice(0, 160);
+  // In a recognized table, package quantities belong to the description, never to posology.
+  const regimen = (
+    table ? table.regimen : original.replace(/,\s*\d+\s*(?:comprimidos|c[áa]psulas|sobres)\b/gi, ' ')
+  ).replace(/\s+/g, ' ');
   const form = original.match(formPattern)?.[0] ?? '';
-  const matches = (pattern: RegExp) => [...new Set(original.match(new RegExp(pattern.source, 'gi')) ?? [])];
+  const matches = (pattern: RegExp) => [...new Set(regimen.match(new RegExp(pattern.source, 'gi')) ?? [])];
   const doses = matches(dosePattern);
   const frequencies = matches(frequencyPattern);
   const ambiguous = /\b(?:variable|alternar|alternos?|ajustar|seg[uú]n controles)\b|\d+\s+o\s+\d+/i.test(original);
@@ -62,12 +96,6 @@ function makeProposal(original: string, page: number, id: string): Proposal {
       : active && !stopped
         ? 'active'
         : 'unknown';
-  const cut = original.search(strengthPattern);
-  const name = (cut >= 0 ? original.slice(0, cut) : original.split(/[;|]/)[0])
-    .replace(/^\s*[-•\d.)]+\s*/, '')
-    .replace(/\b(?:medicamento|tratamiento)\s*:/i, '')
-    .trim()
-    .slice(0, 160);
   const values = { name, strength, form, dose, frequency, route, status };
   const provenance = Object.fromEntries(
     Object.entries(values).map(([key, value]) => [key, value && value !== 'unknown' ? 'document' : 'undetermined']),
@@ -77,6 +105,12 @@ function makeProposal(original: string, page: number, id: string): Proposal {
 export function parseMedicationPages(pages: DocumentPage[]): Proposal[] {
   const proposals: Proposal[] = [];
   for (const page of pages) {
+    const table = page.tableRows ?? (page.words ? readPrescriptionTable(page.words) : null);
+    if (table?.length) {
+      for (const row of table)
+        proposals.push(makeProposal(row.original, page.page, `${page.page}-${proposals.length}`, row));
+      continue;
+    }
     const lines = page.text
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -87,18 +121,24 @@ export function parseMedicationPages(pages: DocumentPage[]): Proposal[] {
       block = '';
     };
     for (const line of lines) {
-      // Include recognizable medication lines, plus conservative labelled rows lacking strength.
-      const startsDrug =
-        /[a-záéíóúñ]/i.test(line) &&
-        (strengthPattern.test(line) ||
-          dosePattern.test(line) ||
-          frequencyPattern.test(line) ||
-          /^(?:medicamento|tratamiento)\s*:/i.test(line));
+      const cleaned = cleanMedicationPrefix(line);
       const continuation =
-        /^(?:dosis|pauta|frecuencia|v[ií]a|estado|suspendid[oa]|activ[oa]|cada\s|\d+\s*(?:comprimido|cápsula))/i.test(
+        /^(?:(?:dosis|pauta|frecuencia|v[ií]a|estado)\b|suspendid[oa]\b|activ[oa]\b|cada\b|(?:\d+(?:[.,]\d+|\s*\/\s*\d+)?\s*)?(?:comprimidos?|c[áa]psulas?|sobres?|gotas?)\b|\d+\s*(?:horas?|h|d[ií]as?|semanas?)\b)/i.test(
           line,
         );
-      if (continuation && block) block += `\n${line}`;
+      if (continuation) {
+        if (block) block += `\n${line}`;
+        continue;
+      }
+      if (/^(?:\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}(?:\s+|$))+$/.test(line)) {
+        if (block) block += `\n${line}`;
+        continue;
+      }
+      if (/^[A-Z0-9]{6,12}$/.test(line)) continue;
+      const startsDrug =
+        /[a-záéíóúñ]/i.test(cleaned) &&
+        (strengthPattern.test(cleaned) || dosePattern.test(cleaned) || /^(?:medicamento|tratamiento)\s*:/i.test(line));
+      if (startsDrug && block && /[/+]\s*$/.test(block)) block += `\n${line}`;
       else if (startsDrug) {
         flush();
         block = line;
@@ -153,21 +193,27 @@ export function pendingFields(row: Proposal): string[] {
     !row.reviewed && 'revisión profesional',
   ].filter((v): v is string => Boolean(v));
 }
-export function prepareImportDrafts(rows: Proposal[], existing: ExistingTreatment[]): PatientMedicationDraft[] {
+export function importBlockingIssues(rows: Proposal[], existing: ExistingTreatment[]): string[] {
   const selected = rows.filter((row) => row.selected);
-  if (!selected.length || selected.length > 100) throw Error('Selecciona entre 1 y 100 tratamientos.');
-  if (
-    selected.some(
-      (row) =>
-        !row.catalog ||
-        !row.reviewed ||
-        row.status !== 'active' ||
-        !row.name.trim() ||
-        duplicateReason(row, existing, selected),
-    )
-  ) {
-    throw Error('Revisa el catálogo, el estado, la confirmación y los duplicados antes de continuar.');
-  }
+  if (!selected.length) return ['Selecciona al menos un tratamiento mediante la casilla «Seleccionar» de su fila.'];
+  if (selected.length > 100) return ['Máximo 100 tratamientos por lote.'];
+  return rows.flatMap((row, index) => {
+    if (!row.selected) return [];
+    const reasons = [
+      !row.name.trim() && 'indica el nombre',
+      !row.catalog && 'elige una entrada en «Catálogo y normalización»',
+      row.status === 'unknown' && 'confirma el estado (no determinado)',
+      row.status === 'stopped' && 'está suspendido: descártalo del lote activo',
+      !row.reviewed && 'marca la revisión profesional de esta fila',
+      duplicateReason(row, existing, selected),
+    ].filter(Boolean);
+    return reasons.length ? [`Tratamiento ${index + 1} · ${row.name || 'sin nombre'}: ${reasons.join('; ')}.`] : [];
+  });
+}
+export function prepareImportDrafts(rows: Proposal[], existing: ExistingTreatment[]): PatientMedicationDraft[] {
+  const issues = importBlockingIssues(rows, existing);
+  if (issues.length) throw Error(issues.join('\n'));
+  const selected = rows.filter((row) => row.selected);
   // Explicit whitelist: no original text, document metadata or normalisation payload leaves review.
   return selected.map((row) => ({
     medication_catalog_id: row.catalog!.id,

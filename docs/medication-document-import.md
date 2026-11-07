@@ -189,3 +189,37 @@ esquema permisivo observado sin helpers, denegación a otros usuarios y
 reejecución de la migración sin borrar datos. La migración está envuelta en
 BEGIN/COMMIT. No se propone reinstalar migraciones anteriores ni reemplazar
 políticas clínicas existentes para resolver compatibilidad.
+
+## Refinamiento de tablas de prescripción y confirmación
+
+La lectura conserva ahora posiciones de palabras tanto en PDF digital como en OCR.
+Cuando reconoce encabezados de prescripciones/posología, códigos de medicamento
+y columnas de fechas, agrupa el contenido por filas y separa descripción y pauta.
+Los códigos de prescripción y catálogo no se incorporan al nombre; las cantidades
+de envase no se tratan como dosis. Las combinaciones conservan sus dos nombres
+y concentraciones. En texto sin tabla, las líneas «1 cápsula cada» y «24 horas»
+se unen al medicamento anterior en lugar de generar nuevas propuestas.
+
+En imágenes/escaneos se realiza una segunda lectura OCR local de cada celda de
+posología, ampliada, retirando líneas largas de la cuadrícula del recorte. Se usa
+una lectura coherente por página, sin concatenar dos lecturas completas que puedan
+duplicar las propuestas. Los recortes se liberan al terminar. No se inventa una
+dosis ante texto ilegible y las fechas no convierten el estado en activo.
+Este reconocimiento de tabla exige evidencia explícita de columnas y códigos;
+formatos diferentes, códigos mal reconocidos o tablas deformadas pueden seguir
+requiriendo corrección manual. No se ha usado el documento clínico del usuario en
+el repositorio ni en las pruebas: las reproducciones son completamente sintéticas.
+
+Junto al botón final aparecen el número de tratamientos seleccionados y los motivos
+que bloquean cada fila: catálogo sin elegir, estado no determinado o suspendido,
+revisión profesional pendiente y duplicados. Los errores del servidor también se
+muestran ahí y reciben foco, evitando avisos fuera de vista. La casilla final no
+sustituye la selección y revisión de cada tratamiento. No se relajan validaciones.
+
+Validación de esta corrección: 92 pruebas de lógica/base de datos, 15 pruebas de
+navegador y compilación correctas. Incluye una tabla sintética de cinco recetas en
+PDF digital, JPEG y PDF escaneado, reconocimiento de sus cinco dosis/pautas,
+ausencia de solicitudes externas durante extracción y una prueba que reproduce
+la confirmación incompleta, verifica el aviso visible y completa el mismo lote con
+un solo guardado simulado. No cambia tablas, RPC ni RLS; requiere desplegar el
+frontend. El flujo remoto autenticado permanece sujeto a validación en el sitio.

@@ -322,13 +322,11 @@ test('integrated panel imports new treatments while preserving unsaved manual ch
   await page.goto('/tests/browser/import-harness.html?manual');
   await page.getByLabel('Dosis (texto libre, opcional)').fill('CAMBIO MANUAL SINTETICO');
   await page.getByRole('button', { name: 'Importar medicación desde PDF o imagen', exact: true }).click();
-  await page
-    .getByLabel('Documento de tratamiento')
-    .setInputFiles({
-      name: 'synthetic.pdf',
-      mimeType: 'application/pdf',
-      buffer: textPdf([['Metformina 850 mg comprimidos; 1 comprimido cada 24 h; oral; activo']]),
-    });
+  await page.getByLabel('Documento de tratamiento').setInputFiles({
+    name: 'synthetic.pdf',
+    mimeType: 'application/pdf',
+    buffer: textPdf([['Metformina 850 mg comprimidos; 1 comprimido cada 24 h; oral; activo']]),
+  });
   await expect(page.getByLabel('Nombre 1', { exact: true })).toHaveValue('Metformina');
   await page.getByText('Catálogo y normalización (selección obligatoria)', { exact: true }).click();
   await page.getByLabel('Término farmacológico para consultar').fill('metformina');
@@ -344,4 +342,35 @@ test('integrated panel imports new treatments while preserving unsaved manual ch
   ).toBeVisible();
   await expect(page.getByLabel('Dosis (texto libre, opcional)').first()).toHaveValue('CAMBIO MANUAL SINTETICO');
   await expect(page.getByLabel('Dosis (texto libre, opcional)')).toHaveCount(2);
+});
+
+test('confirmation reports missing row requirements beside the button and writes nothing', async ({ page }) => {
+  const writes: string[] = [];
+  page.on('request', (r) => {
+    if (r.method() === 'POST') writes.push(r.url());
+  });
+  await open(page);
+  await uploadPdf(page);
+  await page.getByLabel('Incorporar 1', { exact: true }).check();
+  await page.getByLabel('Estado 1', { exact: true }).selectOption('unknown');
+  await page.getByLabel('Confirmo expresamente la incorporación').check();
+  await page.getByRole('button', { name: 'Confirmar e incorporar tratamientos', exact: true }).click();
+  const summary = page.getByLabel('Preparación de la incorporación');
+  await expect(summary).toContainText('1 tratamientos seleccionados');
+  await expect(summary).toContainText('Catálogo y normalización');
+  await expect(summary).toContainText('confirma el estado');
+  await expect(summary).toContainText('marca la revisión profesional');
+  await expect(page.getByRole('alert')).toHaveText(
+    'No se ha guardado ningún tratamiento. Completa los puntos indicados antes de confirmar.',
+  );
+  await expect(page.getByRole('alert')).toBeInViewport();
+  expect(writes).toEqual([]);
+  // Complete the same row and confirm again: validation must not prevent valid saves.
+  await selectCatalog(page);
+  await page.getByLabel('Estado 1', { exact: true }).selectOption('active');
+  await page.getByLabel('Revisado 1', { exact: true }).check();
+  await page.getByLabel('Confirmo expresamente la incorporación').check();
+  await page.getByRole('button', { name: 'Confirmar e incorporar tratamientos', exact: true }).click();
+  await expect(page.locator('output')).toHaveText('Lote guardado');
+  expect(writes).toHaveLength(1);
 });
