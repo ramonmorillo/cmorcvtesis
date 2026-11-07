@@ -43,7 +43,7 @@ export function textPdf(pages: string[][]): Buffer {
   return pdf(objects);
 }
 export function scannedPdf(jpeg: Buffer, width = 1600, height = 700): Buffer {
-  const content = 'q 900 0 0 394 0 100 cm /Im1 Do Q';
+  const content = `q 900 0 0 ${(900 * height) / width} 0 100 cm /Im1 Do Q`;
   return pdf([
     Buffer.from('<< /Type /Catalog /Pages 2 0 R >>'),
     Buffer.from('<< /Type /Pages /Kids [3 0 R] /Count 1 >>'),
@@ -58,5 +58,27 @@ export function scannedPdf(jpeg: Buffer, width = 1600, height = 700): Buffer {
       jpeg,
       Buffer.from('\nendstream'),
     ]),
+  ]);
+}
+
+export type SyntheticTextCell = { text: string; x: number; y: number };
+export function positionedTextPdf(cells: SyntheticTextCell[], width = 1800, height = 1000): Buffer {
+  const content = cells
+    .map(
+      (cell) =>
+        `BT /F1 20 Tf ${cell.x} ${height - cell.y} Td (${cell.text
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[()\\]/g, '\\$&')}) Tj ET`,
+    )
+    .join('\n');
+  return pdf([
+    Buffer.from('<< /Type /Catalog /Pages 2 0 R >>'),
+    Buffer.from('<< /Type /Pages /Kids [3 0 R] /Count 1 >>'),
+    Buffer.from(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>`,
+    ),
+    Buffer.from(`<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`),
+    Buffer.from('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'),
   ]);
 }

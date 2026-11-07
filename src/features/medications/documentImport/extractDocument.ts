@@ -1,4 +1,5 @@
 import type { DocumentPage } from './model';
+import { readPrescriptionTable, type DocumentWord, type PrescriptionTableRow } from './tableLayout';
 
 export const MAX_BYTES = 20 * 1024 * 1024;
 export const MAX_PAGES = 10;
@@ -45,9 +46,86 @@ export async function extractDocument(
       });
       abortIfNeeded(signal);
     }
-    const { data } = await ocr.recognize(image);
+    const { PSM } = await import('tesseract.js');
+    await ocr.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
+    const { data } = await ocr.recognize(image, {}, { text: true, blocks: true });
     abortIfNeeded(signal);
-    return data.text;
+    const words: DocumentWord[] = (data.blocks ?? []).flatMap((block) =>
+      block.paragraphs.flatMap((paragraph) =>
+        paragraph.lines.flatMap((line) => line.words.map((word) => ({ text: word.text, ...word.bbox }))),
+      ),
+    );
+    return { text: data.text, words };
+  };
+  const readCells = async (canvas: HTMLCanvasElement, recognized: { text: string; words: DocumentWord[] }) => {
+    const rows = readPrescriptionTable(recognized.words);
+    if (!rows?.length) return recognized;
+    const tableRows: PrescriptionTableRow[] = [];
+    const { PSM } = await import('tesseract.js');
+    for (const [index, row] of rows.entries()) {
+      abortIfNeeded(signal);
+      const box = row.regimenBox;
+      if (!box) {
+        tableRows.push(row);
+        continue;
+      }
+      const left = Math.max(0, Math.floor(box.x0)),
+        top = Math.max(0, Math.floor(box.y0));
+      const width = Math.min(canvas.width, Math.ceil(box.x1)) - left,
+        height = Math.min(canvas.height, Math.ceil(box.y1)) - top;
+      if (width < 8 || height < 8) {
+        tableRows.push(row);
+        continue;
+      }
+      progress(`Revisando posología local ${index + 1} de ${rows.length}…`);
+      const cell = document.createElement('canvas');
+      cell.width = width;
+      cell.height = height;
+      const enlarged = document.createElement('canvas');
+      const scale = Math.min(3, Math.sqrt(MAX_PIXELS / (width * height)));
+      enlarged.width = Math.floor(width * scale);
+      enlarged.height = Math.floor(height * scale);
+      try {
+        const ctx = cell.getContext('2d')!;
+        ctx.drawImage(canvas, left, top, width, height, 0, 0, width, height);
+        const pixels = ctx.getImageData(0, 0, width, height);
+        const dark = (x: number, y: number) =>
+          pixels.data[(y * width + x) * 4] < 100 &&
+          pixels.data[(y * width + x) * 4 + 1] < 100 &&
+          pixels.data[(y * width + x) * 4 + 2] < 100;
+        const horizontal: number[] = [],
+          vertical: number[] = [];
+        for (let y = 0; y < height; y++) {
+          let count = 0;
+          for (let x = 0; x < width; x++) if (dark(x, y)) count++;
+          if (count > width * 0.85) horizontal.push(y);
+        }
+        for (let x = 0; x < width; x++) {
+          let count = 0;
+          for (let y = 0; y < height; y++) if (dark(x, y)) count++;
+          if (count > height * 0.85) vertical.push(x);
+        }
+        ctx.fillStyle = 'white';
+        for (const y of horizontal) ctx.fillRect(0, y - 1, width, 3);
+        for (const x of vertical) ctx.fillRect(x - 1, 0, 3, height);
+        const enlargedCtx = enlarged.getContext('2d')!;
+        enlargedCtx.fillStyle = 'white';
+        enlargedCtx.fillRect(0, 0, enlarged.width, enlarged.height);
+        enlargedCtx.drawImage(cell, 0, 0, enlarged.width, enlarged.height);
+        await ocr!.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
+        const { data } = await ocr!.recognize(enlarged, {}, { text: true, blocks: false });
+        abortIfNeeded(signal);
+        const regimen = data.text.trim() || row.regimen;
+        tableRows.push({ ...row, regimen, original: `${row.original}\n${regimen}` });
+      } catch {
+        abortIfNeeded(signal);
+        tableRows.push(row); // Keep the initial reading available for manual review.
+      } finally {
+        cell.width = cell.height = 0;
+        enlarged.width = enlarged.height = 0;
+      }
+    }
+    return { ...recognized, tableRows };
   };
   try {
     if (kind === 'image') {
@@ -61,7 +139,7 @@ export async function extractDocument(
         canvas.height = bitmap.height;
         try {
           canvas.getContext('2d')!.drawImage(bitmap, 0, 0);
-          return [{ page: 1, text: await recognize(canvas), method: 'ocr' }];
+          return [{ page: 1, ...(await readCells(canvas, await recognize(canvas))), method: 'ocr' }];
         } finally {
           canvas.width = canvas.height = 0;
         }
@@ -98,10 +176,21 @@ export async function extractDocument(
       try {
         const content = await page.getTextContent();
         let text = '';
+        const words: DocumentWord[] = [];
         let y: number | undefined;
         for (const item of content.items) {
           if (!('str' in item)) continue;
           const nextY = item.transform[5];
+          const height = Math.abs(item.height) || 10;
+          for (const match of item.str.matchAll(/\S+/g)) {
+            words.push({
+              text: match[0],
+              x0: item.transform[4] + (item.width * match.index!) / Math.max(item.str.length, 1),
+              x1: item.transform[4] + (item.width * (match.index! + match[0].length)) / Math.max(item.str.length, 1),
+              y0: page.view[3] - nextY - height,
+              y1: page.view[3] - nextY,
+            });
+          }
           if (y !== undefined && Math.abs(nextY - y) > 3 && !text.endsWith('\n')) text += '\n';
           text += item.str + (item.hasEOL ? '\n' : ' ');
           y = nextY;
@@ -123,19 +212,18 @@ export async function extractDocument(
           try {
             await page.render({ canvas, viewport }).promise;
             const recognized = await recognize(canvas);
-            text =
-              hasImages && text.trim()
-                ? [
-                    ...new Set(
-                      [...text.split('\n'), ...recognized.split('\n')].map((line) => line.trim()).filter(Boolean),
-                    ),
-                  ].join('\n')
-                : recognized;
-            result.push({ page: n, text, method: 'ocr' });
+            const nativeTable = readPrescriptionTable(words),
+              ocrTable = readPrescriptionTable(recognized.words);
+            // A page must use one coherent layout: concatenating two readings duplicates rows
+            // and separates posology from its medication. Prefer selectable table text when complete.
+            if (nativeTable?.length && (!ocrTable?.length || nativeTable.length >= ocrTable.length))
+              result.push({ page: n, text, words, method: 'text' });
+            else if (!recognized.text.trim() && text.trim()) result.push({ page: n, text, words, method: 'text' });
+            else result.push({ page: n, ...(await readCells(canvas, recognized)), method: 'ocr' });
           } finally {
             canvas.width = canvas.height = 0;
           }
-        } else result.push({ page: n, text, method: 'text' });
+        } else result.push({ page: n, text, words, method: 'text' });
       } finally {
         page.cleanup();
       }
