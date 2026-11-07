@@ -1131,3 +1131,14 @@ html { scroll-behavior: smooth; scroll-padding-top: 5rem; }
 /* Editor de informe de derivación a MAP */
 .referral-editor fieldset { border: 1px solid var(--iris-border); border-radius: var(--radius-md); padding: var(--sp-3) var(--sp-4); margin: 0; min-width: 0; }
 .referral-editor legend { padding: 0 var(--sp-2); font-weight: 650; }
+
+.medication-import { margin-block: 1rem; padding: 1rem; border: 1px solid var(--border-color, #cbd5e1); border-radius: 12px; }
+.medication-import-table { overflow-x: auto; margin-block: 1rem; }
+.medication-import table { width: 100%; min-width: 850px; border-collapse: collapse; }
+.medication-import td, .medication-import th { vertical-align: top; text-align: left; padding: .75rem; border-bottom: 1px solid #cbd5e1; }
+.medication-import td label { display: block; margin-bottom: .65rem; }
+.medication-import small { display: block; }
+.medication-import-original { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; font: inherit; }
+.medication-import details { margin-block: .75rem; }
+.medication-import input[type="checkbox"] { width: auto; margin-right: .4rem; }
+.medication-import-fields { border: 0; padding: 0; margin: 0; min-width: 0; }

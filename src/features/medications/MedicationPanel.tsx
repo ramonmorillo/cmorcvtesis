@@ -1,5 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState, type ReactNode } from 'react';
 
+import { MedicationDocumentImport } from './documentImport/MedicationDocumentImport';
+
 import { ErrorState } from '../../components/common/ErrorState';
 import { StatusBadge, type StatusTone } from '../../components/ui/StatusBadge';
 import {
@@ -575,6 +577,32 @@ export function MedicationPanel({ visitId, patientId }: MedicationPanelProps) {
       ) : null}
 
       <HistoricalLock locked={isHistoricalVisit}>
+      <MedicationDocumentImport
+        key={`${patientId}-${visitId}`}
+        disabled={loading || saving || isHistoricalVisit || importingExternalItemId !== null || creatingCatalogItem}
+        existing={[
+          ...rows.map(row => ({ medication_catalog_id: row.medication_catalog_id, display_name: row.display_name, active_ingredient: row.previous?.medication_catalog?.active_ingredient })),
+          ...(medicationHistory?.suspended.map(episode => ({ medication_catalog_id: episode.row.medication_catalog_id, display_name: episode.row.medication_catalog?.display_name ?? '' })) ?? []),
+        ]}
+        patientId={patientId}
+        visitId={visitId}
+        onImported={async () => {
+          const result = await listVisitMedicationSnapshotWithContext(visitId);
+          if (result.errorMessage) { setErrorMessage('El lote se guardó. Actualiza la página para consultar la medicación.'); return; }
+          // Preserve unsaved manual edits: append only newly persisted records.
+          setRows(previous => {
+            const known = new Set(previous.map(row => row.id).filter(Boolean));
+            return [...previous, ...result.data.filter(item => !known.has(item.id) && !previous.some(row => row.medication_catalog_id === item.medication_catalog_id)).map(item => ({
+              ...emptyDraft(item.medication_catalog!), id:item.id, ...splitSavedDoseText(item.dose_text),
+              frequency_text:item.frequency_text ?? '', route_text:item.route_text ?? '', is_active:item.is_active, previous:item,
+            }))];
+          });
+          setSuccessMessage('Tratamientos confirmados incorporados con trazabilidad. No se han modificado los registros existentes.');
+          setHistoryReloadKey(key => key + 1);
+          const events = await listVisitMedicationEvents(visitId);
+          if (!events.errorMessage) setEventSummary(events.data);
+        }}
+      />
       <div className="grid-2 panel-block">
         <label>
           Buscar en catálogo externo (CIMA)
