@@ -53,7 +53,7 @@ async function uploadPdf(page: Page) {
   await expect(page.getByLabel('Nombre 1', { exact: true })).toHaveValue('Atorvastatina', { timeout: 30000 });
 }
 async function selectCatalog(page: Page) {
-  await page.getByText('Catálogo y normalización (selección obligatoria)', { exact: true }).first().click();
+  await page.getByText('Buscar en catálogo local o CIMA (opcional)', { exact: true }).first().click();
   await page.getByLabel('Término farmacológico para consultar').first().fill('atorvastatina');
   await page.getByLabel('He comprobado que el término solo contiene').first().check();
   await page.getByRole('button', { name: 'Buscar catálogo local', exact: true }).first().click();
@@ -251,7 +251,7 @@ test('CIMA is opt-in, shows alternatives and never changes the prescribed regime
   await open(page);
   await uploadPdf(page);
   expect(posted).toEqual([]);
-  await page.getByText('Catálogo y normalización (selección obligatoria)', { exact: true }).first().click();
+  await page.getByText('Buscar en catálogo local o CIMA (opcional)', { exact: true }).first().click();
   await expect(page.getByLabel('Término farmacológico para consultar').first()).toHaveValue('');
   await page.getByLabel('Término farmacológico para consultar').first().fill('atorvastatina');
   await page.getByLabel('He comprobado que el término solo contiene').first().check();
@@ -328,7 +328,7 @@ test('integrated panel imports new treatments while preserving unsaved manual ch
     buffer: textPdf([['Metformina 850 mg comprimidos; 1 comprimido cada 24 h; oral; activo']]),
   });
   await expect(page.getByLabel('Nombre 1', { exact: true })).toHaveValue('Metformina');
-  await page.getByText('Catálogo y normalización (selección obligatoria)', { exact: true }).click();
+  await page.getByText('Buscar en catálogo local o CIMA (opcional)', { exact: true }).click();
   await page.getByLabel('Término farmacológico para consultar').fill('metformina');
   await page.getByLabel('He comprobado que el término solo contiene').check();
   await page.getByRole('button', { name: 'Buscar catálogo local', exact: true }).click();
@@ -357,7 +357,7 @@ test('confirmation reports missing row requirements beside the button and writes
   await page.getByRole('button', { name: 'Confirmar e incorporar tratamientos', exact: true }).click();
   const summary = page.getByLabel('Preparación de la incorporación');
   await expect(summary).toContainText('1 tratamientos seleccionados');
-  await expect(summary).toContainText('Catálogo y normalización');
+  await expect(summary).toContainText('elige catálogo local');
   await expect(summary).toContainText('confirma el estado');
   await expect(summary).toContainText('marca la revisión profesional');
   await expect(page.getByRole('alert')).toHaveText(

@@ -42,7 +42,8 @@ la segunda usa la función Edge existente, que envía a CIMA solo `query`.
    sin elegir presentaciones automáticamente y se mantiene dosis/pauta. Es una
    medida asistida: no puede demostrar que un nombre escrito sea farmacológico;
    la revisión profesional sigue siendo necesaria. Los errores dejan la revisión
-   manual disponible. Se exige escoger una entrada del catálogo local existente.
+   manual disponible. Se puede elegir catálogo local, una presentación CIMA o el
+   nombre revisado sin consultar CIMA.
 5. Confirmación explícita por fila y por lote. Solo se envían identificador de
    catálogo, dosis, pauta, vía, paciente, visita y clave de operación. El RPC usa
    las tablas clínicas existentes y registra eventos `added`; ninguna actualización
@@ -72,9 +73,20 @@ Una escritura manual que se complete después de la transacción puede introduci
 un duplicado: el flujo manual previo no participa en este protocolo. No se afirma
 protección contra todos los escritores concurrentes externos.
 
-La RPC solo usa catálogo ya existente. Si falta una presentación, debe darse de
-alta mediante el flujo manual existente y repetir la revisión documental.
-No se crean entradas de catálogo con fragmentos de documentos.
+La RPC recibe IDs de catálogo resueltos. Después de la confirmación final,
+el frontend reutiliza o prepara las identidades elegidas mediante los servicios
+de catálogo existentes y, solo cuando todas están resueltas, envía el lote clínico
+a la RPC. Una elección CIMA ya es suficiente; no exige buscar de nuevo en el
+catálogo local. También se admite el nombre revisado sin CIMA, incluyendo
+concentración/forma en la etiqueta manual para distinguir presentaciones.
+Solo se envían campos farmacológicos permitidos, sin fragmentos ni payloads crudos.
+
+La preparación de catálogo es independiente de la transacción clínica: si luego
+falla la RPC puede quedar una entrada farmacológica válida en el catálogo
+compartido, pero no tratamientos o eventos parciales. Los IDs resueltos se
+conservan en memoria para reintentar sin recrear entradas y manteniendo la misma
+clave/payload del lote. Esta preparación respeta las RLS de catálogo existentes;
+si sus permisos la rechazan, no se envía el lote clínico.
 
 **Estado de despliegue:** el usuario ejecutó el SQL corregido en el SQL Editor
 remoto y compartió un resultado «Success. No rows returned». La aplicación de
@@ -223,3 +235,27 @@ ausencia de solicitudes externas durante extracción y una prueba que reproduce
 la confirmación incompleta, verifica el aviso visible y completa el mismo lote con
 un solo guardado simulado. No cambia tablas, RPC ni RLS; requiere desplegar el
 frontend. El flujo remoto autenticado permanece sujeto a validación en el sitio.
+
+
+## Corrección de selección CIMA y desbordamiento horizontal
+
+Antes, elegir una alternativa CIMA solo cambiaba el nombre y dejaba el catálogo
+pendiente. Ahora esa elección mantiene una identidad válida hasta la confirmación;
+la segunda selección local no es necesaria. Existe «Usar nombre revisado sin CIMA»
+para mantener la revisión manual sin conexión a CIMA. Ambas rutas preparan catálogo
+exclusivamente después de la confirmación final, reutilizando servicios existentes.
+Se mantiene la dosis/pauta, el estado activo explícito y la revisión por fila.
+
+El diseño limita el ancho de columnas y opciones largas, mantiene dosis/estado/
+revisión visibles y usa tarjetas cuando el panel disponible es estrecho, mediante
+consultas al contenedor. La lista de resultados tiene scroll vertical. Se comprobó
+la selección antes y después de elegir nombres largos a 1440, 1024 y 390 píxeles,
+y en un panel estrecho dentro de un escritorio amplio. La selección local sigue
+funcionando y los resultados no eligen presentaciones automáticamente.
+
+Validación: 98 pruebas de lógica/base de datos, 24 de navegador y compilación
+correctas. Las pruebas nuevas cubren elección CIMA más guardado simulado, vía
+manual sin CIMA, cancelación sin escrituras, denegación de catálogo sin envío de
+lote clínico, whitelist farmacológica y reintentos que reutilizan ID de catálogo y
+clave de operación. Se usaron datos sintéticos. No hay migraciones ni políticas
+nuevas; queda pendiente desplegar el frontend y verificar el flujo remoto.

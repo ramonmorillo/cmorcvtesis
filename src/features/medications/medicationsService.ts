@@ -11,7 +11,7 @@ import { getVisitTypeLabel } from '../../constants/enums';
 import { searchRemoteCimaMedications } from './cimaSearchService';
 import { normalizeMedicationCatalogSource } from './catalogSource';
 import { mapExternalMedicationPayloadToNormalizedCandidate, upsertNormalizedMedicationFromExternal } from './normalizedCatalog';
-import type { MedicationCatalogItem, MedicationEventType, PatientMedication, PatientMedicationDraft, VisitMedicationEvent } from './types';
+import type { MedicationCatalogSelectionDraft, MedicationCatalogItem, MedicationEventType, PatientMedication, PatientMedicationDraft, VisitMedicationEvent } from './types';
 
 type ServiceResult<T> = { data: T; errorMessage: string | null };
 type NullableServiceResult<T> = { data: T | null; errorMessage: string | null };
@@ -525,6 +525,31 @@ export async function importExternalMedicationToVisit(input: {
     return { data: [], errorMessage: refreshed.errorMessage, newMedicationId: null };
   }
   return { ...refreshed, newMedicationId: persisted?.id ?? null };
+}
+
+/** Resolve only the reviewed pharmacological identity after final confirmation.
+ * Never inserts patient treatments or visit events; the document RPC owns those writes.
+ */
+export async function resolveDocumentMedicationCatalog(
+  input: MedicationCatalogSelectionDraft,
+): Promise<NullableServiceResult<MedicationCatalogItem>> {
+  if (input.source === 'manual') {
+    const result = await createMedicationCatalogItem(input);
+    return { data: result.data.item ?? result.data.duplicate, errorMessage: result.errorMessage };
+  }
+  if (!input.source_code?.trim()) {
+    return { data: null, errorMessage: 'La presentación CIMA no tiene un identificador válido. Elige otra o utiliza el nombre revisado sin CIMA.' };
+  }
+  return ensureMedicationCatalogItem({
+    source: 'external_cima',
+    sourceCode: input.source_code,
+    displayName: input.display_name,
+    activeIngredient: input.active_ingredient,
+    strength: input.strength,
+    form: input.form,
+    route: input.route,
+    atcCode: input.atc_code,
+  });
 }
 
 export async function createMedicationCatalogItem(

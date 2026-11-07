@@ -82,3 +82,19 @@ export type PatientMedicationDraft = {
    */
   isInitialCompletion?: boolean;
 };
+
+/** Reviewed catalogue identity, kept in memory until final document confirmation. */
+export type MedicationCatalogSelectionDraft = {
+  source: 'manual' | 'external_cima';
+  source_code?: string;
+  display_name: string;
+  active_ingredient?: string;
+  strength?: string;
+  form?: string;
+  route?: string;
+  atc_code?: string;
+};
+
+export type DocumentMedicationDraft = PatientMedicationDraft & {
+  catalogSelection?: MedicationCatalogSelectionDraft;
+};

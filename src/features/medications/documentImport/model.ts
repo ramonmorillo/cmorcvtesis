@@ -1,5 +1,5 @@
 import { readPrescriptionTable, type DocumentWord, type PrescriptionTableRow } from './tableLayout';
-import type { MedicationCatalogItem, PatientMedicationDraft } from '../types';
+import type { MedicationCatalogItem, MedicationCatalogSelectionDraft, DocumentMedicationDraft } from '../types';
 
 export type TreatmentStatus = 'unknown' | 'active' | 'stopped';
 export type Provenance = 'document' | 'manual' | 'cima' | 'undetermined';
@@ -19,6 +19,7 @@ export type Proposal = {
   selected: boolean;
   reviewed: boolean;
   catalog?: MedicationCatalogItem;
+  catalogSelection?: MedicationCatalogSelectionDraft;
 };
 export type DocumentPage = {
   page: number;
@@ -159,10 +160,12 @@ export type ExistingTreatment = {
 export function duplicateReason(row: Proposal, existing: ExistingTreatment[], others: Proposal[]): string | null {
   const name = normalizeDrug(row.name);
   const stem = name.replace(/\b\d.*$/, '').trim();
+  const ingredient = normalizeDrug(row.catalog?.active_ingredient ?? row.catalogSelection?.active_ingredient ?? '');
   if (
     existing.some(
       (item) =>
         (row.catalog && item.medication_catalog_id === row.catalog.id) ||
+        (ingredient && normalizeDrug(item.active_ingredient ?? '') === ingredient) ||
         [item.display_name, item.active_ingredient ?? ''].some((value) => {
           const normalized = normalizeDrug(value);
           const root = normalized.replace(/\b\d.*$/, '').trim();
@@ -176,11 +179,44 @@ export function duplicateReason(row: Proposal, existing: ExistingTreatment[], ot
       (item) =>
         item.id !== row.id &&
         item.selected &&
-        ((row.catalog && item.catalog?.id === row.catalog.id) || (name && normalizeDrug(item.name) === name)),
+        ((row.catalog && item.catalog?.id === row.catalog.id) ||
+          (row.catalogSelection?.source === 'external_cima' &&
+            item.catalogSelection?.source === 'external_cima' &&
+            row.catalogSelection.source_code &&
+            row.catalogSelection.source_code === item.catalogSelection.source_code) ||
+          (name && normalizeDrug(item.name) === name)),
     )
   )
     return 'Posible duplicado dentro del documento. Selecciona una sola propuesta.';
   return null;
+}
+export function manualCatalogSelection(row: Proposal): MedicationCatalogSelectionDraft {
+  const compact = (value: string) => normalizeDrug(value).replace(/\s/g, '');
+  const parts = [row.name.trim()];
+  for (const detail of [row.strength, row.form])
+    if (detail.trim() && !compact(row.name).includes(compact(detail))) parts.push(detail.trim());
+  return { source: 'manual', display_name: parts.join(' '), strength: row.strength, form: row.form, route: row.route };
+}
+export function pickCatalogSelection(input: MedicationCatalogSelectionDraft): MedicationCatalogSelectionDraft {
+  // Identity only: never include document fragments, raw CIMA payloads or patient metadata.
+  return {
+    source: input.source,
+    display_name: input.display_name.trim(),
+    ...(input.source_code ? { source_code: input.source_code.trim() } : {}),
+    ...Object.fromEntries(
+      (['active_ingredient', 'strength', 'form', 'route', 'atc_code'] as const).flatMap((key) =>
+        input[key]?.trim() ? [[key, input[key]!.trim()]] : [],
+      ),
+    ),
+  };
+}
+export function hasCatalogSelection(row: Proposal): boolean {
+  return Boolean(
+    row.catalog?.id ||
+    (row.catalogSelection?.display_name.trim() &&
+      (row.catalogSelection.source === 'manual' ||
+        (row.catalogSelection.source === 'external_cima' && row.catalogSelection.source_code?.trim()))),
+  );
 }
 export function pendingFields(row: Proposal): string[] {
   return [
@@ -189,7 +225,7 @@ export function pendingFields(row: Proposal): string[] {
     !row.frequency.trim() && 'pauta no determinada',
     row.status === 'unknown' && 'estado no determinado',
     row.status === 'stopped' && 'suspendido: no se incorpora como activo',
-    !row.catalog && 'selección de catálogo',
+    !hasCatalogSelection(row) && 'identidad del medicamento',
     !row.reviewed && 'revisión profesional',
   ].filter((v): v is string => Boolean(v));
 }
@@ -201,7 +237,7 @@ export function importBlockingIssues(rows: Proposal[], existing: ExistingTreatme
     if (!row.selected) return [];
     const reasons = [
       !row.name.trim() && 'indica el nombre',
-      !row.catalog && 'elige una entrada en «Catálogo y normalización»',
+      !hasCatalogSelection(row) && 'elige catálogo local, una presentación CIMA o «Usar nombre revisado sin CIMA»',
       row.status === 'unknown' && 'confirma el estado (no determinado)',
       row.status === 'stopped' && 'está suspendido: descártalo del lote activo',
       !row.reviewed && 'marca la revisión profesional de esta fila',
@@ -210,13 +246,14 @@ export function importBlockingIssues(rows: Proposal[], existing: ExistingTreatme
     return reasons.length ? [`Tratamiento ${index + 1} · ${row.name || 'sin nombre'}: ${reasons.join('; ')}.`] : [];
   });
 }
-export function prepareImportDrafts(rows: Proposal[], existing: ExistingTreatment[]): PatientMedicationDraft[] {
+export function prepareImportDrafts(rows: Proposal[], existing: ExistingTreatment[]): DocumentMedicationDraft[] {
   const issues = importBlockingIssues(rows, existing);
   if (issues.length) throw Error(issues.join('\n'));
   const selected = rows.filter((row) => row.selected);
   // Explicit whitelist: no original text, document metadata or normalisation payload leaves review.
   return selected.map((row) => ({
-    medication_catalog_id: row.catalog!.id,
+    medication_catalog_id: row.catalog?.id ?? '',
+    ...(!row.catalog && row.catalogSelection ? { catalogSelection: pickCatalogSelection(row.catalogSelection) } : {}),
     dose_text: row.dose.trim(),
     frequency_text: row.frequency.trim(),
     route_text: row.route.trim(),

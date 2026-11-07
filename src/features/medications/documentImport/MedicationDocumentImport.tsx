@@ -5,11 +5,13 @@ import {
   type ExternalMedicationSearchItem,
 } from '../medicationsService';
 import type { MedicationCatalogItem } from '../types';
+import { mapExternalMedicationPayloadToNormalizedCandidate } from '../normalizedCatalog';
 import { persistMedicationImport } from './importService';
 import { extractDocument } from './extractDocument';
 import {
   duplicateReason,
   importBlockingIssues,
+  manualCatalogSelection,
   isDrugOnlyQuery,
   normalizeDrug,
   parseMedicationPages,
@@ -76,8 +78,8 @@ function CatalogReview({ row, onChange }: { row: Proposal; onChange: (patch: Par
         setExternal(
           [...result.data].sort(
             (a, b) =>
-              Number(normalizeDrug(b.label) === normalizeDrug(query)) -
-              Number(normalizeDrug(a.label) === normalizeDrug(query)),
+              Number(normalizeDrug(b.label).startsWith(`${normalizeDrug(query)} `)) -
+              Number(normalizeDrug(a.label).startsWith(`${normalizeDrug(query)} `)),
           ),
         );
         setError(
@@ -96,7 +98,7 @@ function CatalogReview({ row, onChange }: { row: Proposal; onChange: (patch: Par
             ? 'No se pudo consultar el catálogo. Reintenta sin perder la revisión.'
             : result.data.length
               ? ''
-              : 'Sin coincidencias. Usa el alta manual existente después de cerrar la revisión.',
+              : 'Sin coincidencias. Puedes utilizar el nombre revisado sin CIMA sin cerrar esta revisión.',
         );
       }
     } catch {
@@ -107,82 +109,138 @@ function CatalogReview({ row, onChange }: { row: Proposal; onChange: (patch: Par
     }
   };
   return (
-    <details>
-      <summary>Catálogo y normalización (selección obligatoria)</summary>
-      <p>
-        Seleccionado: {row.catalog?.display_name ?? 'Pendiente'}. Nunca se cambia la dosis ni la pauta al normalizar.
+    <div className="medication-import-catalog">
+      <p className="medication-import-selection">
+        Seleccionado: {row.catalog?.display_name ?? row.catalogSelection?.display_name ?? 'Pendiente'}.
       </p>
-      <label>
-        Término farmacológico para consultar
-        <input
-          value={query}
-          maxLength={60}
-          onChange={(e) => {
-            request.current++;
-            setBusy(false);
-            setQuery(e.target.value);
-            setDrugOnly(false);
-            setLocal([]);
-            setExternal([]);
-          }}
-        />
-      </label>
-      <label>
-        <input type="checkbox" checked={drugOnly} onChange={(e) => setDrugOnly(e.target.checked)} />
-        He comprobado que el término solo contiene un nombre farmacológico y ningún dato personal.
-      </label>
-      <div className="actions-inline">
-        <button type="button" disabled={busy || !drugOnly} onClick={() => void search(false)}>
-          Buscar catálogo local
-        </button>
-        <button
-          type="button"
-          className="button-secondary"
-          disabled={busy || !drugOnly}
-          onClick={() => void search(true)}
-        >
-          Consultar CIMA
-        </button>
-      </div>
-      {busy && <p role="status">Consultando…</p>}
-      {error && <p role="status">{error}</p>}
-      {local.map((item) => (
-        <button
-          className="button-secondary"
-          type="button"
-          key={item.id}
-          onClick={() => onChange({ catalog: item, reviewed: false })}
-        >
-          Seleccionar {item.display_name}
-        </button>
-      ))}
-      {external.length > 0 && (
-        <p>
-          Alternativas CIMA: selecciona explícitamente una propuesta para normalizar el nombre. Para preparar el
-          tratamiento, selecciona además una entrada del catálogo local.
+      <p>CIMA es opcional. Puedes elegir catálogo local, una presentación CIMA o registrar el nombre revisado.</p>
+      <button
+        type="button"
+        className="button-secondary"
+        disabled={row.name.trim().length < 2}
+        onClick={() => {
+          onChange({ catalog: undefined, catalogSelection: manualCatalogSelection(row), reviewed: false });
+          setExternal([]);
+          setLocal([]);
+          setError('');
+        }}
+      >
+        Usar nombre revisado sin CIMA
+      </button>
+      {row.catalogSelection && (
+        <p role="status">
+          Identidad elegida. Se reutilizará o creará su entrada de catálogo al confirmar el lote, sin guardar
+          documentos.
         </p>
       )}
-      {external.map((item) => (
-        <button
-          className="button-secondary"
-          type="button"
-          key={item.id}
-          onClick={() => {
-            const form =
-              typeof item.payload.pharmaceutical_form === 'string' ? item.payload.pharmaceutical_form : row.form;
-            onChange({
-              name: item.label,
-              form,
-              catalog: undefined,
-              reviewed: false,
-              provenance: { ...row.provenance, name: 'cima', form: form !== row.form ? 'cima' : row.provenance.form },
-            });
-          }}
-        >
-          {item.label} · {item.sourceLabel}
-        </button>
-      ))}
-    </details>
+      <details>
+        <summary>Buscar en catálogo local o CIMA (opcional)</summary>
+        <p>Nunca se cambia la dosis ni la pauta al elegir una presentación.</p>
+        <label>
+          Término farmacológico para consultar
+          <input
+            value={query}
+            maxLength={60}
+            onChange={(e) => {
+              request.current++;
+              setBusy(false);
+              setQuery(e.target.value);
+              setDrugOnly(false);
+              setLocal([]);
+              setExternal([]);
+            }}
+          />
+        </label>
+        <label>
+          <input type="checkbox" checked={drugOnly} onChange={(e) => setDrugOnly(e.target.checked)} />
+          He comprobado que el término solo contiene un nombre farmacológico y ningún dato personal.
+        </label>
+        <div className="actions-inline">
+          <button type="button" disabled={busy || !drugOnly} onClick={() => void search(false)}>
+            Buscar catálogo local
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            disabled={busy || !drugOnly}
+            onClick={() => void search(true)}
+          >
+            Consultar CIMA
+          </button>
+        </div>
+        {busy && <p role="status">Consultando…</p>}
+        {error && <p role="status">{error}</p>}
+        <div className="medication-import-results" aria-label="Resultados de catálogo">
+          {local.map((item) => (
+            <button
+              className="button-secondary"
+              type="button"
+              key={item.id}
+              onClick={() => {
+                onChange({ catalog: item, catalogSelection: undefined, reviewed: false });
+                setLocal([]);
+                setExternal([]);
+              }}
+            >
+              Seleccionar {item.display_name}
+            </button>
+          ))}
+          {external.length > 0 && (
+            <p>
+              Elige explícitamente una presentación CIMA. Esa elección prepara el medicamento para incorporarlo; no
+              requiere buscarlo de nuevo en el catálogo local.
+            </p>
+          )}
+          {external.map((item) => (
+            <button
+              className="button-secondary"
+              type="button"
+              key={item.id}
+              onClick={() => {
+                const candidate = mapExternalMedicationPayloadToNormalizedCandidate(item.payload);
+                const sourceCode =
+                  item.sourceCode ??
+                  candidate.cimaCn ??
+                  (candidate.cimaNRegistro ? `nregistro:${candidate.cimaNRegistro}` : null);
+                if (!sourceCode) {
+                  setError(
+                    'Esta alternativa no tiene identificador CIMA. Elige otra o utiliza el nombre revisado sin CIMA.',
+                  );
+                  return;
+                }
+                const form = candidate.pharmaceuticalForm ?? row.form;
+                onChange({
+                  name: item.label,
+                  form,
+                  catalog: undefined,
+                  catalogSelection: {
+                    source: 'external_cima',
+                    source_code: sourceCode,
+                    display_name: item.label,
+                    active_ingredient: candidate.ingredientNames.join(' + ') || undefined,
+                    strength: candidate.strengthText ?? undefined,
+                    form: candidate.pharmaceuticalForm ?? undefined,
+                    route: candidate.routeDefault ?? undefined,
+                    atc_code: candidate.atcCodes[0],
+                  },
+                  reviewed: false,
+                  provenance: {
+                    ...row.provenance,
+                    name: 'cima',
+                    form: form !== row.form ? 'cima' : row.provenance.form,
+                  },
+                });
+                setExternal([]);
+                setLocal([]);
+                setError('');
+              }}
+            >
+              {item.label} · {item.sourceLabel}
+            </button>
+          ))}
+        </div>
+      </details>
+    </div>
   );
 }
 
@@ -285,11 +343,18 @@ export function MedicationDocumentImport({ patientId, visitId, existing, disable
       const drafts = prepareImportDrafts(rows, existing);
       operation.current ??= crypto.randomUUID();
       setSaving(true);
+      const selectedIds = rows.filter((row) => row.selected).map((row) => row.id);
       const result = await persistMedicationImport({
         operationId: operation.current,
         patientId,
         visitId,
         rows: drafts,
+        onCatalogResolved: (index, catalog) =>
+          setRows((previous) =>
+            previous.map((row) =>
+              row.id === selectedIds[index] ? { ...row, catalog, catalogSelection: undefined } : row,
+            ),
+          ),
       });
       if (result.error) {
         setSubmitError(result.error);
@@ -377,7 +442,9 @@ export function MedicationDocumentImport({ patientId, visitId, existing, disable
                           update(row.id, {
                             [key]: e.target.value,
                             reviewed: false,
-                            ...(key === 'name' ? { catalog: undefined } : {}),
+                            ...(['name', 'strength', 'form'].includes(key)
+                              ? { catalog: undefined, catalogSelection: undefined }
+                              : {}),
                             provenance: { ...row.provenance, [key]: 'manual' },
                           })
                         }
@@ -493,9 +560,9 @@ export function MedicationDocumentImport({ patientId, visitId, existing, disable
               </div>
             )}
             <p>
-              Se incorporan solo tratamientos activos con catálogo elegido. Los suspendidos se muestran para revisión,
-              sin suspender ni reactivar registros de IRIS. Concentración, forma y fragmento quedan solo en esta
-              revisión.
+              Se incorporan solo tratamientos activos con identidad elegida (catálogo local, CIMA o nombre revisado).
+              Los suspendidos se muestran para revisión, sin suspender ni reactivar registros de IRIS. Concentración,
+              forma y fragmento quedan solo en esta revisión.
             </p>
             <label>
               <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
