@@ -1169,3 +1169,27 @@ html { scroll-behavior: smooth; scroll-padding-top: 5rem; }
 @container medication-review (max-width: 540px) {
   .medication-import tbody > tr { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* --------------------------------------------------------------------------
+   Plan de visita y panel de seguimiento
+   -------------------------------------------------------------------------- */
+.plan-panel { display: grid; gap: var(--sp-6); }
+.plan-panel h2 { font-size: 1.05rem; margin: 0 0 var(--sp-2); }
+.badge-count { display: inline-block; min-width: 1.5rem; padding: 0 var(--sp-2); margin-left: var(--sp-2); border-radius: 999px; background: var(--iris-teal-50); color: var(--iris-teal-900); font-size: var(--fs-sm); text-align: center; font-variant-numeric: tabular-nums; }
+.plan-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.plan-item { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); flex-wrap: wrap; padding: var(--sp-3) 0; border-bottom: 1px solid var(--iris-divider); }
+.plan-item:last-child { border-bottom: 0; }
+.plan-item-main { display: flex; align-items: baseline; gap: var(--sp-2) var(--sp-3); flex-wrap: wrap; min-width: 0; }
+.plan-item-origin { font-size: var(--fs-sm); }
+.plan-item-actions, .plan-item-edit { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.plan-item-edit input { min-width: 16rem; }
+.plan-add { margin-top: var(--sp-4); display: grid; gap: var(--sp-3); }
+.plan-presets { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+.plan-add-fields { display: flex; gap: var(--sp-3); align-items: end; flex-wrap: wrap; }
+.plan-add-fields label { display: grid; gap: var(--sp-1); font-size: var(--fs-sm); }
+.plan-add-fields label:first-child { flex: 1 1 18rem; }
+.plan-history summary { cursor: pointer; font-weight: 600; margin-bottom: var(--sp-2); }
+.followup-toolbar { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin: var(--sp-4) 0; }
+.followup-filters { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+.followup-pending ul { list-style: none; margin: var(--sp-1) 0; padding: 0; font-size: var(--fs-sm); }
+.followup-pending li { overflow-wrap: anywhere; }
