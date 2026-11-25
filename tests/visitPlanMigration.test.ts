@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 const P = '22222222-2222-4222-8222-222222222222';
 const V1 = '33333333-3333-4333-8333-333333333333';
 const V2 = '44444444-4444-4444-8444-444444444444';
-const MIGRATION = 'supabase/migrations/20261125120000_add_visit_plan_items.sql';
+const MIGRATION = 'supabase/migrations/20261125175147_add_visit_plan_items.sql';
 
 let db: PGlite;
 
