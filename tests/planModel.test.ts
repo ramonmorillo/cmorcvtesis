@@ -4,6 +4,8 @@ import {
   PLAN_PRESETS,
   describeElapsedDays,
   groupOpenItemsByOrigin,
+  indexOpenItemsByPatient,
+  suggestPlanItems,
   validateNewPlanItem,
 } from '../src/features/visit-plan/planModel';
 
@@ -71,5 +73,63 @@ describe('agrupación de objetivos', () => {
     ]);
     expect(groups.get('v1')?.map((i) => i.id)).toEqual(['1', '3']);
     expect(groups.get(null)?.map((i) => i.id)).toEqual(['2']);
+  });
+});
+
+describe('sugerencias a partir de lo ya medido', () => {
+  const done = (label: string, kind: 'parameter' | 'test' | 'action', completed_at: string, catalog_code: string | null = null) => ({
+    label, kind, catalog_code, status: 'done' as const, completed_at,
+  });
+  const pending = (label: string, kind: 'parameter' | 'test' | 'action' = 'parameter') => ({
+    label, kind, catalog_code: null, status: 'pending' as const, completed_at: null,
+  });
+
+  it('propone repetir los parámetros y pruebas ya realizados, del más reciente al más antiguo', () => {
+    const result = suggestPlanItems([
+      done('Glucemia en ayunas', 'parameter', '2026-05-01T10:00:00Z', 'fasting_glucose'),
+      done('MAPA', 'test', '2026-08-01T10:00:00Z', 'abpm'),
+    ]);
+    expect(result.map((r) => r.label)).toEqual(['MAPA', 'Glucemia en ayunas']);
+    expect(result[0]).toMatchObject({ kind: 'test', catalog_code: 'abpm', lastDoneAt: '2026-08-01T10:00:00Z' });
+  });
+
+  it('no sugiere lo que ya está pendiente, sin distinguir mayúsculas ni espacios', () => {
+    const result = suggestPlanItems([done('MAPA', 'test', '2026-08-01T10:00:00Z'), pending('  mapa ', 'test')]);
+    expect(result).toEqual([]);
+  });
+
+  it('agrupa por etiqueta y se queda con la realización más reciente', () => {
+    const result = suggestPlanItems([
+      done('Glucemia en ayunas', 'parameter', '2026-02-01T00:00:00Z'),
+      done('Glucemia en ayunas', 'parameter', '2026-08-01T00:00:00Z'),
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0].lastDoneAt).toBe('2026-08-01T00:00:00Z');
+  });
+
+  it('no sugiere actuaciones, preguntas ni derivaciones, ni objetivos descartados', () => {
+    const result = suggestPlanItems([
+      done('Evaluar adherencia', 'action', '2026-08-01T00:00:00Z'),
+      { label: 'Pesar', kind: 'parameter' as const, catalog_code: null, status: 'dropped' as const, completed_at: null },
+    ]);
+    expect(result).toEqual([]);
+  });
+
+  it('respeta el límite de sugerencias', () => {
+    const items = Array.from({ length: 10 }, (_, i) => done(`Prueba ${i}`, 'test', `2026-01-${String(i + 1).padStart(2, '0')}T00:00:00Z`));
+    expect(suggestPlanItems(items, 3)).toHaveLength(3);
+  });
+});
+
+describe('objetivos abiertos por paciente', () => {
+  it('indexa solo los pendientes, por paciente y en orden de creación', () => {
+    const index = indexOpenItemsByPatient([
+      { id: 'a', patient_id: 'p1', status: 'pending', created_at: '2026-01-02T00:00:00Z' },
+      { id: 'b', patient_id: 'p1', status: 'done', created_at: '2026-01-01T00:00:00Z' },
+      { id: 'c', patient_id: 'p1', status: 'pending', created_at: '2026-01-01T00:00:00Z' },
+      { id: 'd', patient_id: 'p2', status: 'dropped', created_at: '2026-01-01T00:00:00Z' },
+    ]);
+    expect(index.get('p1')?.map((i) => i.id)).toEqual(['c', 'a']);
+    expect(index.has('p2')).toBe(false);
   });
 });

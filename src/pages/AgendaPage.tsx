@@ -5,6 +5,8 @@ import { ErrorState } from '../components/common/ErrorState';
 import { PageHeader } from '../components/ui/PageHeader';
 import { StatusBadge, type StatusTone } from '../components/ui/StatusBadge';
 import { getVisitStatusLabel, getVisitTypeLabel } from '../constants/enums';
+import { indexOpenItemsByPatient, type PlanItem } from '../features/visit-plan/planModel';
+import { listOpenPlanItemsForPatients } from '../features/visit-plan/visitPlanService';
 import { listPatients, type Patient } from '../services/patientService';
 import { listVisitsInDateRange, type AgendaVisit } from '../services/visitService';
 
@@ -47,6 +49,7 @@ export function AgendaPage() {
   const [selectedDate, setSelectedDate] = useState(todayIso);
   const [visits, setVisits] = useState<AgendaVisit[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [planItems, setPlanItems] = useState<PlanItem[]>([]);
   const [newAppointmentPatientId, setNewAppointmentPatientId] = useState('');
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -69,6 +72,18 @@ export function AgendaPage() {
     };
   }, [rangeFrom, rangeTo]);
 
+  // Objetivos abiertos de los pacientes con cita en el rango visible. Si el módulo no existe, la agenda funciona igual.
+  useEffect(() => {
+    let mounted = true;
+    const ids = [...new Set(visits.map((v) => v.patient_id))];
+    void listOpenPlanItemsForPatients(ids).then((result) => {
+      if (mounted) setPlanItems(result.data);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [visits]);
+
   useEffect(() => {
     void listPatients().then((result) => {
       setPatients([...result.data].sort((a, b) => a.study_code.localeCompare(b.study_code, 'es', { numeric: true })));
@@ -89,6 +104,8 @@ export function AgendaPage() {
     () => [...(visitsByDate.get(selectedDate) ?? [])].sort((a, b) => (a.study_code ?? '').localeCompare(b.study_code ?? '', 'es', { numeric: true })),
     [visitsByDate, selectedDate],
   );
+
+  const openItemsByPatient = useMemo(() => indexOpenItemsByPatient(planItems), [planItems]);
 
   const moveMonth = (delta: number) => {
     setCursor((prev) => {
@@ -178,19 +195,43 @@ export function AgendaPage() {
             <h2 id="agenda-day-title" className="agenda-day-title">{selectedLabel}</h2>
           </div>
 
+          {selectedVisits.length > 0 ? (
+            <div className="agenda-print-action">
+              <button type="button" className="button-secondary button-sm" onClick={() => window.print()}>
+                Imprimir hoja del día
+              </button>
+            </div>
+          ) : null}
+
           {selectedVisits.length === 0 ? (
             <p className="empty-inline">No hay citas para este día.</p>
           ) : (
             <ul className="activity-list">
-              {selectedVisits.map((visit) => (
-                <li key={visit.id}>
-                  <span className="activity-main">
-                    <Link to={`/patients/${visit.patient_id}`}>{visit.study_code ?? 'Paciente'}</Link> · {getVisitTypeLabel(visit.visit_type)}
-                  </span>
-                  <StatusBadge tone={statusTone(visit.visit_status)}>{getVisitStatusLabel(visit.visit_status)}</StatusBadge>
-                  <Link to={`/patients/${visit.patient_id}/visits/${visit.id}`}>Abrir</Link>
-                </li>
-              ))}
+              {selectedVisits.map((visit) => {
+                const objectives = openItemsByPatient.get(visit.patient_id) ?? [];
+                return (
+                  <li key={visit.id}>
+                    <span className="activity-main">
+                      <Link to={`/patients/${visit.patient_id}`}>{visit.study_code ?? 'Paciente'}</Link> · {getVisitTypeLabel(visit.visit_type)}
+                    </span>
+                    <StatusBadge tone={statusTone(visit.visit_status)}>{getVisitStatusLabel(visit.visit_status)}</StatusBadge>
+                    <Link to={`/patients/${visit.patient_id}/visits/${visit.id}`}>Abrir</Link>
+                    {objectives.length > 0 ? (
+                      <details className="agenda-objectives">
+                        <summary>
+                          <StatusBadge tone="info">{objectives.length} {objectives.length === 1 ? 'objetivo' : 'objetivos'}</StatusBadge>
+                        </summary>
+                        <ul>
+                          {objectives.map((item) => (
+                            <li key={item.id}>{item.label}</li>
+                          ))}
+                        </ul>
+                        <Link to={`/visits/${visit.id}/plan`}>Abrir plan</Link>
+                      </details>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           )}
 
@@ -210,6 +251,32 @@ export function AgendaPage() {
           </div>
         </section>
       </div>
+
+      <section className="agenda-print-sheet" aria-hidden="true">
+        <h1>Hoja del día · {selectedLabel}</h1>
+        {selectedVisits.length === 0 ? (
+          <p>No hay citas para este día.</p>
+        ) : (
+          selectedVisits.map((visit) => {
+            const objectives = openItemsByPatient.get(visit.patient_id) ?? [];
+            return (
+              <article key={visit.id} className="agenda-print-patient">
+                <h2>{visit.study_code ?? 'Paciente'} · {getVisitTypeLabel(visit.visit_type)} · {getVisitStatusLabel(visit.visit_status)}</h2>
+                {objectives.length === 0 ? (
+                  <p>Sin objetivos planificados.</p>
+                ) : (
+                  <ul className="agenda-print-checklist">
+                    {objectives.map((item) => (
+                      <li key={item.id}>☐ {item.label}</li>
+                    ))}
+                  </ul>
+                )}
+                <p className="agenda-print-notes">Notas:</p>
+              </article>
+            );
+          })
+        )}
+      </section>
     </div>
   );
 }

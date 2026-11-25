@@ -1193,3 +1193,24 @@ html { scroll-behavior: smooth; scroll-padding-top: 5rem; }
 .followup-filters { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
 .followup-pending ul { list-style: none; margin: var(--sp-1) 0; padding: 0; font-size: var(--fs-sm); }
 .followup-pending li { overflow-wrap: anywhere; }
+
+/* Agenda: objetivos por cita y hoja imprimible del día */
+.agenda-print-action { margin-top: var(--sp-3); }
+.agenda-objectives { grid-column: 1 / -1; font-size: var(--fs-sm); }
+.agenda-objectives summary { cursor: pointer; list-style: none; }
+.agenda-objectives ul { margin: var(--sp-2) 0; padding-left: var(--sp-5); }
+.plan-suggestions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.agenda-print-sheet { display: none; }
+@media print {
+  .app-shell:has(.agenda-print-sheet) .topbar,
+  .app-shell:has(.agenda-print-sheet) .app-footer,
+  .app-shell:has(.agenda-print-sheet) .skip-link,
+  .app-shell:has(.agenda-print-sheet) .page-header,
+  .app-shell:has(.agenda-print-sheet) .agenda-layout { display: none !important; }
+  .agenda-print-sheet { display: block; color: #000; }
+  .agenda-print-sheet h1 { font-size: 1.25rem; text-transform: capitalize; margin: 0 0 1rem; }
+  .agenda-print-patient { break-inside: avoid; border-top: 1px solid #000; padding: 0.5rem 0 1rem; }
+  .agenda-print-patient h2 { font-size: 1.05rem; margin: 0 0 0.4rem; }
+  .agenda-print-checklist { list-style: none; margin: 0 0 0.5rem; padding: 0; }
+  .agenda-print-notes { margin: 0.75rem 0 0; min-height: 3rem; border-bottom: 1px dotted #000; }
+}
