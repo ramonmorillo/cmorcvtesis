@@ -94,3 +94,48 @@ export function groupOpenItemsByOrigin<T extends { origin_visit_id: string | nul
     });
   return groups;
 }
+
+export type PlanSuggestion = {
+  label: string;
+  kind: PlanItemKind;
+  catalog_code: string | null;
+  /** Última vez que se realizó (ISO), para que quien planifica vea de cuándo es el dato. */
+  lastDoneAt: string;
+};
+
+type SuggestionSource = Pick<PlanItem, 'label' | 'kind' | 'catalog_code' | 'status' | 'completed_at'>;
+
+const normalizeLabel = (label: string) => label.trim().toLowerCase();
+
+/**
+ * Sugerencias derivadas solo de datos ya registrados: parámetros y pruebas que se hicieron en el
+ * pasado y no están pendientes ahora. No aplica ningún criterio clínico ni calendario de protocolo;
+ * la decisión de repetirlos sigue siendo de quien planifica.
+ */
+export function suggestPlanItems(items: SuggestionSource[], limit = 6): PlanSuggestion[] {
+  const open = new Set(items.filter((i) => i.status === 'pending').map((i) => normalizeLabel(i.label)));
+  const latest = new Map<string, PlanSuggestion>();
+  for (const item of items) {
+    if (item.status !== 'done' || !item.completed_at) continue;
+    if (item.kind !== 'parameter' && item.kind !== 'test') continue;
+    const key = normalizeLabel(item.label);
+    if (open.has(key)) continue;
+    const current = latest.get(key);
+    if (!current || item.completed_at > current.lastDoneAt) {
+      latest.set(key, { label: item.label.trim(), kind: item.kind, catalog_code: item.catalog_code, lastDoneAt: item.completed_at });
+    }
+  }
+  return [...latest.values()].sort((a, b) => b.lastDoneAt.localeCompare(a.lastDoneAt)).slice(0, limit);
+}
+
+/** Objetivos pendientes agrupados por paciente, en orden de creación. */
+export function indexOpenItemsByPatient<T extends { patient_id: string; status: PlanItemStatus; created_at: string }>(
+  items: T[],
+): Map<string, T[]> {
+  const index = new Map<string, T[]>();
+  [...items]
+    .filter((item) => item.status === 'pending')
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .forEach((item) => index.set(item.patient_id, [...(index.get(item.patient_id) ?? []), item]));
+  return index;
+}

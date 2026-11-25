@@ -41,6 +41,23 @@ export async function listPlanItemsByPatient(patientId: string): Promise<Result<
   return { data: (data ?? []) as PlanItem[], errorMessage: null };
 }
 
+/** Objetivos pendientes de un conjunto de pacientes (para la agenda). Si el módulo no está disponible devuelve vacío. */
+export async function listOpenPlanItemsForPatients(patientIds: string[]): Promise<Result<PlanItem[]>> {
+  if (!supabase) return { data: [], errorMessage: NOT_CONFIGURED };
+  if (patientIds.length === 0) return { data: [], errorMessage: null };
+  const { data, error } = await supabase
+    .from('visit_plan_items')
+    .select(ITEM_SELECT)
+    .eq('status', 'pending')
+    .in('patient_id', patientIds);
+  if (error) {
+    return isMissingTable(error)
+      ? { data: [], errorMessage: null, unavailable: true }
+      : { data: [], errorMessage: errorText(error, 'No fue posible cargar los objetivos de las citas.') };
+  }
+  return { data: (data ?? []) as PlanItem[], errorMessage: null };
+}
+
 export type AddPlanItemInput = {
   patientId: string;
   originVisitId: string | null;

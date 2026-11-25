@@ -9,6 +9,7 @@ import {
   PLAN_ITEM_KINDS,
   PLAN_ITEM_KIND_LABELS,
   PLAN_PRESETS,
+  suggestPlanItems,
   type PlanItem,
   type PlanItemKind,
 } from './planModel';
@@ -65,6 +66,7 @@ export function VisitPlanPanel({ visit, patientVisits }: Props) {
   const open = items.filter((i) => i.status === 'pending');
   const fromPrevious = open.filter((i) => i.origin_visit_id !== visit.id);
   const plannedHere = open.filter((i) => i.origin_visit_id === visit.id);
+  const suggestions = useMemo(() => suggestPlanItems(items), [items]);
   const closed = items.filter((i) => i.status !== 'pending').sort((a, b) => b.created_at.localeCompare(a.created_at));
 
   const run = async (action: () => Promise<{ errorMessage: string | null }>) => {
@@ -94,6 +96,13 @@ export function VisitPlanPanel({ visit, patientVisits }: Props) {
     setLabel(preset.label);
     setKind(preset.kind);
     setCatalogCode(preset.catalog_code);
+  };
+
+  const applySuggestion = (index: number) => {
+    const suggestion = suggestions[index];
+    setLabel(suggestion.label);
+    setKind(suggestion.kind);
+    setCatalogCode(suggestion.catalog_code);
   };
 
   const renderItem = (item: PlanItem, allowDone: boolean) => {
@@ -183,6 +192,22 @@ export function VisitPlanPanel({ visit, patientVisits }: Props) {
               </button>
             ))}
           </div>
+          {suggestions.length > 0 ? (
+            <div className="plan-suggestions" role="group" aria-label="Repetir lo ya realizado">
+              <span className="help-text">Repetir lo ya realizado:</span>
+              {suggestions.map((suggestion, index) => (
+                <button
+                  key={suggestion.label}
+                  type="button"
+                  className="button-ghost button-sm"
+                  title={`Realizado por última vez el ${formatDate(suggestion.lastDoneAt)}`}
+                  onClick={() => applySuggestion(index)}
+                >
+                  {suggestion.label} · {formatDate(suggestion.lastDoneAt)}
+                </button>
+              ))}
+            </div>
+          ) : null}
           <div className="plan-add-fields">
             <label>
               Objetivo
